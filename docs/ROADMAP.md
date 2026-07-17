@@ -149,20 +149,26 @@ a neighboring phrase); frequency + a 30-chapter sample + manual pinning mitigate
 
 ---
 
-## Stage 6 — Orchestration (sequential + rolling context) `[ ]`
+## Stage 6 — Orchestration (sequential + rolling context) `[x]`
 
-- [ ] Sequential loop over `pending_chapters` in order (resumable)
-- [ ] Rolling context: inject the running summary + previous chapter tail into the
-      prompt; after each chapter, update the summary (light call) and persist it in
-      `meta.running_summary`
-- [ ] Per chapter: relevant terms → translate → save → extract+merge glossary → emit
-- [ ] Failure isolation (mark `failed`, keep going), re-run of `failed`
-- [ ] Optional parallel mode (`concurrency > 1`, no cross-chapter context)
-- [ ] Progress aggregation + `emit("progress", …)`
+- [x] `Orchestrator` — sequential loop over `pending_chapters` in order (resumable)
+- [x] Rolling context: inject running summary + previous chapter tail + style
+      exemplar; after each chapter update the summary and persist `meta.running_summary`
+- [x] Per chapter: relevant terms → translate → save → update summary →
+      extract+merge glossary (enrichment best-effort)
+- [x] Failure isolation (mark `failed`, keep going)
+- [x] `PromptContext` (glossary + style + summary + prev tail); `build_summary_prompt`
+- [ ] Optional parallel mode / progress `emit` — wired at the UI layer (Stage 8)
 
-**Verify:** translate ~5 sequential chapters of the real book; confirm continuity
-(a scene/character introduced in ch. N is referenced correctly in ch. N+1) and that
-the running summary + glossary persist and resume across a restart.
+**Verified (user acceptance test):** translated 5 sequential chapters of the real
+book with a reference-bootstrapped glossary + style, then compared to the
+professional translation `За гранью времени`:
+- **Names consistent and matching the pro**: protagonist "Сюй Цин" identical across
+  all 5 chapters and equal to the professional rendering; `南凰洲` → "континент
+  Южного Феникса" throughout.
+- **Meaning preserved**; chapter 1 nearly matched the professional prose in tone.
+- **Rolling summary** produced a coherent running synopsis (plot, characters, lore),
+  confirming cross-chapter context carries forward.
 
 ---
 
