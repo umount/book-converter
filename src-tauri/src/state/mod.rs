@@ -1,17 +1,24 @@
 //! Persisting translation progress in SQLite.
 //!
-//! Critical for a ~990-chapter book: the process can be interrupted and resumed
+//! Critical for a ~1350-chapter book: the process can be interrupted and resumed
 //! from where it left off. Stores each chapter's status, its translation, and
 //! the glossary.
 //!
-//! ## Schema (sketch)
-//! - `chapters(index INTEGER PK, title TEXT, source TEXT, status TEXT,
-//!    translated TEXT, updated_at)` — status: pending | in_progress | done | failed
-//! - `glossary(source TEXT PK, target TEXT, kind TEXT, frequency INT, pinned INT)`
-//! - `meta(key TEXT PK, value TEXT)` — book path, run settings, etc.
+//! ## Schema
+//! - `chapters(idx PK, number, title, source, status, translated, updated_at)` —
+//!   status: pending | in_progress | done | failed. (`idx` = `Chapter.index`;
+//!   the column is not named `index` because that is a SQL keyword.)
+//! - `glossary(source PK, target, kind, frequency, pinned)`
+//! - `meta(key PK, value)` — book path, run settings, schema version
+//!
+//! Self-contained apart from `rusqlite` (bundled SQLite, no system deps), so it
+//! is testable without the Tauri crate.
+
+use anyhow::Result;
+use rusqlite::{params, Connection, OptionalExtension};
 
 use crate::book::Chapter;
-use crate::glossary::Term;
+use crate::glossary::{Term, TermKind};
 
 /// Chapter translation status.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -22,44 +29,414 @@ pub enum Status {
     Failed,
 }
 
+impl Status {
+    fn as_str(self) -> &'static str {
+        match self {
+            Status::Pending => "pending",
+            Status::InProgress => "in_progress",
+            Status::Done => "done",
+            Status::Failed => "failed",
+        }
+    }
+
+    fn from_str(s: &str) -> Status {
+        match s {
+            "in_progress" => Status::InProgress,
+            "done" => Status::Done,
+            "failed" => Status::Failed,
+            _ => Status::Pending,
+        }
+    }
+}
+
+/// Aggregate progress counts, for the UI/progress event.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct Stats {
+    pub total: usize,
+    pub done: usize,
+    pub failed: usize,
+    pub in_progress: usize,
+    pub pending: usize,
+}
+
+const SCHEMA: &str = r#"
+CREATE TABLE IF NOT EXISTS meta (
+    key   TEXT PRIMARY KEY,
+    value TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS chapters (
+    idx        INTEGER PRIMARY KEY,
+    number     INTEGER,
+    title      TEXT NOT NULL,
+    source     TEXT NOT NULL,
+    status     TEXT NOT NULL DEFAULT 'pending',
+    translated TEXT,
+    updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE TABLE IF NOT EXISTS glossary (
+    source    TEXT PRIMARY KEY,
+    target    TEXT NOT NULL,
+    kind      TEXT NOT NULL,
+    frequency INTEGER NOT NULL DEFAULT 1,
+    pinned    INTEGER NOT NULL DEFAULT 0
+);
+"#;
+
 /// Progress store on top of SQLite.
 pub struct Store {
-    _conn: rusqlite::Connection,
+    conn: Connection,
 }
 
 impl Store {
-    /// Open/create the database and apply the schema.
-    pub fn open(_path: &str) -> anyhow::Result<Self> {
-        todo!("open SQLite and create the tables")
+    /// Open/create the database, apply the schema, and recover from a crash by
+    /// resetting any `in_progress` chapter back to `pending`.
+    pub fn open(path: &str) -> Result<Self> {
+        let conn = Connection::open(path)?;
+        conn.execute_batch(SCHEMA)?;
+        let store = Store { conn };
+        store.reset_in_progress()?;
+        Ok(store)
     }
 
-    /// Load the book's chapters into the database (idempotent — never clobbers translations).
-    pub fn init_chapters(&self, _chapters: &[Chapter]) -> anyhow::Result<()> {
-        todo!("insert chapters with status pending")
+    /// Reset chapters stuck `in_progress` (from a previous crash) to `pending`.
+    fn reset_in_progress(&self) -> Result<usize> {
+        let n = self.conn.execute(
+            "UPDATE chapters SET status = 'pending' WHERE status = 'in_progress'",
+            [],
+        )?;
+        Ok(n)
     }
 
-    /// Return the indices of chapters not yet translated (for resumption).
-    pub fn pending_chapters(&self) -> anyhow::Result<Vec<usize>> {
-        todo!("select chapters with status pending/failed")
+    /// Load the book's chapters into the database.
+    ///
+    /// Idempotent: an existing chapter row (with its status/translation) is kept,
+    /// so re-opening the same book never discards work already done.
+    pub fn init_chapters(&self, chapters: &[Chapter]) -> Result<()> {
+        let tx = self.conn.unchecked_transaction()?;
+        {
+            let mut stmt = tx.prepare(
+                "INSERT INTO chapters (idx, number, title, source)
+                 VALUES (?1, ?2, ?3, ?4)
+                 ON CONFLICT(idx) DO NOTHING",
+            )?;
+            for c in chapters {
+                stmt.execute(params![
+                    c.index as i64,
+                    c.number.map(|n| n as i64),
+                    c.title,
+                    c.body,
+                ])?;
+            }
+        }
+        tx.commit()?;
+        Ok(())
     }
 
-    /// Save a chapter's translation and mark it done.
-    pub fn save_translation(&self, _index: usize, _translated: &str) -> anyhow::Result<()> {
-        todo!("write the translation and status done")
+    /// Return the indices of chapters not yet translated (`pending`/`failed`),
+    /// in reading order — the resumable queue.
+    pub fn pending_chapters(&self) -> Result<Vec<usize>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT idx FROM chapters
+             WHERE status IN ('pending', 'failed')
+             ORDER BY idx",
+        )?;
+        let rows = stmt
+            .query_map([], |r| r.get::<_, i64>(0))?
+            .collect::<rusqlite::Result<Vec<i64>>>()?;
+        Ok(rows.into_iter().map(|n| n as usize).collect())
+    }
+
+    /// Read the source text of a chapter (for building the translation request).
+    pub fn chapter_source(&self, index: usize) -> Result<Option<String>> {
+        let text = self
+            .conn
+            .query_row(
+                "SELECT source FROM chapters WHERE idx = ?1",
+                params![index as i64],
+                |r| r.get::<_, String>(0),
+            )
+            .optional()?;
+        Ok(text)
+    }
+
+    /// Save a chapter's translation and mark it `done`.
+    pub fn save_translation(&self, index: usize, translated: &str) -> Result<()> {
+        self.conn.execute(
+            "UPDATE chapters
+             SET translated = ?2, status = 'done', updated_at = datetime('now')
+             WHERE idx = ?1",
+            params![index as i64, translated],
+        )?;
+        Ok(())
     }
 
     /// Update a chapter's status.
-    pub fn set_status(&self, _index: usize, _status: Status) -> anyhow::Result<()> {
-        todo!("update the chapter status")
+    pub fn set_status(&self, index: usize, status: Status) -> Result<()> {
+        self.conn.execute(
+            "UPDATE chapters
+             SET status = ?2, updated_at = datetime('now')
+             WHERE idx = ?1",
+            params![index as i64, status.as_str()],
+        )?;
+        Ok(())
+    }
+
+    /// Aggregate progress counts.
+    pub fn stats(&self) -> Result<Stats> {
+        let mut stmt = self
+            .conn
+            .prepare("SELECT status, COUNT(*) FROM chapters GROUP BY status")?;
+        let mut stats = Stats::default();
+        let rows = stmt.query_map([], |r| {
+            Ok((r.get::<_, String>(0)?, r.get::<_, i64>(1)?))
+        })?;
+        for row in rows {
+            let (status, count) = row?;
+            let count = count as usize;
+            stats.total += count;
+            match Status::from_str(&status) {
+                Status::Pending => stats.pending += count,
+                Status::InProgress => stats.in_progress += count,
+                Status::Done => stats.done += count,
+                Status::Failed => stats.failed += count,
+            }
+        }
+        Ok(stats)
+    }
+
+    /// All translated chapters in reading order (for export).
+    /// Returns `(index, title, translated_body)`.
+    pub fn translated_chapters(&self) -> Result<Vec<(usize, String, String)>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT idx, title, translated FROM chapters
+             WHERE status = 'done' AND translated IS NOT NULL
+             ORDER BY idx",
+        )?;
+        let rows = stmt
+            .query_map([], |r| {
+                Ok((
+                    r.get::<_, i64>(0)? as usize,
+                    r.get::<_, String>(1)?,
+                    r.get::<_, String>(2)?,
+                ))
+            })?
+            .collect::<rusqlite::Result<Vec<_>>>()?;
+        Ok(rows)
     }
 
     /// Load the whole glossary.
-    pub fn load_glossary(&self) -> anyhow::Result<Vec<Term>> {
-        todo!("read the glossary")
+    pub fn load_glossary(&self) -> Result<Vec<Term>> {
+        let mut stmt = self
+            .conn
+            .prepare("SELECT source, target, kind, frequency, pinned FROM glossary")?;
+        let rows = stmt
+            .query_map([], |r| {
+                Ok(Term {
+                    source: r.get(0)?,
+                    target: r.get(1)?,
+                    kind: kind_from_str(&r.get::<_, String>(2)?),
+                    frequency: r.get::<_, i64>(3)? as u32,
+                    pinned: r.get::<_, i64>(4)? != 0,
+                })
+            })?
+            .collect::<rusqlite::Result<Vec<_>>>()?;
+        Ok(rows)
     }
 
-    /// Save (upsert) the glossary.
-    pub fn save_glossary(&self, _terms: &[Term]) -> anyhow::Result<()> {
-        todo!("upsert the glossary")
+    /// Save (upsert) the glossary. Conflict policy (canon/pinned wins) is applied
+    /// in `glossary::merge` before this call; here we just persist the result.
+    pub fn save_glossary(&self, terms: &[Term]) -> Result<()> {
+        let tx = self.conn.unchecked_transaction()?;
+        {
+            let mut stmt = tx.prepare(
+                "INSERT INTO glossary (source, target, kind, frequency, pinned)
+                 VALUES (?1, ?2, ?3, ?4, ?5)
+                 ON CONFLICT(source) DO UPDATE SET
+                    target = excluded.target,
+                    kind = excluded.kind,
+                    frequency = excluded.frequency,
+                    pinned = excluded.pinned",
+            )?;
+            for t in terms {
+                stmt.execute(params![
+                    t.source,
+                    t.target,
+                    kind_to_str(t.kind),
+                    t.frequency as i64,
+                    t.pinned as i64,
+                ])?;
+            }
+        }
+        tx.commit()?;
+        Ok(())
+    }
+
+    /// Read a `meta` value.
+    pub fn get_meta(&self, key: &str) -> Result<Option<String>> {
+        let v = self
+            .conn
+            .query_row(
+                "SELECT value FROM meta WHERE key = ?1",
+                params![key],
+                |r| r.get::<_, String>(0),
+            )
+            .optional()?;
+        Ok(v)
+    }
+
+    /// Write a `meta` value.
+    pub fn set_meta(&self, key: &str, value: &str) -> Result<()> {
+        self.conn.execute(
+            "INSERT INTO meta (key, value) VALUES (?1, ?2)
+             ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+            params![key, value],
+        )?;
+        Ok(())
+    }
+}
+
+/// Stable string form of a term category for the DB.
+fn kind_to_str(kind: TermKind) -> &'static str {
+    match kind {
+        TermKind::Person => "person",
+        TermKind::Location => "location",
+        TermKind::Organization => "organization",
+        TermKind::Term => "term",
+    }
+}
+
+fn kind_from_str(s: &str) -> TermKind {
+    match s {
+        "location" => TermKind::Location,
+        "organization" => TermKind::Organization,
+        "term" => TermKind::Term,
+        _ => TermKind::Person,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn chapter(index: usize, title: &str, body: &str) -> Chapter {
+        Chapter {
+            index,
+            number: Some(index),
+            title: title.into(),
+            body: body.into(),
+        }
+    }
+
+    fn sample() -> Vec<Chapter> {
+        vec![
+            chapter(1, "第1章", "source one"),
+            chapter(2, "第2章", "source two"),
+            chapter(3, "第3章", "source three"),
+        ]
+    }
+
+    #[test]
+    fn init_and_pending() {
+        let store = Store::open(":memory:").unwrap();
+        store.init_chapters(&sample()).unwrap();
+        assert_eq!(store.pending_chapters().unwrap(), vec![1, 2, 3]);
+        assert_eq!(store.stats().unwrap().total, 3);
+    }
+
+    #[test]
+    fn save_translation_advances_progress() {
+        let store = Store::open(":memory:").unwrap();
+        store.init_chapters(&sample()).unwrap();
+        store.save_translation(2, "перевод два").unwrap();
+        assert_eq!(store.pending_chapters().unwrap(), vec![1, 3]);
+        let stats = store.stats().unwrap();
+        assert_eq!(stats.done, 1);
+        assert_eq!(stats.pending, 2);
+        assert_eq!(
+            store.translated_chapters().unwrap(),
+            vec![(2, "第2章".to_string(), "перевод два".to_string())]
+        );
+    }
+
+    #[test]
+    fn failed_chapters_are_requeued() {
+        let store = Store::open(":memory:").unwrap();
+        store.init_chapters(&sample()).unwrap();
+        store.set_status(1, Status::Failed).unwrap();
+        // failed stays in the queue for a re-run
+        assert_eq!(store.pending_chapters().unwrap(), vec![1, 2, 3]);
+        assert_eq!(store.stats().unwrap().failed, 1);
+    }
+
+    #[test]
+    fn init_is_idempotent_and_keeps_translations() {
+        let store = Store::open(":memory:").unwrap();
+        store.init_chapters(&sample()).unwrap();
+        store.save_translation(2, "done text").unwrap();
+        // Re-init (e.g. reopening the same book) must not clobber the translation.
+        store.init_chapters(&sample()).unwrap();
+        assert_eq!(store.pending_chapters().unwrap(), vec![1, 3]);
+        assert_eq!(store.translated_chapters().unwrap().len(), 1);
+    }
+
+    #[test]
+    fn reopen_resets_in_progress() {
+        let path = std::env::temp_dir().join(format!(
+            "bc_state_test_{}.db",
+            std::process::id()
+        ));
+        let path_str = path.to_str().unwrap();
+        {
+            let store = Store::open(path_str).unwrap();
+            store.init_chapters(&sample()).unwrap();
+            store.set_status(2, Status::InProgress).unwrap();
+            // Simulate a crash mid-chapter: 2 is left in_progress.
+            assert_eq!(store.pending_chapters().unwrap(), vec![1, 3]);
+        }
+        {
+            // Reopening must recover chapter 2 back into the queue.
+            let store = Store::open(path_str).unwrap();
+            assert_eq!(store.pending_chapters().unwrap(), vec![1, 2, 3]);
+        }
+        let _ = std::fs::remove_file(path);
+    }
+
+    #[test]
+    fn glossary_roundtrip() {
+        let store = Store::open(":memory:").unwrap();
+        let terms = vec![
+            Term {
+                source: "王林".into(),
+                target: "Ван Линь".into(),
+                kind: TermKind::Person,
+                frequency: 5,
+                pinned: true,
+            },
+            Term {
+                source: "南凰洲".into(),
+                target: "Наньхуанчжоу".into(),
+                kind: TermKind::Location,
+                frequency: 2,
+                pinned: false,
+            },
+        ];
+        store.save_glossary(&terms).unwrap();
+        let mut loaded = store.load_glossary().unwrap();
+        loaded.sort_by(|a, b| a.source.cmp(&b.source));
+        let mut expected = terms.clone();
+        expected.sort_by(|a, b| a.source.cmp(&b.source));
+        assert_eq!(loaded, expected);
+    }
+
+    #[test]
+    fn meta_roundtrip() {
+        let store = Store::open(":memory:").unwrap();
+        assert_eq!(store.get_meta("book_path").unwrap(), None);
+        store.set_meta("book_path", "/books/x.txt").unwrap();
+        store.set_meta("book_path", "/books/y.txt").unwrap();
+        assert_eq!(
+            store.get_meta("book_path").unwrap(),
+            Some("/books/y.txt".to_string())
+        );
     }
 }

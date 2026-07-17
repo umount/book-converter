@@ -35,7 +35,7 @@ pub enum TermKind {
 }
 
 /// A single glossary entry.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Term {
     /// Source (Chinese).
     pub source: String,

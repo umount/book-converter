@@ -57,15 +57,18 @@ surfaces a `ParseReport` for the UI to warn on.
 
 ---
 
-## Stage 3 — State store (`state`) `[ ]`
+## Stage 3 — State store (`state`) `[x]`
 
-- [ ] Open/create SQLite, apply schema (`chapters`, `glossary`, `meta`)
-- [ ] `init_chapters` — idempotent insert (never clobbers existing translations)
-- [ ] `pending_chapters`, `save_translation`, `set_status`
-- [ ] Reset stray `in_progress` → `pending` on startup
-- [ ] Glossary load/save (upsert)
+- [x] Open/create SQLite, apply schema (`chapters`, `glossary`, `meta`)
+- [x] `init_chapters` — idempotent insert (never clobbers existing translations)
+- [x] `pending_chapters`, `save_translation`, `set_status`, `stats`, `translated_chapters`
+- [x] Reset stray `in_progress` → `pending` on startup (crash recovery)
+- [x] Glossary load/save (upsert) + `meta` get/set
+- [x] 7 unit tests incl. a real reopen-resumption test
 
-**Verify:** parse → init → kill process → reopen: `pending_chapters` reflects what was left.
+**Verified:** end-to-end on `光阴之外⊙完本.txt` — parse → 1350 chapters into the
+store; after translating 5 and failing 1, `stats` reports `done=5 failed=1
+pending=1345` and a reopened DB requeues the `in_progress` chapter.
 
 ---
 
