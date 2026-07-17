@@ -101,7 +101,8 @@ worker pool (concurrency=N)  ───────────────┐   
    │  3. translator::prompt::user_prompt()   │   term glossary + text
    │  4. deepseek.translate()  ── retry ───> │   → DeepSeek API
    │  5. state::save_translation()           │   translation + status=done
-   │  6. glossary::extract_terms()           │   new names/terms (light request)
+   │  6. glossary::build_extraction_prompt() │   new names/terms (light request)
+   │     + deepseek + parse_extracted_terms  │
    │  7. glossary::merge() + save_glossary() │   never overwrite the canon
    │                                         │
    └── emit("progress", …) ──────────────────┘   UI updates without blocking

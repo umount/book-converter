@@ -86,14 +86,20 @@ from env only and never touches the repo (`.gitignore` covers `.env`).
 
 ---
 
-## Stage 5 — Glossary subsystem (`glossary`) `[ ]`
+## Stage 5 — Glossary subsystem (`glossary`) `[x]`
 
-- [ ] `relevant_terms` — find glossary terms present in a chapter
-- [ ] `extract_terms` — second light request to pull new names/terms + category
-- [ ] `merge` — conflict resolution (canon/pinned win, frequency bumps)
-- [ ] Wire phases 1 & 2 into the per-chapter flow
+- [x] `relevant_terms` — find glossary terms present in a chapter (ordered by frequency)
+- [x] `build_extraction_prompt` + `parse_extracted_terms` — extract new names/terms
+      (JSON, tolerant of code fences); module stays pure, the call is orchestrated
+- [x] `merge` — conflict resolution (canon/pinned win, frequency accumulates)
+- [x] `TermKind` label/from_label helpers
+- [x] 5 unit tests
+- [ ] Wire phases 1 & 2 into the per-chapter flow — done in Stage 6 (orchestration)
 
-**Verify:** translate 3–4 sequential chapters; the protagonist's name stays identical; glossary grows.
+**Verified** with a real two-phase run: a chapter mentioning `王林` was translated
+with the injected canonical "Ван Линь"; extraction then returned `王林` (person)
+and `南凰洲` (location) as JSON, and `merge` kept the pinned canon (freq 9→10) and
+appended the new location.
 
 ---
 
