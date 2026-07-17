@@ -17,6 +17,7 @@ config.local.toml
 
 # Source and translated books (large, copyrighted)
 *.txt
+/samples/
 /data/
 /output/
 *.epub
