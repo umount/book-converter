@@ -131,16 +131,21 @@ via a DeepSeek-inferred regex. 21 book-module tests pass.
 
 ---
 
-## Stage 5C — Reference translation (`reference`) `[ ]`
+## Stage 5C — Reference translation (`reference`) `[x]`
 
-- [ ] Parse a supplied reference (any format) and align it to the source by order
-- [ ] Bootstrap a **pinned** glossary from ~30 aligned chapter pairs (DeepSeek
-      extraction of `source → professional rendering`)
-- [ ] Style exemplar extracted from the reference, injected into the prompt
-- [ ] Fall back to the auto glossary when no reference is supplied
+- [x] `load_reference` — parse a supplied reference via `book::load` (any format)
+- [x] `align` — pair source↔reference chapters by number, positional fallback
+- [x] `bootstrap_glossary` — DeepSeek extraction of `source → professional
+      rendering` over a sample of pairs, marked **pinned** canon
+- [x] `style_exemplar` — a professional excerpt for a few-shot style reference
+- [x] 3 unit tests (alignment); real bootstrap verified
+- [ ] Injection into the translation prompt (style exemplar) — wired in Stage 6
 
-**Verify:** bootstrap from `За гранью времени`; the pinned glossary carries canonical
-names/lore; a later chapter's translation uses them.
+**Verified:** bootstrapping 3 chapters of `За гранью времени` yielded canonical
+lore — the whole cultivation system (凝气→Конденсация Ци, 筑基→Возведение Основания,
+结丹→Формирование Ядра, 元婴→Зарождение Души) plus names/locations, all pinned,
+matching the reference's own glossary. Extraction has some noise (a term can map to
+a neighboring phrase); frequency + a 30-chapter sample + manual pinning mitigate it.
 
 ---
 
