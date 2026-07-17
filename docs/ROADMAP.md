@@ -35,15 +35,25 @@ comfortable with the language on small, testable pieces before the UI.
 
 ---
 
-## Stage 2 — Book parsing (`book::parser`) `[ ]`
+## Stage 2 — Book parsing (`book::source` + `book::parser`) `[x]`
 
-- [ ] Normalize line endings (CRLF/CR → LF)
-- [ ] Regex for chapter markers `第[一二三四五六七八九十百千零两]+章`
-- [ ] Build `Chapter { index, title, body }` between markers
-- [ ] Parse header metadata (title `《光阴之外》`, author `作者：耳根`, chapter count)
-- [ ] Unit tests on a sample slice of the real book
+- [x] Encoding layer (`book::source`): detect (`chardetng`) + decode (`encoding_rs`) UTF-8 / GBK / GB18030 / Big5, report the detected encoding
+- [x] Normalize line endings (CRLF/CR → LF)
+- [x] Regex for chapter markers — both Arabic (`第1章`) and Chinese (`第一章`) numerals
+- [x] Build `Chapter { index, number, title, body }` between markers
+- [x] Chinese-numeral → int parser (note: Chinese digits are not contiguous in Unicode)
+- [x] Parse header metadata (title `《...》`, author `作者：...`, declared count)
+- [x] `validate()` → `ParseReport`: gaps, duplicates, declared vs actual
+- [x] Unit tests (11) + verified against 3 real books
 
-**Verify:** parsing `光阴之外.txt` yields ~990 chapters; first title is `第一章 活着`.
+**Verified** against three real books:
+- `光阴之外.txt` — UTF-8, Chinese numerals: 976 chapters, truncated at #984, 6 duplicates, 14 gaps.
+- `光阴之外⊙完本.txt` — UTF-8, Arabic numerals: **1350 chapters (clean), #1354 end** — the edition to translate.
+- `末世之黑暗召唤师….txt` — **GBK**, Chinese numerals up to #1619: 1662 entries, first 43 chapters duplicated.
+
+**Note (feeds later stages):** real scraped books have gaps/duplicates. A dedup/gap
+policy belongs in the state/orchestration stage; the parser stays faithful and
+surfaces a `ParseReport` for the UI to warn on.
 
 ---
 

@@ -6,7 +6,9 @@
 
 book-converter is a desktop app that translates **large** books from Chinese to
 Russian via the **DeepSeek API**. The target case is the web novel `光阴之外`
-(author 耳根): ~11 MB of text, **990 chapters**, ~4300 Chinese characters per chapter.
+(author 耳根). Its complete edition (`光阴之外⊙完本.txt`) is ~15 MB, **1354
+chapters**, ~4300 Chinese characters per chapter. (Scraped copies vary wildly in
+completeness and encoding — see the parsing notes below.)
 
 The hard part is not the UI — it is the **translation pipeline**: a book cannot be
 sent to the model in one shot, translation runs as hundreds of requests, the job
@@ -66,7 +68,8 @@ thing the frontend knows about.
 | Module | Responsibility |
 |--------|----------------|
 | **config** | Configuration: DeepSeek API key (from env `DEEPSEEK_API_KEY`), base_url, model, languages, `concurrency`, `max_chunk_chars`, `max_retries` |
-| **book::parser** | Split `.txt` into chapters by `第[一二…]章` markers. Normalize line endings (CRLF/CR → LF) |
+| **book::source** | Detect the file encoding (`chardetng`) and decode to UTF-8 (`encoding_rs`). Chinese `.txt` files are often GBK/GB18030 or Big5, not UTF-8 |
+| **book::parser** | Split text into chapters by `第N章` markers (Arabic `第1章` and Chinese `第一章` numerals). Normalize line endings (CRLF/CR → LF). Parse the chapter number and produce a `ParseReport` (gaps, duplicates, declared vs actual) |
 | **book::chunker** | Fallback splitting of an over-long chapter into chunks on paragraph boundaries (never mid-sentence) |
 | **glossary** | Consistency subsystem: store terms, inject relevant ones into the prompt, auto-extract new ones, merge with conflict resolution |
 | **translator::prompt** | Build system/user prompts: base instructions + mandatory term glossary + optional previous-chapter summary |
@@ -80,10 +83,12 @@ thing the frontend knows about.
 The main data flow — from file selection to a finished book:
 
 ```
-book.txt
+book.txt (UTF-8 / GBK / Big5)
+   │  book::source::read_book_file()           detect encoding, decode → UTF-8
    │  book::parser::parse_chapters()           normalize CRLF/CR, split on 第N章
+   │  book::parser::validate()                 report gaps / duplicates
    ▼
-[ Chapter{index, title, body} × ~990 ]
+[ Chapter{index, number, title, body} × ~1350 ]
    │  state::Store::init_chapters()             idempotent insert, status=pending
    ▼
 SQLite (progress.db)
