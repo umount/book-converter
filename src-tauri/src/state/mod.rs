@@ -65,13 +65,14 @@ CREATE TABLE IF NOT EXISTS meta (
     value TEXT NOT NULL
 );
 CREATE TABLE IF NOT EXISTS chapters (
-    idx        INTEGER PRIMARY KEY,
-    number     INTEGER,
-    title      TEXT NOT NULL,
-    source     TEXT NOT NULL,
-    status     TEXT NOT NULL DEFAULT 'pending',
-    translated TEXT,
-    updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+    idx              INTEGER PRIMARY KEY,
+    number           INTEGER,
+    title            TEXT NOT NULL,
+    source           TEXT NOT NULL,
+    status           TEXT NOT NULL DEFAULT 'pending',
+    translated       TEXT,
+    translated_title TEXT,
+    updated_at       TEXT NOT NULL DEFAULT (datetime('now'))
 );
 CREATE TABLE IF NOT EXISTS glossary (
     source    TEXT PRIMARY KEY,
@@ -146,26 +147,32 @@ impl Store {
         Ok(rows.into_iter().map(|n| n as usize).collect())
     }
 
-    /// Read the source text of a chapter (for building the translation request).
-    pub fn chapter_source(&self, index: usize) -> Result<Option<String>> {
-        let text = self
+    /// Read a chapter's source title and body (for building the request).
+    pub fn chapter(&self, index: usize) -> Result<Option<(String, String)>> {
+        let row = self
             .conn
             .query_row(
-                "SELECT source FROM chapters WHERE idx = ?1",
+                "SELECT title, source FROM chapters WHERE idx = ?1",
                 params![index as i64],
-                |r| r.get::<_, String>(0),
+                |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?)),
             )
             .optional()?;
-        Ok(text)
+        Ok(row)
     }
 
-    /// Save a chapter's translation and mark it `done`.
-    pub fn save_translation(&self, index: usize, translated: &str) -> Result<()> {
+    /// Save a chapter's translated title + body and mark it `done`.
+    pub fn save_translation(
+        &self,
+        index: usize,
+        translated_title: &str,
+        translated_body: &str,
+    ) -> Result<()> {
         self.conn.execute(
             "UPDATE chapters
-             SET translated = ?2, status = 'done', updated_at = datetime('now')
+             SET translated = ?3, translated_title = ?2,
+                 status = 'done', updated_at = datetime('now')
              WHERE idx = ?1",
-            params![index as i64, translated],
+            params![index as i64, translated_title, translated_body],
         )?;
         Ok(())
     }
@@ -205,10 +212,11 @@ impl Store {
     }
 
     /// All translated chapters in reading order (for export).
-    /// Returns `(index, title, translated_body)`.
+    /// Returns `(index, translated_title, translated_body)` — the translated
+    /// title falls back to the source title if a run predates title translation.
     pub fn translated_chapters(&self) -> Result<Vec<(usize, String, String)>> {
         let mut stmt = self.conn.prepare(
-            "SELECT idx, title, translated FROM chapters
+            "SELECT idx, COALESCE(translated_title, title), translated FROM chapters
              WHERE status = 'done' AND translated IS NOT NULL
              ORDER BY idx",
         )?;
@@ -347,14 +355,14 @@ mod tests {
     fn save_translation_advances_progress() {
         let store = Store::open(":memory:").unwrap();
         store.init_chapters(&sample()).unwrap();
-        store.save_translation(2, "перевод два").unwrap();
+        store.save_translation(2, "Глава 2", "перевод два").unwrap();
         assert_eq!(store.pending_chapters().unwrap(), vec![1, 3]);
         let stats = store.stats().unwrap();
         assert_eq!(stats.done, 1);
         assert_eq!(stats.pending, 2);
         assert_eq!(
             store.translated_chapters().unwrap(),
-            vec![(2, "第2章".to_string(), "перевод два".to_string())]
+            vec![(2, "Глава 2".to_string(), "перевод два".to_string())]
         );
     }
 
@@ -372,7 +380,7 @@ mod tests {
     fn init_is_idempotent_and_keeps_translations() {
         let store = Store::open(":memory:").unwrap();
         store.init_chapters(&sample()).unwrap();
-        store.save_translation(2, "done text").unwrap();
+        store.save_translation(2, "T2", "done text").unwrap();
         // Re-init (e.g. reopening the same book) must not clobber the translation.
         store.init_chapters(&sample()).unwrap();
         assert_eq!(store.pending_chapters().unwrap(), vec![1, 3]);

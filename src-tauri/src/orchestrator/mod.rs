@@ -51,23 +51,30 @@ impl<'a> Orchestrator<'a> {
         })
     }
 
-    /// Translate every pending chapter, in order. `progress` is called after each.
-    pub async fn run<F: FnMut(Stats)>(&mut self, mut progress: F) -> Result<()> {
+    /// Translate pending chapters in order, at most `limit` of them (`None` = all).
+    /// `progress` is called after each. A `limit` supports "translate the next N".
+    pub async fn run<F: FnMut(Stats)>(
+        &mut self,
+        limit: Option<usize>,
+        mut progress: F,
+    ) -> Result<()> {
         let pending = self.store.pending_chapters()?;
-        for idx in pending {
+        let take = limit.unwrap_or(usize::MAX);
+        for idx in pending.into_iter().take(take) {
             self.store.set_status(idx, Status::InProgress)?;
-            let source = self
+            let (title, source) = self
                 .store
-                .chapter_source(idx)?
+                .chapter(idx)?
                 .ok_or_else(|| anyhow!("no source for chapter {idx}"))?;
 
-            match self.translate_one(&source).await {
-                Ok(translation) => {
-                    self.store.save_translation(idx, &translation)?;
-                    self.prev_tail = Some(tail(&translation, 400));
+            match self.translate_one(&title, &source).await {
+                Ok(full) => {
+                    let (t_title, t_body) = split_title_body(&full, &title);
+                    self.store.save_translation(idx, &t_title, &t_body)?;
+                    self.prev_tail = Some(tail(&t_body, 400));
 
                     // Rolling summary (best-effort — a failure here is non-fatal).
-                    match self.update_summary(&translation).await {
+                    match self.update_summary(&t_body).await {
                         Ok(sum) => {
                             self.summary = sum;
                             let _ = self.store.set_meta("running_summary", &self.summary);
@@ -76,7 +83,7 @@ impl<'a> Orchestrator<'a> {
                     }
 
                     // Glossary enrichment (best-effort).
-                    if let Err(e) = self.enrich_glossary(&source, &translation).await {
+                    if let Err(e) = self.enrich_glossary(&source, &t_body).await {
                         tracing::warn!(chapter = idx, "glossary enrichment failed: {e:#}");
                     }
                 }
@@ -91,8 +98,8 @@ impl<'a> Orchestrator<'a> {
         Ok(())
     }
 
-    /// Translate one chapter's source with the current context.
-    async fn translate_one(&self, source: &str) -> Result<String> {
+    /// Translate one chapter (title + body) with the current context.
+    async fn translate_one(&self, title: &str, source: &str) -> Result<String> {
         let relevant = glossary::relevant_terms(&self.glossary, source);
         let ctx = prompt::PromptContext {
             terms: &relevant,
@@ -101,7 +108,13 @@ impl<'a> Orchestrator<'a> {
             style: self.style.as_deref(),
         };
         let system = prompt::system_prompt(self.config);
-        let user = prompt::user_prompt(&ctx, source);
+        // Prepend the title so it is translated in the target language too.
+        let input = if title.trim().is_empty() {
+            source.to_string()
+        } else {
+            format!("{}\n\n{}", title.trim(), source)
+        };
+        let user = prompt::user_prompt(&ctx, &input);
         self.client.translate(&system, &user).await
     }
 
@@ -123,6 +136,31 @@ impl<'a> Orchestrator<'a> {
     pub fn glossary(&self) -> &[Term] {
         &self.glossary
     }
+}
+
+/// Split a translated chapter into (title, body).
+///
+/// Only splits when the source had a title (we prepended it, so the model's first
+/// line is the translated title). Otherwise the whole output is the body.
+fn split_title_body(full: &str, source_title: &str) -> (String, String) {
+    if source_title.trim().is_empty() {
+        return (String::new(), full.trim().to_string());
+    }
+    let trimmed = full.trim_start();
+    match trimmed.split_once('\n') {
+        Some((first, rest)) if !rest.trim().is_empty() => {
+            (clean_title(first), rest.trim().to_string())
+        }
+        _ => (source_title.trim().to_string(), trimmed.trim().to_string()),
+    }
+}
+
+/// Strip leading Markdown heading/emphasis markers a model sometimes adds.
+fn clean_title(line: &str) -> String {
+    line.trim()
+        .trim_start_matches(|c: char| c == '#' || c == '*' || c.is_whitespace())
+        .trim()
+        .to_string()
 }
 
 /// Last `n` characters of a string (char-safe).
@@ -156,5 +194,24 @@ mod tests {
     fn non_empty_filters_blank() {
         assert_eq!(non_empty("  "), None);
         assert_eq!(non_empty("x"), Some("x"));
+    }
+
+    #[test]
+    fn split_title_body_variants() {
+        // title present, model returned translated title + body
+        let (t, b) = split_title_body("Глава 1\n\nТекст главы.", "第1章");
+        assert_eq!(t, "Глава 1");
+        assert_eq!(b, "Текст главы.");
+        // strips a markdown-heading prefix the model may add
+        let (t, _) = split_title_body("### Глава 3\n\nтекст", "第3章");
+        assert_eq!(t, "Глава 3");
+        // no source title → whole thing is body
+        let (t, b) = split_title_body("Просто текст.", "");
+        assert_eq!(t, "");
+        assert_eq!(b, "Просто текст.");
+        // model returned a single line → keep source title as fallback
+        let (t, b) = split_title_body("Одна строка", "第2章");
+        assert_eq!(t, "第2章");
+        assert_eq!(b, "Одна строка");
     }
 }

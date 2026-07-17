@@ -172,14 +172,24 @@ professional translation `За гранью времени`:
 
 ---
 
-## Stage 7 — Export (`export`) `[ ]`
+## Stage 7 — Export + "continue translation" (`export`) `[x]`
 
-- [ ] `txt` — concatenated chapters with headers, correct order
-- [ ] `fb2` — per-chapter `<section>` with titles + book metadata
-- [ ] `epub` — per-chapter sections + TOC via `epub-builder` (after TXT/FB2)
-- [ ] Export command returns file paths; open via `tauri-plugin-opener`
+- [x] `txt` — concatenated chapters with titles, correct order
+- [x] `fb2` — per-chapter `<section>` with titles + book metadata (XML-escaped)
+- [x] `OutputFormat` + `export()` dispatch; `TranslatedChapter` carries `number`
+- [x] **Continue mode**: `reference::continue_from` (chapters past the reference's
+      coverage), `export::combine` (existing translation + new chapters, ordered
+      by number), so output = existing pro translation + freshly translated chapters
+- [x] **Chapter limit**: `Orchestrator::run(limit)` — translate the next N chapters
+- [x] Chapter titles translated too (title prepended to the request; `split_title_body`
+      splits + cleans markdown noise), so appended chapters get target-language titles
+- [ ] `epub` output — deferred (after TXT/FB2)
 
-**Verify:** produced `.txt`/`.fb2` open correctly; FB2 validates and lists chapters.
+**Verified (continue flow):** with a reference covering chapters 1–2, `continue_from`
+picked 3–4, the orchestrator translated them (limit 2), `combine` produced a 4-chapter
+book, exported to FB2 and re-parsed to 4 chapters. Appended chapters got Russian
+titles matching the reference style («Глава 3. Покойтесь… с миром», «Глава 4:
+Незваный гость») with consistent names (Сюй Цин).
 
 ---
 
