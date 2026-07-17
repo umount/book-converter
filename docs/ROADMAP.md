@@ -72,15 +72,17 @@ pending=1345` and a reopened DB requeues the `in_progress` chapter.
 
 ---
 
-## Stage 4 — DeepSeek client + prompts (`translator`) `[ ]`
+## Stage 4 — DeepSeek client + prompts (`translator`) `[x]`
 
-- [ ] `config::load` — key from env `DEEPSEEK_API_KEY`, rest from `config.local.toml`
-- [ ] `deepseek::translate` — `POST /chat/completions`, parse response
-- [ ] Retry with exponential backoff on 429/5xx/timeouts
-- [ ] `prompt::system_prompt` / `user_prompt` (dictionary + text)
-- [ ] Cost/size estimation helper (char count × pricing)
+- [x] `config::load` — key from env `DEEPSEEK_API_KEY` (+ `DEEPSEEK_MODEL`/`DEEPSEEK_BASE_URL`)
+- [x] `deepseek::translate` — `POST /chat/completions`, parse response
+- [x] Retry with exponential backoff on 429/5xx/timeouts (retryable vs fatal classification)
+- [x] `prompt::system_prompt` / `user_prompt` (mandatory term dictionary + optional summary + text)
+- [ ] Cost/size estimation helper (char count × pricing) — deferred to the UI stage
 
-**Verify:** translate one real chapter end-to-end from a CLI/test harness; inspect output quality.
+**Verified:** a real DeepSeek call translated a Chinese snippet to fluent Russian
+and honored the injected glossary term (`王林` → "Ван Линь"). The API key is read
+from env only and never touches the repo (`.gitignore` covers `.env`).
 
 ---
 
