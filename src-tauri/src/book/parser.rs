@@ -15,6 +15,7 @@
 
 use std::collections::BTreeSet;
 
+use anyhow::{Context, Result};
 use regex::Regex;
 
 /// A single chapter of the book.
@@ -72,16 +73,40 @@ fn normalize_newlines(raw: &str) -> String {
     raw.replace("\r\n", "\n").replace('\r', "\n")
 }
 
-/// Regex matching a chapter header at the start of a line: `第<numeral>章<rest>`.
+/// Candidate chapter-heading patterns, tried generically (not tied to one book).
 ///
-/// The numeral is either Arabic (`第1章`, used by the complete edition) or a
-/// Chinese numeral (`第一章`, used by an older edition). Anchored to line start
-/// (`^` in multiline mode) so indented spam copies and in-prose mentions of a
-/// chapter are not mistaken for real headers.
-fn chapter_header_regex() -> Regex {
-    // Chinese numerals cover 一..九, 十/百/千 places, plus 零/两/〇 seen in such novels.
-    Regex::new(r"(?m)^第([0-9]+|[一二三四五六七八九十百千零两〇]+)章[^\n]*")
-        .expect("chapter header regex is valid")
+/// Each is anchored to line start (`^` in multiline mode) so indented spam and
+/// in-prose mentions are not mistaken for headers, and captures the chapter
+/// number in group 1. Covers the common cases across languages; unknown layouts
+/// fall back to a model-inferred delimiter (see [`build_delimiter_prompt`]).
+pub fn candidate_patterns() -> Vec<Regex> {
+    [
+        // Chinese: 第1章 / 第一章 (Arabic or Chinese numerals; 章 or 回/话/節 unit).
+        r"(?m)^第([0-9]+|[一二三四五六七八九十百千零两〇]+)[章回話话節节][^\n]*",
+        // English: "Chapter 12" (optional small indent).
+        r"(?im)^\s{0,3}chapter\s+([0-9]+)[^\n]*",
+        // Russian: "Глава 12".
+        r"(?im)^\s{0,3}глава\s+([0-9]+)[^\n]*",
+    ]
+    .iter()
+    .map(|p| Regex::new(p).expect("chapter pattern is valid"))
+    .collect()
+}
+
+/// Pick the chapter-heading pattern that matches the text best (most headers).
+///
+/// Returns `None` if no pattern matches at least twice — the caller can then ask
+/// the model to infer a delimiter.
+pub fn detect_chapter_pattern(text: &str) -> Option<Regex> {
+    candidate_patterns()
+        .into_iter()
+        .map(|re| {
+            let count = re.find_iter(text).count();
+            (count, re)
+        })
+        .filter(|(count, _)| *count >= 2)
+        .max_by_key(|(count, _)| *count)
+        .map(|(_, re)| re)
 }
 
 /// Parse a chapter number from either an Arabic (`123`) or Chinese (`一百二十三`)
@@ -144,14 +169,26 @@ fn cn_numeral_to_int(s: &str) -> Option<usize> {
     }
 }
 
-/// Split the raw book text into chapters.
+/// Split the raw book text into chapters, auto-detecting the heading pattern.
 ///
-/// Text before the first chapter marker (title, author, TOC line) is treated as
-/// preamble and dropped from the chapter list — see [`parse_book_meta`].
+/// Returns an empty vector if no known pattern matches (the caller can then use a
+/// model-inferred delimiter via [`parse_chapters_with`]). Text before the first
+/// header (title, author, TOC) is treated as preamble — see [`parse_book_meta`].
 pub fn parse_chapters(raw: &str) -> Vec<Chapter> {
     let text = normalize_newlines(raw);
-    let re = chapter_header_regex();
+    match detect_chapter_pattern(&text) {
+        Some(re) => split_on_pattern(&text, &re),
+        None => Vec::new(),
+    }
+}
 
+/// Split already-normalized text using a specific heading pattern (group 1 = the
+/// chapter number). Used by [`parse_chapters`] and by the model-inferred path.
+pub fn parse_chapters_with(raw: &str, header: &Regex) -> Vec<Chapter> {
+    split_on_pattern(&normalize_newlines(raw), header)
+}
+
+fn split_on_pattern(text: &str, re: &Regex) -> Vec<Chapter> {
     // For each header line: (title_start, title_end, full_title, numeral).
     let headers: Vec<(usize, usize, String, Option<usize>)> = re
         .captures_iter(&text)
@@ -187,9 +224,8 @@ pub fn parse_book_meta(raw: &str) -> BookMeta {
     let text = normalize_newlines(raw);
 
     // Limit search to the preamble so a `《...》` inside prose is not picked up.
-    let preamble_end = chapter_header_regex()
-        .find(&text)
-        .map(|m| m.start())
+    let preamble_end = detect_chapter_pattern(&text)
+        .and_then(|re| re.find(&text).map(|m| m.start()))
         .unwrap_or(text.len());
     let preamble = &text[..preamble_end];
 
@@ -235,6 +271,39 @@ pub fn validate(chapters: &[Chapter], meta: &BookMeta) -> ParseReport {
         missing_numbers,
         duplicate_numbers: dups.into_iter().collect(),
     }
+}
+
+/// Build a (system, user) prompt asking the model to infer a chapter-heading
+/// regex for an unknown layout. Used when [`detect_chapter_pattern`] fails.
+pub fn build_delimiter_prompt(sample: &str) -> (String, String) {
+    let system = "You identify how chapters are delimited in a book. Given a text \
+         sample, output a single regular expression in RE2 / Rust `regex` syntax \
+         (no lookahead, lookbehind, or backreferences) that matches each \
+         chapter-heading line. Anchor it to the start of a line with (?m)^ and \
+         capture the chapter number in group 1 when a number is present. Output \
+         ONLY the regex, with no prose and no code fences."
+        .to_string();
+    let take: String = sample.chars().take(3000).collect();
+    let user = format!("Text sample:\n\n{take}\n\nChapter-heading regex:");
+    (system, user)
+}
+
+/// Compile a model-inferred pattern, tolerating surrounding prose / ```fences```.
+pub fn parse_inferred_pattern(raw: &str) -> Result<Regex> {
+    let candidate = extract_regex_line(raw);
+    anyhow::ensure!(!candidate.is_empty(), "model returned no pattern");
+    Regex::new(&candidate).with_context(|| format!("compiling inferred pattern: {candidate}"))
+}
+
+/// Pull the regex out of a model reply (drops ```code fences``` and backticks).
+fn extract_regex_line(raw: &str) -> String {
+    let cleaned = raw.replace("```regex", "```").replace("```", "");
+    cleaned
+        .lines()
+        .map(|l| l.trim().trim_matches('`').trim())
+        .find(|l| !l.is_empty())
+        .unwrap_or("")
+        .to_string()
 }
 
 #[cfg(test)]
@@ -311,5 +380,43 @@ mod tests {
         assert_eq!(report.missing_numbers, vec![3, 4, 5, 6, 7, 8, 9]);
         assert!(report.duplicate_numbers.is_empty());
         assert!(!report.is_clean());
+    }
+
+    #[test]
+    fn detects_english_chapters() {
+        let text = "My Book\n\nChapter 1\nHe woke up.\n\nChapter 2\nThe end.\n";
+        let chapters = parse_chapters(text);
+        assert_eq!(chapters.len(), 2);
+        assert_eq!(chapters[0].number, Some(1));
+        assert_eq!(chapters[0].title, "Chapter 1");
+        assert_eq!(chapters[0].body, "He woke up.");
+    }
+
+    #[test]
+    fn detects_russian_chapters() {
+        let text = "Книга\n\nГлава 1\nТекст.\n\nГлава 2\nЕщё текст.\n";
+        let chapters = parse_chapters(text);
+        assert_eq!(chapters.len(), 2);
+        assert_eq!(chapters[1].number, Some(2));
+        assert_eq!(chapters[1].title, "Глава 2");
+    }
+
+    #[test]
+    fn no_pattern_returns_empty() {
+        let text = "Just prose with no chapter headings at all. One line.\n";
+        assert!(parse_chapters(text).is_empty());
+        assert!(detect_chapter_pattern(text).is_none());
+    }
+
+    #[test]
+    fn inferred_pattern_splits_text() {
+        // Simulate a model reply, then use it to split an unusual layout.
+        let raw = "```\n(?m)^Часть\\s+(\\d+)\n```";
+        let re = parse_inferred_pattern(raw).unwrap();
+        let text = "Пролог\nтут\n\nЧасть 1\nраз\n\nЧасть 2\nдва\n";
+        let chapters = parse_chapters_with(text, &re);
+        assert_eq!(chapters.len(), 2);
+        assert_eq!(chapters[0].number, Some(1));
+        assert_eq!(chapters[1].number, Some(2));
     }
 }

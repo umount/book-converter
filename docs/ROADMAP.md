@@ -115,17 +115,19 @@ chapters (1–514), metadata read, parts merged, content aligns with the source.
 
 ---
 
-## Stage 5B — Universal input & chapter detection `[ ]`
+## Stage 5B — Universal input & chapter detection `[x]`
 
-- [ ] `book::load` — detect format (TXT vs FB2) by content/extension → chapters + meta
-- [ ] Generalize TXT chapter detection beyond `第N章`: a set of common heading
-      patterns (`Chapter N`, `Глава N`, roman numerals, …)
-- [ ] Model-inferred delimiter: when no pattern matches, sample the text and ask
-      DeepSeek to identify the chapter boundary, then apply it
-- [ ] Config: input/output format, source/target language
+- [x] `book::load` — detect format (TXT vs FB2) by content → chapters + meta + report
+- [x] Generalize TXT chapter detection: `candidate_patterns` (Chinese 第N章/回/话,
+      English `Chapter N`, Russian `Глава N`), `detect_chapter_pattern` picks the
+      best by match count; `parse_chapters_with` splits on any pattern
+- [x] Model-inferred delimiter: `build_delimiter_prompt` + `parse_inferred_pattern`
+      (pure); orchestrator does the call. `needs_delimiter` flags unknown layouts
+- [ ] Config: input/output format + source/target language — folded into Stage 8 (UI/settings)
 
-**Verify:** parse a TXT and an FB2 book through one entry point; detect chapters in
-a non-`第N章` sample via the model.
+**Verified:** all 3 real sample books load through one entry point (976/1350/1662
+chapters, GBK auto-detected); a non-standard `=== N ===` layout was split correctly
+via a DeepSeek-inferred regex. 21 book-module tests pass.
 
 ---
 
