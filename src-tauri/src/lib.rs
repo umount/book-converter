@@ -28,8 +28,12 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
+        .manage(commands::AppState::new())
         .invoke_handler(tauri::generate_handler![
-            commands::parse_book,
+            commands::load_source,
+            commands::load_reference,
+            commands::bootstrap_glossary,
+            commands::use_reference_as_base,
             commands::start_translation,
             commands::pause_translation,
             commands::get_progress,

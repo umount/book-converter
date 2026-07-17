@@ -1,17 +1,19 @@
 :root {
   font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
   color-scheme: light dark;
-  --bg: #1e1e24;
-  --card: #2a2a33;
+  --bg: #14161c;
+  --card: #1e222b;
+  --line: #2c313d;
   --fg: #e8e8ec;
-  --muted: #9a9aa5;
-  --accent: #6ea8fe;
+  --muted: #9aa0ad;
+  --accent: #4c8dff;
+  --accent-fg: #0b1220;
   --error: #ff6b6b;
+  --warn: #f0b429;
+  font-size: 14px;
 }
 
-* {
-  box-sizing: border-box;
-}
+* { box-sizing: border-box; }
 
 body {
   margin: 0;
@@ -19,105 +21,93 @@ body {
   color: var(--fg);
 }
 
-.app {
-  max-width: 900px;
-  margin: 0 auto;
-  padding: 24px;
-}
+.app { max-width: 1080px; margin: 0 auto; padding: 20px; }
 
-h1 {
-  margin: 0;
+header {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  border-bottom: 1px solid var(--line);
+  padding-bottom: 10px;
+  margin-bottom: 16px;
 }
+h1 { margin: 0; font-size: 22px; }
+h2 { margin: 0 0 10px; font-size: 15px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; }
+.subtitle { color: var(--muted); }
 
-.subtitle {
-  color: var(--muted);
-  margin-top: 4px;
+.grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 14px;
 }
 
 .card {
   background: var(--card);
-  border-radius: 10px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
   padding: 16px;
-  margin-top: 16px;
+  margin-bottom: 14px;
 }
 
-.row {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-}
+.row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 
 button {
   background: var(--accent);
-  color: #10131a;
+  color: var(--accent-fg);
   border: 0;
   border-radius: 8px;
   padding: 8px 14px;
   font-weight: 600;
   cursor: pointer;
 }
+button:disabled { opacity: 0.4; cursor: not-allowed; }
 
-button:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
-.book-info {
-  margin-top: 12px;
-  color: var(--muted);
-}
-
-.progress {
-  margin-top: 12px;
-}
-
-.bar {
-  height: 10px;
-  background: #3a3a44;
+input {
+  background: #0f1218;
+  border: 1px solid var(--line);
   border-radius: 6px;
-  overflow: hidden;
-}
-
-.bar-fill {
-  height: 100%;
-  background: var(--accent);
-  transition: width 0.3s ease;
-}
-
-.progress-text {
-  margin-top: 6px;
-  color: var(--muted);
-  font-size: 14px;
-}
-
-table {
-  width: 100%;
-  border-collapse: collapse;
-  margin-top: 12px;
-}
-
-th,
-td {
-  text-align: left;
+  color: var(--fg);
   padding: 6px 8px;
-  border-bottom: 1px solid #3a3a44;
 }
+label { color: var(--muted); }
+.check { display: flex; align-items: center; gap: 8px; margin-top: 10px; }
 
-th {
+.info { margin-top: 12px; color: var(--muted); line-height: 1.5; }
+.info strong { color: var(--fg); }
+.warn { color: var(--warn); margin-top: 4px; }
+.muted { color: var(--muted); }
+
+.progress { margin-top: 12px; }
+.bar { height: 10px; background: #0f1218; border-radius: 6px; overflow: hidden; }
+.bar-fill { height: 100%; background: var(--accent); transition: width 0.3s ease; }
+.progress-text { margin-top: 6px; color: var(--muted); }
+
+.log {
+  height: 130px;
+  overflow-y: auto;
+  background: #0f1218;
+  border-radius: 8px;
+  padding: 8px 10px;
+  font-family: ui-monospace, monospace;
+  font-size: 12px;
   color: var(--muted);
-  font-weight: 600;
 }
 
-.empty {
-  color: var(--muted);
-  text-align: center;
-  padding: 16px;
-}
+.table-wrap { overflow-x: auto; max-height: 420px; overflow-y: auto; }
+table { width: 100%; border-collapse: collapse; margin-top: 6px; }
+th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--line); }
+th { color: var(--muted); font-weight: 600; position: sticky; top: 0; background: var(--card); }
+td input { width: 100%; }
+.empty { color: var(--muted); text-align: center; padding: 16px; }
 
-.error {
-  background: color-mix(in srgb, var(--error) 20%, transparent);
-  color: var(--error);
+.error, .busy {
   border-radius: 8px;
   padding: 10px 12px;
-  margin-top: 12px;
+  margin-bottom: 12px;
+}
+.error { background: color-mix(in srgb, var(--error) 18%, transparent); color: var(--error); cursor: pointer; }
+.busy { background: color-mix(in srgb, var(--accent) 16%, transparent); color: var(--accent); }
+
+@media (max-width: 760px) {
+  .grid { grid-template-columns: 1fr; }
 }

@@ -12,6 +12,8 @@
 //! running summary, per-chapter status) lives in SQLite, so a run resumes with
 //! full context.
 
+use std::sync::atomic::{AtomicBool, Ordering};
+
 use anyhow::{anyhow, Result};
 
 use crate::config::Config;
@@ -56,11 +58,15 @@ impl<'a> Orchestrator<'a> {
     pub async fn run<F: FnMut(Stats)>(
         &mut self,
         limit: Option<usize>,
+        cancel: &AtomicBool,
         mut progress: F,
     ) -> Result<()> {
         let pending = self.store.pending_chapters()?;
         let take = limit.unwrap_or(usize::MAX);
         for idx in pending.into_iter().take(take) {
+            if cancel.load(Ordering::Relaxed) {
+                break;
+            }
             self.store.set_status(idx, Status::InProgress)?;
             let (title, source) = self
                 .store
@@ -124,9 +130,8 @@ impl<'a> Orchestrator<'a> {
     }
 
     async fn enrich_glossary(&mut self, source: &str, translation: &str) -> Result<()> {
-        let (system, user) = glossary::build_extraction_prompt(source, translation);
-        let raw = self.client.translate(&system, &user).await?;
-        let new_terms = glossary::parse_extracted_terms(&raw)?;
+        // Retries on malformed JSON before giving up (best-effort at the call site).
+        let new_terms = crate::translator::extract_terms(self.client, source, translation, 2).await?;
         glossary::merge(&mut self.glossary, new_terms);
         self.store.save_glossary(&self.glossary)?;
         Ok(())

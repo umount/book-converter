@@ -138,15 +138,19 @@ pub async fn bootstrap_glossary(
     let pairs = align(source, &reference.chapters, sample);
     let mut merged: Vec<Term> = Vec::new();
 
+    // Best-effort per chapter: retries on bad JSON (see `translator::extract_terms`);
+    // if a chapter still fails it is skipped, not fatal — the rest yields canon.
     for (src, refc) in pairs {
-        let (system, user) = glossary::build_extraction_prompt(&src.body, &refc.body);
-        let raw = client.translate(&system, &user).await?;
-        let mut terms = glossary::parse_extracted_terms(&raw)?;
-        for t in &mut terms {
-            t.pinned = true; // reference-derived canon
+        match crate::translator::extract_terms(client, &src.body, &refc.body, 2).await {
+            Ok(mut terms) => {
+                for t in &mut terms {
+                    t.pinned = true; // reference-derived canon
+                }
+                glossary::merge(&mut merged, terms);
+                tracing::info!(chapter = src.index, terms = merged.len(), "bootstrapped from reference");
+            }
+            Err(e) => tracing::warn!(chapter = src.index, "bootstrap extraction failed: {e:#}"),
         }
-        glossary::merge(&mut merged, terms);
-        tracing::info!(chapter = src.index, terms = merged.len(), "bootstrapped from reference");
     }
 
     Ok(merged)

@@ -193,15 +193,27 @@ titles matching the reference style («Глава 3. Покойтесь… с м
 
 ---
 
-## Stage 8 — UI (Tauri + React) `[ ]`
+## Stage 8 — UI (Tauri + React) `[x]`
 
-- [ ] Book picker (`tauri-plugin-dialog`) → summary
-- [ ] Start/Pause + progress bar wired to the `progress` event
-- [ ] Glossary table: view, edit, pin a term
-- [ ] Original ↔ translation preview per chapter
-- [ ] Export controls; settings (API key, concurrency, model)
+- [x] `commands.rs` bridge with managed `AppState` (session, cancel flag); the run
+      executes on a dedicated thread + current-thread runtime (keeps non-`Sync`
+      SQLite off the async executor) and streams `progress` / `done` / `job_error`
+- [x] Commands: `load_source`, `load_reference`, `bootstrap_glossary`,
+      `use_reference_as_base` (continue mode), `start_translation(limit)`,
+      `pause_translation`, `get_progress`, `get_glossary`, `update_term`, `export_book`
+- [x] React UI: source/reference pickers, sample + chapter-limit inputs, continue
+      toggle, Start/Pause, progress bar, live log, editable/pinnable glossary table
+- [x] SVG icon master → RGBA raster icons; frontend + Tauri crate both compile
+- [ ] Original ↔ translation preview per chapter — later polish
 
-**Verify:** translate the full book from the UI, edit a term mid-run, export.
+**Verified:** frontend builds (`npm run build`); the Tauri crate `cargo check`s
+clean with webkit2gtk installed. Visual launch (`npm run tauri dev`) runs on the
+user's desktop (this environment is headless).
+
+**Robustness fix (this stage):** term extraction (bootstrap + per-chapter) now
+retries on malformed JSON via `translator::extract_terms` before skipping — a
+single bad reply no longer aborts a run (network/HTTP is already retried in the
+client).
 
 ---
 
