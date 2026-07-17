@@ -1,4 +1,4 @@
-//! Работа с исходной книгой: парсинг на главы и разбиение на чанки.
+//! Working with the source book: parsing into chapters and splitting into chunks.
 
 pub mod chunker;
 pub mod parser;

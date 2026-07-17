@@ -1,7 +1,7 @@
-//! Клиент DeepSeek API (OpenAI-совместимый `/chat/completions`).
+//! DeepSeek API client (OpenAI-compatible `/chat/completions`).
 //!
-//! Отвечает за один запрос перевода: retry с экспоненциальным backoff,
-//! обработку 429/5xx, таймауты. Параллелизм и очередь — на уровне `state`/UI.
+//! Handles a single translation request: retry with exponential backoff,
+//! 429/5xx handling, timeouts. Concurrency and queueing live in `state`/UI.
 
 use crate::config::Config;
 
@@ -18,15 +18,15 @@ impl DeepSeekClient {
         }
     }
 
-    /// Перевести один готовый промпт (system + user) и вернуть текст.
+    /// Translate a single ready prompt (system + user) and return the text.
     ///
     /// TODO:
-    /// - POST {base_url}/chat/completions с моделью config.model;
-    /// - заголовок Authorization: Bearer {api_key};
-    /// - retry с backoff при 429/5xx/сетевых ошибках (до max_retries);
-    /// - вернуть content первого choice.
+    /// - POST {base_url}/chat/completions with model config.model;
+    /// - header Authorization: Bearer {api_key};
+    /// - retry with backoff on 429/5xx/network errors (up to max_retries);
+    /// - return the content of the first choice.
     pub async fn translate(&self, _system: &str, _user: &str) -> anyhow::Result<String> {
         let _ = (&self.http, &self.config);
-        todo!("запрос к DeepSeek /chat/completions с retry")
+        todo!("DeepSeek /chat/completions request with retry")
     }
 }

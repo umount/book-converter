@@ -1,67 +1,67 @@
-//! Глоссарий терминов — обеспечивает единообразие перевода имён, локаций
-//! и терминологии по всей книге.
+//! Term glossary — ensures consistent translation of names, locations, and
+//! terminology across the whole book.
 //!
-//! ## Зачем
-//! LLM переводит каждую главу независимо и без общего словаря склонна
-//! переводить имя главного героя по-разному («Ван Линь» / «Ванлинь» / «Wang
-//! Lin»), путать названия сект, локаций, терминов культивации. Глоссарий
-//! фиксирует канонический перевод один раз и навязывает его во всех
-//! последующих главах.
+//! ## Why
+//! An LLM translates each chapter independently and, without a shared
+//! dictionary, tends to translate the protagonist's name inconsistently
+//! (e.g. the same 王林 coming out as three different spellings) and mix up sect
+//! names, locations, and cultivation terms. The glossary fixes the canonical
+//! translation once and enforces it in all subsequent chapters.
 //!
-//! ## Как работает (двухфазный цикл на каждую главу)
-//! 1. **Перед переводом:** находим термины глоссария, встречающиеся в тексте
-//!    главы, и подставляем их в промпт как обязательный словарь
-//!    (см. [`relevant_terms`] → `translator::prompt`).
-//! 2. **После перевода:** отдельным лёгким запросом извлекаем новые
-//!    имена/термины из главы ([`extract_terms`]) и мёржим в глоссарий
-//!    ([`merge`]). При конфликте канон уже зафиксированного термина
-//!    сохраняется, у нового растёт только счётчик частоты.
+//! ## How it works (two-phase cycle per chapter)
+//! 1. **Before translation:** find glossary terms that occur in the chapter
+//!    text and inject them into the prompt as a mandatory dictionary
+//!    (see [`relevant_terms`] → `translator::prompt`).
+//! 2. **After translation:** with a separate light request, extract new
+//!    names/terms from the chapter ([`extract_terms`]) and merge them into the
+//!    glossary ([`merge`]). On conflict the already-fixed canon is kept; the new
+//!    term only bumps its frequency counter.
 //!
-//! Хранится в той же SQLite-базе, что и прогресс (`state`).
+//! Stored in the same SQLite database as progress (`state`).
 
 use serde::{Deserialize, Serialize};
 
-/// Категория термина — влияет на строгость и на подсказку модели.
+/// Term category — affects strictness and the model hint.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum TermKind {
-    /// Имя персонажа.
+    /// Character name.
     Person,
-    /// Локация (город, гора, царство…).
+    /// Location (city, mountain, realm…).
     Location,
-    /// Организация (секта, клан, орден…).
+    /// Organization (sect, clan, order…).
     Organization,
-    /// Термин сеттинга (уровень культивации, техника, артефакт…).
+    /// Setting term (cultivation level, technique, artifact…).
     Term,
 }
 
-/// Одна запись глоссария.
+/// A single glossary entry.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Term {
-    /// Оригинал (китайский).
+    /// Source (Chinese).
     pub source: String,
-    /// Канонический перевод (русский).
+    /// Canonical translation (Russian).
     pub target: String,
     pub kind: TermKind,
-    /// Сколько раз встретился — для приоритизации и разрешения конфликтов.
+    /// How many times it occurred — for prioritization and conflict resolution.
     pub frequency: u32,
-    /// Зафиксирован ли перевод вручную (не перезаписывается автоизвлечением).
+    /// Whether the translation was fixed by hand (not overwritten by auto-extraction).
     pub pinned: bool,
 }
 
-/// Найти термины глоссария, встречающиеся в тексте главы.
-/// Результат идёт в промпт перевода как обязательный словарь.
+/// Find glossary terms that occur in the chapter text.
+/// The result goes into the translation prompt as a mandatory dictionary.
 pub fn relevant_terms<'a>(_glossary: &'a [Term], _chapter_text: &str) -> Vec<&'a Term> {
-    todo!("поиск подстрок-терминов в тексте главы")
+    todo!("find term substrings in the chapter text")
 }
 
-/// Извлечь новые термины из переведённой главы (лёгкий запрос к модели,
-/// возвращающий пары «оригинал → перевод» с категорией).
+/// Extract new terms from the translated chapter (a light request to the model
+/// returning "source → translation" pairs with a category).
 pub async fn extract_terms(_source_text: &str, _translated_text: &str) -> anyhow::Result<Vec<Term>> {
-    todo!("извлечение новых имён/терминов вторым запросом к DeepSeek")
+    todo!("extract new names/terms with a second DeepSeek request")
 }
 
-/// Влить новые термины в глоссарий: для существующих — растёт frequency,
-/// pinned/канон не трогаем; новые добавляются.
+/// Merge new terms into the glossary: existing ones bump `frequency`,
+/// pinned/canon entries are left untouched; new ones are added.
 pub fn merge(_glossary: &mut Vec<Term>, _new_terms: Vec<Term>) {
-    todo!("слияние с разрешением конфликтов в пользу канона")
+    todo!("merge with conflict resolution in favor of the canon")
 }

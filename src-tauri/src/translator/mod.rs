@@ -1,4 +1,4 @@
-//! Перевод чанков через DeepSeek API и построение промптов.
+//! Translating chunks via the DeepSeek API and building prompts.
 
 pub mod deepseek;
 pub mod prompt;

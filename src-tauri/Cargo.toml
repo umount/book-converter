@@ -2,10 +2,10 @@
 name = "book-converter"
 version = "0.1.0"
 edition = "2021"
-description = "Перевод больших книг (китайский → русский) через DeepSeek API, GUI на Tauri + React"
+description = "Translate large books (Chinese → Russian) via the DeepSeek API, GUI on Tauri + React"
 license = "MIT"
 
-# Rust-ядро собирается и как библиотека (для команд Tauri), и как бинарник.
+# The Rust core builds both as a library (for Tauri commands) and as a binary.
 [lib]
 name = "book_converter_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
@@ -16,27 +16,27 @@ tauri-build = { version = "2", features = [] }
 [dependencies]
 # --- Tauri ---
 tauri = { version = "2", features = [] }
-tauri-plugin-dialog = "2"    # выбор файла книги
-tauri-plugin-opener = "2"    # открыть готовый файл в системе
+tauri-plugin-dialog = "2"    # book file picker
+tauri-plugin-opener = "2"    # open the produced file in the system
 
-# --- Async runtime и HTTP ---
+# --- Async runtime and HTTP ---
 tokio = { version = "1", features = ["full"] }
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls", "stream"] }
 
-# --- Сериализация ---
+# --- Serialization ---
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 
-# --- Хранение прогресса ---
+# --- Progress storage ---
 rusqlite = { version = "0.32", features = ["bundled"] }
 
-# --- Парсинг / разбиение ---
+# --- Parsing / splitting ---
 regex = "1"
 
-# --- Экспорт ---
+# --- Export ---
 epub-builder = "0.7"
 
-# --- Ошибки и логирование ---
+# --- Errors and logging ---
 anyhow = "1"
 thiserror = "2"
 tracing = "0.1"

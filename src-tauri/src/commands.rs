@@ -1,12 +1,12 @@
-//! Tauri-команды — мост между React-фронтендом и Rust-ядром.
+//! Tauri commands — the bridge between the React frontend and the Rust core.
 //!
-//! Каждая `#[tauri::command]` вызывается из фронтенда через `invoke(...)`.
-//! Долгий перевод шлёт прогресс событиями (`app.emit("progress", ...)`),
-//! чтобы UI обновлялся, не блокируясь.
+//! Each `#[tauri::command]` is called from the frontend via `invoke(...)`.
+//! Long-running translation pushes progress via events (`app.emit("progress", ...)`)
+//! so the UI updates without blocking.
 
 use serde::{Deserialize, Serialize};
 
-/// Сводка по книге после парсинга (для отображения в UI).
+/// Book summary after parsing (for display in the UI).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct BookSummary {
     pub title: String,
@@ -14,7 +14,7 @@ pub struct BookSummary {
     pub total_chapters: usize,
 }
 
-/// Прогресс перевода (шлётся событием и/или по запросу).
+/// Translation progress (pushed via event and/or fetched on demand).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Progress {
     pub done: usize,
@@ -24,7 +24,7 @@ pub struct Progress {
     pub status_line: String,
 }
 
-/// Запись глоссария в виде, удобном фронтенду.
+/// A glossary entry in a frontend-friendly shape.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TermDto {
     pub source: String,
@@ -34,44 +34,44 @@ pub struct TermDto {
     pub pinned: bool,
 }
 
-/// Разобрать книгу по пути: распарсить главы, инициализировать SQLite-прогресс.
+/// Parse the book at `path`: split into chapters, initialize the SQLite progress store.
 #[tauri::command]
 pub async fn parse_book(_path: String) -> Result<BookSummary, String> {
-    todo!("парсинг книги + инициализация state::Store")
+    todo!("parse the book + initialize state::Store")
 }
 
-/// Запустить/возобновить перевод (переводит только pending/failed главы).
+/// Start/resume translation (only `pending`/`failed` chapters).
 #[tauri::command]
 pub async fn start_translation() -> Result<(), String> {
-    todo!("запуск пула перевода с параллелизмом и emit прогресса")
+    todo!("start the worker pool with concurrency and emit progress")
 }
 
-/// Поставить перевод на паузу.
+/// Pause translation.
 #[tauri::command]
 pub async fn pause_translation() -> Result<(), String> {
-    todo!("остановка пула после текущих глав")
+    todo!("stop the pool after in-flight chapters finish")
 }
 
-/// Текущий прогресс.
+/// Current progress.
 #[tauri::command]
 pub async fn get_progress() -> Result<Progress, String> {
-    todo!("чтение прогресса из state::Store")
+    todo!("read progress from state::Store")
 }
 
-/// Весь глоссарий для таблицы в UI.
+/// The whole glossary for the UI table.
 #[tauri::command]
 pub async fn get_glossary() -> Result<Vec<TermDto>, String> {
-    todo!("чтение глоссария")
+    todo!("read the glossary")
 }
 
-/// Ручная правка/фиксация термина (pinned) из UI.
+/// Manually edit/pin a term from the UI.
 #[tauri::command]
 pub async fn update_term(_term: TermDto) -> Result<(), String> {
-    todo!("upsert термина с pinned=true")
+    todo!("upsert a term with pinned=true")
 }
 
-/// Экспорт результата в TXT и/или EPUB.
+/// Export the result to TXT and/or EPUB.
 #[tauri::command]
 pub async fn export_book(_out_dir: String, _formats: Vec<String>) -> Result<Vec<String>, String> {
-    todo!("экспорт в txt/epub, вернуть пути к файлам")
+    todo!("export to txt/epub, return the file paths")
 }

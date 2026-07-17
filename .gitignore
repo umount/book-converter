@@ -11,21 +11,21 @@ npm-debug.log*
 # Tauri generated
 /src-tauri/gen
 
-# Локальные секреты / конфиг
+# Local secrets / config
 .env
 config.local.toml
 
-# Исходные и переведённые книги (большие, под копирайтом)
+# Source and translated books (large, copyrighted)
 *.txt
 /data/
 /output/
 *.epub
 
-# Прогресс перевода (SQLite)
+# Translation progress (SQLite)
 *.db
 *.db-shm
 *.db-wal
 
-# Логи и служебное
+# Logs and misc
 *.log
 .DS_Store

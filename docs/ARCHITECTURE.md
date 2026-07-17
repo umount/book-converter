@@ -107,8 +107,9 @@ export::txt / export::epub                       assemble the finished book
 ## Glossary Subsystem (translation consistency)
 
 Without a shared dictionary an LLM translates each chapter independently and
-mangles names ("Ван Линь" / "Ванлинь" / "Wang Lin"), sect names, locations, and
-cultivation terms. The glossary fixes this with a two-phase cycle per chapter:
+mangles names (the same 王林 rendered three different ways), sect names,
+locations, and cultivation terms. The glossary fixes this with a two-phase cycle
+per chapter:
 
 **Phase 1 — before translation.** Find the glossary terms that occur in the chapter
 text and inject them into the user prompt as a mandatory dictionary: "translate

@@ -1,8 +1,8 @@
-//! Экспорт в единый .txt: главы по порядку, разделённые заголовками.
+//! Export to a single .txt: chapters in order, separated by titles.
 
 use super::TranslatedChapter;
 
-/// Собрать книгу в один .txt-файл.
+/// Assemble the book into a single .txt file.
 pub fn export(_chapters: &[TranslatedChapter], _out_path: &str) -> anyhow::Result<()> {
-    todo!("склейка глав в один .txt с заголовками")
+    todo!("concatenate chapters into a single .txt with titles")
 }

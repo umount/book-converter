@@ -1,8 +1,8 @@
-//! book-converter — ядро приложения (Rust) для перевода больших книг
-//! (китайский → русский) через DeepSeek API. GUI — Tauri + React.
+//! book-converter — application core (Rust) for translating large books
+//! (Chinese → Russian) via the DeepSeek API. GUI is Tauri + React.
 //!
-//! Архитектура: `docs/ARCHITECTURE.md`, план работ: `docs/ROADMAP.md`.
-//! Модули ниже UI-агностичны; фронтенд вызывает их через `commands`.
+//! Architecture: `docs/ARCHITECTURE.md`, work plan: `docs/ROADMAP.md`.
+//! The modules below are UI-agnostic; the frontend calls them via `commands`.
 
 mod book;
 mod commands;
@@ -12,7 +12,7 @@ mod glossary;
 mod state;
 mod translator;
 
-/// Собрать и запустить Tauri-приложение.
+/// Build and run the Tauri application.
 pub fn run() {
     tracing_subscriber::fmt()
         .with_env_filter(
@@ -21,7 +21,7 @@ pub fn run() {
         )
         .init();
 
-    tracing::info!("book-converter запускается");
+    tracing::info!("book-converter starting");
 
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
@@ -36,5 +36,5 @@ pub fn run() {
             commands::export_book,
         ])
         .run(tauri::generate_context!())
-        .expect("ошибка запуска Tauri-приложения");
+        .expect("failed to start the Tauri application");
 }

@@ -1,18 +1,19 @@
-//! Персистентность прогресса перевода в SQLite.
+//! Persisting translation progress in SQLite.
 //!
-//! Критично для книги на ~990 глав: процесс можно прервать и продолжить
-//! с места. Хранит статус каждой главы, её перевод и глоссарий.
+//! Critical for a ~990-chapter book: the process can be interrupted and resumed
+//! from where it left off. Stores each chapter's status, its translation, and
+//! the glossary.
 //!
-//! ## Схема (набросок)
+//! ## Schema (sketch)
 //! - `chapters(index INTEGER PK, title TEXT, source TEXT, status TEXT,
 //!    translated TEXT, updated_at)` — status: pending | in_progress | done | failed
 //! - `glossary(source TEXT PK, target TEXT, kind TEXT, frequency INT, pinned INT)`
-//! - `meta(key TEXT PK, value TEXT)` — путь к книге, настройки прогона и т.п.
+//! - `meta(key TEXT PK, value TEXT)` — book path, run settings, etc.
 
 use crate::book::Chapter;
 use crate::glossary::Term;
 
-/// Статус перевода главы.
+/// Chapter translation status.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Status {
     Pending,
@@ -21,44 +22,44 @@ pub enum Status {
     Failed,
 }
 
-/// Хранилище прогресса поверх SQLite.
+/// Progress store on top of SQLite.
 pub struct Store {
     _conn: rusqlite::Connection,
 }
 
 impl Store {
-    /// Открыть/создать базу и применить схему.
+    /// Open/create the database and apply the schema.
     pub fn open(_path: &str) -> anyhow::Result<Self> {
-        todo!("открытие SQLite и создание таблиц")
+        todo!("open SQLite and create the tables")
     }
 
-    /// Загрузить главы из книги в базу (idempotent — не перетирает переводы).
+    /// Load the book's chapters into the database (idempotent — never clobbers translations).
     pub fn init_chapters(&self, _chapters: &[Chapter]) -> anyhow::Result<()> {
-        todo!("вставка глав со статусом pending")
+        todo!("insert chapters with status pending")
     }
 
-    /// Вернуть индексы глав, ещё не переведённых (для возобновления).
+    /// Return the indices of chapters not yet translated (for resumption).
     pub fn pending_chapters(&self) -> anyhow::Result<Vec<usize>> {
-        todo!("выборка глав со статусом pending/failed")
+        todo!("select chapters with status pending/failed")
     }
 
-    /// Сохранить перевод главы и пометить как done.
+    /// Save a chapter's translation and mark it done.
     pub fn save_translation(&self, _index: usize, _translated: &str) -> anyhow::Result<()> {
-        todo!("запись перевода и статуса done")
+        todo!("write the translation and status done")
     }
 
-    /// Обновить статус главы.
+    /// Update a chapter's status.
     pub fn set_status(&self, _index: usize, _status: Status) -> anyhow::Result<()> {
-        todo!("обновление статуса главы")
+        todo!("update the chapter status")
     }
 
-    /// Загрузить весь глоссарий.
+    /// Load the whole glossary.
     pub fn load_glossary(&self) -> anyhow::Result<Vec<Term>> {
-        todo!("чтение глоссария")
+        todo!("read the glossary")
     }
 
-    /// Сохранить (upsert) глоссарий.
+    /// Save (upsert) the glossary.
     pub fn save_glossary(&self, _terms: &[Term]) -> anyhow::Result<()> {
-        todo!("upsert глоссария")
+        todo!("upsert the glossary")
     }
 }

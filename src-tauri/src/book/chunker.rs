@@ -1,29 +1,29 @@
-//! Разбиение главы на чанки под лимит запроса к DeepSeek.
+//! Split a chapter into chunks that fit a DeepSeek request limit.
 //!
-//! Базовая единица перевода — глава (в среднем ~4300 иероглифов, влезает
-//! в один запрос). Этот модуль нужен только как fallback: если глава
-//! аномально длинная (> max_chunk_chars), режем её по границам абзацев,
-//! НЕ разрывая предложения.
+//! The base unit of translation is a chapter (~4300 Chinese chars on average,
+//! fits in one request). This module is only a fallback: if a chapter is
+//! abnormally long (> max_chunk_chars), split it on paragraph boundaries,
+//! NEVER mid-sentence.
 
 use super::parser::Chapter;
 
-/// Часть главы, отправляемая одним запросом.
+/// A part of a chapter sent as a single request.
 #[derive(Debug, Clone)]
 pub struct Chunk {
-    /// Номер главы, к которой относится чанк.
+    /// Index of the chapter this chunk belongs to.
     pub chapter_index: usize,
-    /// Порядковый номер чанка внутри главы (0-based).
+    /// Ordinal number of the chunk within the chapter (0-based).
     pub part: usize,
-    /// Всего чанков в главе (для последующей сборки).
+    /// Total number of chunks in the chapter (for later reassembly).
     pub total_parts: usize,
-    /// Текст чанка.
+    /// Chunk text.
     pub text: String,
 }
 
-/// Разбить главу на чанки не длиннее `max_chunk_chars` символов.
+/// Split a chapter into chunks no longer than `max_chunk_chars` characters.
 ///
-/// Если глава помещается целиком — возвращает один `Chunk`.
-/// Иначе режет по границам абзацев (`\n\n`), не разрывая предложения.
+/// If the chapter fits whole, returns a single `Chunk`.
+/// Otherwise splits on paragraph boundaries (`\n\n`), never mid-sentence.
 pub fn split_chapter(_chapter: &Chapter, _max_chunk_chars: usize) -> Vec<Chunk> {
-    todo!("разбиение главы на чанки по границам абзацев")
+    todo!("split the chapter into chunks on paragraph boundaries")
 }

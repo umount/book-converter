@@ -1,7 +1,7 @@
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 
-// Порт фиксирован под Tauri (devUrl в tauri.conf.json).
+// Port fixed for Tauri (devUrl in tauri.conf.json).
 export default defineConfig({
   plugins: [react()],
   clearScreen: false,
@@ -9,7 +9,7 @@ export default defineConfig({
     port: 1420,
     strictPort: true,
     watch: {
-      // Не следим за Rust-стороной — её пересобирает Tauri.
+      // Don't watch the Rust side — Tauri rebuilds it.
       ignored: ["**/src-tauri/**"],
     },
   },

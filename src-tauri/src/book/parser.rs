@@ -1,25 +1,25 @@
-//! Парсинг исходного .txt на главы по маркерам вида `第一章 ...`.
+//! Parse the source `.txt` into chapters by markers like `第一章 ...`.
 //!
-//! У книги `光阴之外` ~990 глав, границы задаются строкой «第N章 Название».
-//! Строки могут иметь смешанные CRLF/CR — нормализуем при чтении.
+//! The book `光阴之外` has ~990 chapters; boundaries are given by the line
+//! "第N章 Title". Line endings may be mixed CRLF/CR — normalize on read.
 
-/// Одна глава книги.
+/// A single chapter of the book.
 #[derive(Debug, Clone)]
 pub struct Chapter {
-    /// Порядковый номер (1-based), как в исходнике.
+    /// Ordinal number (1-based), as in the source.
     pub index: usize,
-    /// Заголовок главы, напр. "第一章 活着".
+    /// Chapter title, e.g. "第一章 活着".
     pub title: String,
-    /// Полный текст главы (без заголовка).
+    /// Full chapter text (without the title).
     pub body: String,
 }
 
-/// Разбить сырой текст книги на главы.
+/// Split the raw book text into chapters.
 ///
 /// TODO:
-/// 1. Нормализовать переводы строк (\r\n, \r → \n).
-/// 2. Найти маркеры глав регуляркой `第[一二三四五六七八九十百千零两]+章`.
-/// 3. Собрать `Chapter` между соседними маркерами.
+/// 1. Normalize line endings (\r\n, \r → \n).
+/// 2. Find chapter markers with the regex `第[一二三四五六七八九十百千零两]+章`.
+/// 3. Collect a `Chapter` between adjacent markers.
 pub fn parse_chapters(_raw: &str) -> Vec<Chapter> {
-    todo!("разбиение книги на главы по маркерам 第N章")
+    todo!("split the book into chapters by 第N章 markers")
 }
