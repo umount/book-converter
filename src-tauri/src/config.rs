@@ -52,9 +52,16 @@ impl Default for Config {
 impl Config {
     /// Build config from defaults, overlaying environment variables.
     ///
+    /// A local `.env` (walked up from the working dir) is loaded first, so the
+    /// key is available at startup without exporting it manually. Real
+    /// environment variables take precedence over `.env`.
+    ///
     /// `DEEPSEEK_API_KEY` (required for real requests), plus optional overrides:
     /// `DEEPSEEK_MODEL`, `DEEPSEEK_BASE_URL`.
     pub fn load() -> Self {
+        // Ignore "not found" — running without a .env (env vars only) is valid.
+        let _ = dotenvy::dotenv();
+
         let mut cfg = Config::default();
         if let Ok(key) = std::env::var("DEEPSEEK_API_KEY") {
             cfg.api_key = key;

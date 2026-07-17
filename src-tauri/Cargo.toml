@@ -38,6 +38,9 @@ chardetng = "0.1"      # detect the source encoding (GBK, Big5, UTF-8, …)
 # --- Export ---
 epub-builder = "0.7"
 
+# --- Config ---
+dotenvy = "0.15"       # load DEEPSEEK_API_KEY from a local .env at startup
+
 # --- Errors and logging ---
 anyhow = "1"
 thiserror = "2"

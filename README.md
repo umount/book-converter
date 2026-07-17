@@ -21,11 +21,15 @@ See [`docs/`](docs/README.md) for architecture, roadmap, and design decisions.
 
   (`webkit2gtk-4.1` is the WebView backend Tauri renders into on Linux.)
 
-- **DeepSeek API key** — export before running:
+- **DeepSeek API key** — put it in a local `.env` (gitignored, auto-loaded at
+  startup):
 
   ```bash
-  export DEEPSEEK_API_KEY=sk-...
+  cp .env.example .env
+  # then edit .env and set DEEPSEEK_API_KEY=sk-...
   ```
+
+  Exporting `DEEPSEEK_API_KEY` in the shell also works and takes precedence.
 
 ## Quickstart
 
