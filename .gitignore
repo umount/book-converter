@@ -1,0 +1,31 @@
+# Rust
+/target
+/src-tauri/target
+**/*.rs.bk
+
+# Node / frontend
+/node_modules
+/dist
+npm-debug.log*
+
+# Tauri generated
+/src-tauri/gen
+
+# Локальные секреты / конфиг
+.env
+config.local.toml
+
+# Исходные и переведённые книги (большие, под копирайтом)
+*.txt
+/data/
+/output/
+*.epub
+
+# Прогресс перевода (SQLite)
+*.db
+*.db-shm
+*.db-wal
+
+# Логи и служебное
+*.log
+.DS_Store
