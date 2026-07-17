@@ -6,6 +6,24 @@ Record of the key choices and their rationale. Newest first.
 
 ---
 
+## Sequential translation with a rolling context (over parallel)
+
+**Decision:** translate chapters in order, carrying a compact **running summary**
+of the story so far (plus the previous chapter's closing lines) into each chapter's
+prompt. Default `concurrency = 1`. A parallel mode is available but drops
+cross-chapter context.
+
+**Why:** translating each chapter in isolation loses narrative continuity — ongoing
+scenes, who characters are, unresolved threads, tone shifts. Feeding a running
+summary keeps meaning consistent across a 1350-chapter arc. The user asked for this
+explicitly. The summary is updated after each chapter with a light call and stored
+in `meta.running_summary`, so an interrupted run resumes with context intact.
+
+**Trade-off:** slower than a parallel pool. Accepted — coherence matters more than
+raw speed for a long novel; parallel mode remains for users who want throughput.
+
+---
+
 ## Universal converter, not book-specific
 
 **Decision:** the tool is a general book translator. Language pair is config;

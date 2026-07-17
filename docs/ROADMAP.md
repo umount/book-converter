@@ -144,14 +144,20 @@ names/lore; a later chapter's translation uses them.
 
 ---
 
-## Stage 6 — Orchestration (worker pool) `[ ]`
+## Stage 6 — Orchestration (sequential + rolling context) `[ ]`
 
-- [ ] Bounded-concurrency pool (`concurrency` in-flight requests)
-- [ ] Resumable queue from `pending_chapters`
+- [ ] Sequential loop over `pending_chapters` in order (resumable)
+- [ ] Rolling context: inject the running summary + previous chapter tail into the
+      prompt; after each chapter, update the summary (light call) and persist it in
+      `meta.running_summary`
+- [ ] Per chapter: relevant terms → translate → save → extract+merge glossary → emit
 - [ ] Failure isolation (mark `failed`, keep going), re-run of `failed`
+- [ ] Optional parallel mode (`concurrency > 1`, no cross-chapter context)
 - [ ] Progress aggregation + `emit("progress", …)`
 
-**Verify:** run 20 chapters with concurrency=4; interrupt mid-way; resume finishes only the remainder.
+**Verify:** translate ~5 sequential chapters of the real book; confirm continuity
+(a scene/character introduced in ch. N is referenced correctly in ch. N+1) and that
+the running summary + glossary persist and resume across a restart.
 
 ---
 

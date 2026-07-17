@@ -34,6 +34,12 @@ professional **reference translation** when one is supplied.
 - **Chunk by chapter, not by bytes.** A chapter is the natural unit and fits in one
   request (`deepseek-chat` context is 64K tokens). Character-based splitting is only
   a fallback for abnormally long chapters, and it splits on paragraph boundaries.
+- **Sequential, with rolling context.** Chapters are translated in order so each
+  one carries the meaning of what came before. A compact **running summary** of the
+  story so far (plus the previous chapter's closing lines) is fed into every
+  chapter's prompt, so continuity — ongoing scenes, who is who, unresolved threads —
+  is not lost between chapters. This favors coherence over raw speed (see
+  `DECISIONS.md`); an optional parallel mode trades that continuity for throughput.
 - **Persistent progress.** Every chapter's status and its translation live in SQLite.
   A run can be interrupted at any point and resumed (only `pending`/`failed` chapters
   are translated). Idempotency is keyed on `chapter.index`.
@@ -98,32 +104,33 @@ thing the frontend knows about.
 The main data flow — from file selection to a finished book:
 
 ```
-book.txt (UTF-8 / GBK / Big5)
-   │  book::source::read_book_file()           detect encoding, decode → UTF-8
-   │  book::parser::parse_chapters()           normalize CRLF/CR, split on 第N章
-   │  book::parser::validate()                 report gaps / duplicates
+book.{txt,fb2} (UTF-8 / GBK / Big5)
+   │  book::load::load_book()                  detect encoding + format, decode
+   │                                           parse → chapters, validate (gaps/dups)
    ▼
 [ Chapter{index, number, title, body} × ~1350 ]
    │  state::Store::init_chapters()             idempotent insert, status=pending
    ▼
-SQLite (progress.db)
-   │  state::pending_chapters()                 resumable queue
+SQLite (progress.db)  ── running_summary, glossary, per-chapter status ──
+   │  state::pending_chapters()                 resumable queue, in order
    ▼
-worker pool (concurrency=N)  ───────────────┐   per chapter:
-   │                                         │
-   │  1. glossary::relevant_terms(body)      │   which terms occur in this chapter
-   │  2. book::chunker::split_chapter()      │   usually 1 chunk; fallback if long
-   │  3. translator::prompt::user_prompt()   │   term glossary + text
-   │  4. deepseek.translate()  ── retry ───> │   → DeepSeek API
-   │  5. state::save_translation()           │   translation + status=done
-   │  6. glossary::build_extraction_prompt() │   new names/terms (light request)
-   │     + deepseek + parse_extracted_terms  │
-   │  7. glossary::merge() + save_glossary() │   never overwrite the canon
-   │                                         │
-   └── emit("progress", …) ──────────────────┘   UI updates without blocking
+SEQUENTIAL loop (chapter N, then N+1, …)         context carries forward:
+   │
+   │  1. glossary::relevant_terms(body)          terms occurring in this chapter
+   │  2. running summary + prev chapter tail  ─┐ rolling context (from N-1)
+   │  3. translator::prompt::user_prompt()      │ glossary + context + text
+   │  4. deepseek.translate()  ── retry ──────> │ → DeepSeek API
+   │  5. state::save_translation()              │ translation + status=done
+   │  6. update running_summary (light call)  ──┘ fold chapter N into the synopsis
+   │  7. glossary: extract new terms + merge     never overwrite the canon
+   │  8. emit("progress", …)                     UI updates live
    ▼
-export::txt / export::epub                       assemble the finished book
+export::txt / export::fb2 / export::epub         assemble the finished book
 ```
+
+The loop is sequential so step 2 of chapter N+1 sees the summary produced by step
+6 of chapter N. Both `running_summary` and the glossary live in SQLite, so an
+interrupted run resumes with full context intact.
 
 ## Glossary Subsystem (translation consistency)
 
@@ -144,8 +151,9 @@ never overwritten by auto-extraction.
 
 Categories (`TermKind`): `Person` · `Location` · `Organization` · `Term`.
 
-Optional: a short "previous-chapter summary" can be added to the prompt for
-narrative continuity (see `ROADMAP.md`, extensions stage).
+The glossary keeps *terms* consistent; the **running summary** (see the pipeline
+above and Core Principles) keeps the *narrative* consistent. Both are injected into
+every chapter's prompt.
 
 ## Input & Output Formats
 
@@ -187,7 +195,7 @@ A single `progress.db` next to the book. Schema sketch:
 |-------|---------|---------|
 | **chapters** | `index PK, title, source, status, translated, updated_at` | Chapters and their translations. `status`: `pending` / `in_progress` / `done` / `failed` |
 | **glossary** | `source PK, target, kind, frequency, pinned` | Canonical term translations |
-| **meta** | `key PK, value` | Book path, run parameters, schema version |
+| **meta** | `key PK, value` | Book path, run parameters, schema version, and the **running summary** (story-so-far, updated after each chapter) |
 
 Resumption: on start, take `chapters WHERE status IN ('pending','failed')`. Any
 `in_progress` left over from a crash is reset to `pending` on start.
@@ -195,8 +203,9 @@ Resumption: on start, take `chapters WHERE status IN ('pending','failed')`. Any
 ## Error Handling and Limits
 
 - **Retry:** network errors, `429`, `5xx` → exponential backoff, up to `max_retries`.
-- **Concurrency:** `concurrency` simultaneous requests (default 4). Bounds API load
-  and helps stay within rate limits.
+- **Order:** chapters run **sequentially** by default so the running summary from
+  chapter N feeds chapter N+1 (`concurrency = 1`). An optional parallel mode raises
+  `concurrency` for speed but drops cross-chapter context.
 - **Failure isolation:** a chapter that fails after retries is marked `failed` and
   the run continues. `failed` chapters can be re-run separately.
 - **Cost:** estimated before a run from character count × DeepSeek pricing
@@ -207,7 +216,8 @@ Resumption: on start, take `chapters WHERE status IN ('pending','failed')`. Any
 - **DeepSeek API** — OpenAI-compatible `POST /chat/completions`, models
   `deepseek-chat` (translation) and optionally `deepseek-reasoner`. Auth:
   `Authorization: Bearer $DEEPSEEK_API_KEY`.
-- **Filesystem** — input: `.txt`; output: `.txt` + `.epub`; state: `.db`.
+- **Filesystem** — input: `.txt` / `.fb2`; output: `.txt` / `.fb2` (`.epub` planned);
+  state: `.db`.
 
 ## Frontend Commands (Tauri IPC)
 
