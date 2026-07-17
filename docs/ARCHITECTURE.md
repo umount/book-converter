@@ -4,24 +4,36 @@
 
 ## Overview
 
-book-converter is a desktop app that translates **large** books from Chinese to
-Russian via the **DeepSeek API**. The target case is the web novel `光阴之外`
-(author 耳根). Its complete edition (`光阴之外⊙完本.txt`) is ~15 MB, **1354
-chapters**, ~4300 Chinese characters per chapter. (Scraped copies vary wildly in
-completeness and encoding — see the parsing notes below.)
+book-converter is a desktop app that translates **large** books between languages
+via the **DeepSeek API**. It is a **universal** converter, not tuned to one book:
+the language pair is configurable, input and output come in multiple formats
+(TXT, FB2; EPUB planned), and anything book-specific (how chapters are delimited,
+how names should be rendered) is inferred generically or handed to the model —
+never hardcoded for a single title.
+
+The primary test case is the web novel `光阴之外` / "За гранью времени"
+(author 耳根 / Er Gen): a ~15 MB, **1354-chapter** Chinese book translated to
+Russian.
 
 The hard part is not the UI — it is the **translation pipeline**: a book cannot be
 sent to the model in one shot, translation runs as hundreds of requests, the job
 takes a long time, and it must survive restarts. A separate challenge is
 **consistency**: the protagonist's name, locations, and setting terminology must be
-translated identically across all 990 chapters.
+translated identically across all chapters — optionally bootstrapped from a
+professional **reference translation** when one is supplied.
 
 ## Core Principles
 
-- **Chunk by chapter, not by bytes.** The natural boundary is the `第N章` marker.
-  A whole chapter fits in one request (`deepseek-chat` context is 64K tokens).
-  Character-based splitting is only a fallback for abnormally long chapters, and it
-  splits on paragraph boundaries.
+- **Universal, not book-specific.** Language pair is config; formats are pluggable;
+  chapter detection tries generic patterns and, when they fail, asks the model to
+  infer the delimiter. No logic is hardcoded to one title.
+- **Deterministic where reliable, model where fuzzy.** Format parsing (XML
+  structure, encoding, obvious chapter markers) is plain code. Anything semantic —
+  detecting an unknown chapter delimiter, aligning a reference to the source,
+  extracting names/lore, matching style — goes through DeepSeek.
+- **Chunk by chapter, not by bytes.** A chapter is the natural unit and fits in one
+  request (`deepseek-chat` context is 64K tokens). Character-based splitting is only
+  a fallback for abnormally long chapters, and it splits on paragraph boundaries.
 - **Persistent progress.** Every chapter's status and its translation live in SQLite.
   A run can be interrupted at any point and resumed (only `pending`/`failed` chapters
   are translated). Idempotency is keyed on `chapter.index`.
@@ -68,14 +80,17 @@ thing the frontend knows about.
 | Module | Responsibility |
 |--------|----------------|
 | **config** | Configuration: DeepSeek API key (from env `DEEPSEEK_API_KEY`), base_url, model, languages, `concurrency`, `max_chunk_chars`, `max_retries` |
-| **book::source** | Detect the file encoding (`chardetng`) and decode to UTF-8 (`encoding_rs`). Chinese `.txt` files are often GBK/GB18030 or Big5, not UTF-8 |
-| **book::parser** | Split text into chapters by `第N章` markers (Arabic `第1章` and Chinese `第一章` numerals). Normalize line endings (CRLF/CR → LF). Parse the chapter number and produce a `ParseReport` (gaps, duplicates, declared vs actual) |
+| **book::source** | Detect the file encoding (`chardetng`) and decode to UTF-8 (`encoding_rs`). Source `.txt` files are often GBK/GB18030 or Big5, not UTF-8 |
+| **book::parser** | Split plain text into chapters by chapter-heading patterns (generic; Chinese `第N章` and Arabic today, more patterns + model-inferred delimiter planned). Normalize line endings. Parse the chapter number, produce a `ParseReport` (gaps, duplicates) |
+| **book::fb2** | Parse FB2 (FictionBook XML) into sections → chapters (generic `<section>/<title>/<p>` walk). Language-agnostic heading-number extraction; merges split parts (1.1, 1.2 …) into whole chapters |
+| **book::load** *(planned)* | Format-agnostic input: detect TXT vs FB2, decode, parse → chapters + meta |
 | **book::chunker** | Fallback splitting of an over-long chapter into chunks on paragraph boundaries (never mid-sentence) |
+| **reference** *(planned)* | Optional reference-translation subsystem: parse a professional translation (any format), align it to the source, and bootstrap a pinned glossary (names/lore) + a style exemplar via DeepSeek |
 | **glossary** | Consistency subsystem: store terms, inject relevant ones into the prompt, auto-extract new ones, merge with conflict resolution |
 | **translator::prompt** | Build system/user prompts: base instructions + mandatory term glossary + optional previous-chapter summary |
 | **translator::deepseek** | DeepSeek HTTP client (`/chat/completions`), retry + backoff, handling 429/5xx |
 | **state** | Persist progress and glossary in SQLite. Run resumption |
-| **export::txt** / **export::epub** | Assemble the result into a single `.txt` and into an `.epub` with a per-chapter table of contents |
+| **export::txt** / **export::fb2** / **export::epub** | Assemble the result into the chosen output format: `.txt`, `.fb2` (per-chapter sections), or `.epub` with a table of contents (EPUB planned) |
 | **commands** | Tauri commands — the Rust ↔ React bridge. Progress is pushed via events (`emit`) |
 
 ## Translation Pipeline
@@ -132,6 +147,38 @@ Categories (`TermKind`): `Person` · `Location` · `Organization` · `Term`.
 Optional: a short "previous-chapter summary" can be added to the prompt for
 narrative continuity (see `ROADMAP.md`, extensions stage).
 
+## Input & Output Formats
+
+Input and output are pluggable; the core pipeline works on a `Vec<Chapter>`
+regardless of format.
+
+| Format | Input | Output | Notes |
+|--------|:-----:|:------:|-------|
+| **TXT** | ✅ | ✅ | Chapters by heading pattern (generic; model-inferred delimiter for unknown layouts) |
+| **FB2** | ✅ | ⏳ | FictionBook XML; `<section>/<title>/<p>` structure, generic heading numbers |
+| **EPUB** | — | ⏳ | Planned output with a table of contents |
+
+Encoding on input is detected, not assumed (UTF-8 / GBK / GB18030 / Big5, …).
+
+## Reference Translation (optional)
+
+If the user supplies a professional translation of the same book (any supported
+format, e.g. an FB2 from a translation site), it is used as a source of truth for
+**names, lore, and style** — but never hardcoded to a specific title:
+
+1. **Parse** the reference into chapters (via the same format parsers).
+2. **Align** it to the source by reading order over the overlapping opening
+   chapters; the model can confirm a match when numbering diverges. (Reference
+   editions often split a chapter into parts — these are merged back.)
+3. **Bootstrap the glossary** — on a sample of aligned chapter pairs (source +
+   professional translation, ~30 by default), run term extraction to get
+   `source → professional rendering` pairs and add them as **pinned** canon
+   (human-quality, never overwritten by auto-extraction).
+4. **Style exemplar** — a short professional excerpt is injected into the
+   translation prompt as a few-shot style reference.
+
+Where no reference is supplied, the pipeline runs on the auto-grown glossary alone.
+
 ## State Storage (SQLite)
 
 A single `progress.db` next to the book. Schema sketch:
@@ -176,7 +223,8 @@ Resumption: on start, take `chapters WHERE status IN ('pending','failed')`. Any
 
 ## Deliberately Out of Scope for v1
 
-- Other input formats (EPUB/PDF/HTML) — `.txt` only for now.
-- Other language pairs — the architecture allows them, but the v1 goal is
-  Chinese → Russian.
+- EPUB/PDF/HTML **input** — TXT and FB2 first; EPUB output planned.
 - Cloud sync, multi-user mode — not planned (this is a local tool).
+
+The language pair and output format are configurable by design; the primary test
+run is Chinese → Russian.

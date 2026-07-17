@@ -103,6 +103,45 @@ appended the new location.
 
 ---
 
+## Stage 5A — FB2 input parser (`book::fb2`) `[x]`
+
+- [x] Parse FB2 (FictionBook XML) via `quick-xml`: metadata + `<section>/<title>/<p>`
+- [x] Language-agnostic heading-number extraction (`第N章`, `Глава N.M`, `Chapter N`, `N.M`)
+- [x] Merge split parts (1.1, 1.2 …) into whole chapters; drop front matter
+- [x] 3 unit tests
+
+**Verified** on the real reference FB2 `За гранью времени`: 589 sections → 513
+chapters (1–514), metadata read, parts merged, content aligns with the source.
+
+---
+
+## Stage 5B — Universal input & chapter detection `[ ]`
+
+- [ ] `book::load` — detect format (TXT vs FB2) by content/extension → chapters + meta
+- [ ] Generalize TXT chapter detection beyond `第N章`: a set of common heading
+      patterns (`Chapter N`, `Глава N`, roman numerals, …)
+- [ ] Model-inferred delimiter: when no pattern matches, sample the text and ask
+      DeepSeek to identify the chapter boundary, then apply it
+- [ ] Config: input/output format, source/target language
+
+**Verify:** parse a TXT and an FB2 book through one entry point; detect chapters in
+a non-`第N章` sample via the model.
+
+---
+
+## Stage 5C — Reference translation (`reference`) `[ ]`
+
+- [ ] Parse a supplied reference (any format) and align it to the source by order
+- [ ] Bootstrap a **pinned** glossary from ~30 aligned chapter pairs (DeepSeek
+      extraction of `source → professional rendering`)
+- [ ] Style exemplar extracted from the reference, injected into the prompt
+- [ ] Fall back to the auto glossary when no reference is supplied
+
+**Verify:** bootstrap from `За гранью времени`; the pinned glossary carries canonical
+names/lore; a later chapter's translation uses them.
+
+---
+
 ## Stage 6 — Orchestration (worker pool) `[ ]`
 
 - [ ] Bounded-concurrency pool (`concurrency` in-flight requests)
@@ -117,10 +156,11 @@ appended the new location.
 ## Stage 7 — Export (`export`) `[ ]`
 
 - [ ] `txt` — concatenated chapters with headers, correct order
-- [ ] `epub` — per-chapter sections + TOC via `epub-builder`
+- [ ] `fb2` — per-chapter `<section>` with titles + book metadata
+- [ ] `epub` — per-chapter sections + TOC via `epub-builder` (after TXT/FB2)
 - [ ] Export command returns file paths; open via `tauri-plugin-opener`
 
-**Verify:** open the produced `.epub` in a reader; TOC lists all chapters.
+**Verify:** produced `.txt`/`.fb2` open correctly; FB2 validates and lists chapters.
 
 ---
 
@@ -150,7 +190,7 @@ appended the new location.
 ## Extensions (post-v1, optional)
 
 - Previous-chapter summary injected into the prompt for narrative continuity
-- Other input formats (EPUB/PDF/HTML)
-- Other language pairs (config-driven)
+- EPUB/PDF/HTML input formats
 - Two-pass translation (draft → editorial polish) for higher quality
 - Diff/QA view to spot-check machine translation
+- Extend the reference bootstrap beyond the initial sample

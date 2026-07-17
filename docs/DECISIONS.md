@@ -6,6 +6,52 @@ Record of the key choices and their rationale. Newest first.
 
 ---
 
+## Universal converter, not book-specific
+
+**Decision:** the tool is a general book translator. Language pair is config;
+formats are pluggable; chapter detection uses generic patterns and, when they
+fail, asks the model to infer the delimiter. Nothing is hardcoded to one title.
+
+**Why:** the user explicitly wants a reusable converter, not a one-off script for
+`光阴之外`. Deterministic code handles reliable structure (XML, encoding, obvious
+markers); the model handles the fuzzy/semantic parts (unknown delimiters,
+reference alignment, names/lore/style).
+
+---
+
+## FB2 as an input and output format
+
+**Decision:** support FB2 (FictionBook XML) on input and output, alongside TXT;
+EPUB output later. Parsing is a generic `<section>/<title>/<p>` walk with a
+language-agnostic heading-number extractor; split parts (1.1, 1.2 …) merge into
+whole chapters.
+
+**Why:** professional translations and many e-book sources ship as FB2. Requested
+by the user. `quick-xml` is a pure-Rust, dependency-light parser.
+
+---
+
+## Reference translation → pinned glossary + style (canon+style mode)
+
+**Decision:** when a professional translation is supplied, extract names/lore from
+aligned source↔reference chapter pairs (a ~30-chapter sample by default) into a
+**pinned** glossary, and inject a professional excerpt as a style exemplar. All
+chapters are still machine-translated for a uniform style; the reference is a
+knowledge source, not the output.
+
+**Why (chosen over reusing the professional chapters as output):** the user wants
+consistent style across the whole book. Reusing the pro text verbatim for chapters
+1–514 and machine-translating the rest would create a visible style seam. Mining
+the reference for canon + style gives the machine translation the same names and
+tone without the discontinuity. The ~30-chapter sample keeps the one-time
+bootstrap cheap; it can be extended later.
+
+**Alignment** is by reading order over the overlapping opening chapters (general,
+no per-book numbering assumptions); the model can confirm matches if numbering
+diverges.
+
+---
+
 ## Chunk by chapter (not by fixed token/byte size)
 
 **Decision:** the unit of translation is a whole chapter, delimited by the `第N章`

@@ -14,9 +14,13 @@
 
 ## Quick Reference
 
-- **Goal:** translate `光阴之外` (Chinese, ~990 chapters) → Russian, output TXT + EPUB.
+- **Goal:** a **universal** book translator (configurable language pair; TXT/FB2
+  in, TXT/FB2 out, EPUB planned). Primary run: `光阴之外` / "За гранью времени"
+  (~1354 chapters) Chinese → Russian.
 - **Provider:** DeepSeek API (`deepseek-chat`), OpenAI-compatible `/chat/completions`.
-- **Chunking:** by chapter (`第N章`), fallback to paragraph-boundary splitting.
-- **Consistency:** auto-growing glossary injected into every prompt.
+- **Chunking:** by chapter, fallback to paragraph-boundary splitting.
+- **Chapter detection:** generic patterns; model-inferred delimiter for unknown layouts.
+- **Consistency:** auto-growing glossary, optionally bootstrapped (pinned) from a
+  professional reference translation + style exemplar.
 - **Resumability:** per-chapter status + translations in SQLite `progress.db`.
 - **Stack:** Tauri v2 + React/TS frontend, Rust core (`book_converter_lib`).

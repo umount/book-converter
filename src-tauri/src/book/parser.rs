@@ -86,7 +86,7 @@ fn chapter_header_regex() -> Regex {
 
 /// Parse a chapter number from either an Arabic (`123`) or Chinese (`一百二十三`)
 /// numeral.
-fn parse_chapter_number(numeral: &str) -> Option<usize> {
+pub fn parse_chapter_number(numeral: &str) -> Option<usize> {
     if numeral.bytes().all(|b| b.is_ascii_digit()) {
         numeral.parse().ok()
     } else {
