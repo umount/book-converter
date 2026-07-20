@@ -21,9 +21,10 @@ Powered by the **DeepSeek API**. Rust core, Tauri + React desktop app.
   exemplar**, and can **continue** the translation from where the reference ends.
 - **Universal, not hardcoded.** Configurable language pair; chapter detection uses
   generic patterns and falls back to a model-inferred delimiter for unknown layouts.
-- **Formats.** Input: TXT, FB2, ZIP (encoding auto-detected — UTF-8 / GBK /
-  GB18030 / Big5). Output: FB2, EPUB, TXT, optionally zipped. Book title, cover,
-  and annotation are carried over (and can be replaced).
+- **Formats.** Input: TXT, FB2, PDF, ZIP (encoding auto-detected — UTF-8 / GBK /
+  GB18030 / Big5). Output: FB2, EPUB, PDF, TXT — pick the format directly, output
+  optionally zipped. Book title, cover, and annotation are carried over (and can
+  be replaced).
 - **IDE-style app.** A projects sidebar (each book is a project), a chapter reader
   with side-by-side **original ↔ translation** panes and glossary highlighting, an
   editable glossary, and per-project state.
@@ -72,8 +73,8 @@ make run        # build the release binary and launch it
    Watch progress; **Pause** stops after the current chapter.
 4. **Translation** view: read any chapter with original and translation side by
    side, with glossary terms highlighted.
-5. **Export** to FB2 / EPUB / TXT (zipped if you like). Cover, title, and summary
-   are included.
+5. **File → Export as** FB2 / EPUB / PDF / TXT (zipped if you like). Cover, title,
+   and summary are included.
 
 ## Documentation
 

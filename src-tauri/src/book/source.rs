@@ -31,6 +31,14 @@ pub struct DecodedText {
 /// A `.zip` input is transparently unpacked: the first `.fb2`/`.txt` entry (or,
 /// failing that, the first file) is read from the archive.
 pub fn read_book_file(path: &Path) -> std::io::Result<DecodedText> {
+    // PDF: extract text directly (not a byte-encoded text file).
+    if has_ext(path, "pdf") {
+        let bytes = std::fs::read(path)?;
+        let text = pdf_extract::extract_text_from_mem(&bytes)
+            .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e.to_string()))?;
+        return Ok(DecodedText { text, encoding: "PDF", had_errors: false });
+    }
+
     let bytes = if is_zip(path) {
         read_first_book_from_zip(path)?
     } else {
@@ -39,12 +47,16 @@ pub fn read_book_file(path: &Path) -> std::io::Result<DecodedText> {
     Ok(decode_book_bytes(&bytes))
 }
 
-/// True if `path` looks like a zip archive (by extension).
-pub fn is_zip(path: &Path) -> bool {
+fn has_ext(path: &Path, ext: &str) -> bool {
     path.extension()
         .and_then(|e| e.to_str())
-        .map(|e| e.eq_ignore_ascii_case("zip"))
+        .map(|e| e.eq_ignore_ascii_case(ext))
         .unwrap_or(false)
+}
+
+/// True if `path` looks like a zip archive (by extension).
+pub fn is_zip(path: &Path) -> bool {
+    has_ext(path, "zip")
 }
 
 /// Read the bytes of the first book entry inside a zip archive.

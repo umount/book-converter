@@ -2,6 +2,7 @@
 
 pub mod epub;
 pub mod fb2;
+pub mod pdf;
 pub mod txt;
 
 use std::path::Path;
@@ -96,6 +97,7 @@ pub enum OutputFormat {
     Txt,
     Fb2,
     Epub,
+    Pdf,
 }
 
 impl OutputFormat {
@@ -110,6 +112,7 @@ impl OutputFormat {
             Some("txt") => Some(Self::Txt),
             Some("fb2") => Some(Self::Fb2),
             Some("epub") => Some(Self::Epub),
+            Some("pdf") => Some(Self::Pdf),
             _ => None,
         }
     }
@@ -120,12 +123,14 @@ impl OutputFormat {
             Self::Txt => "txt",
             Self::Fb2 => "fb2",
             Self::Epub => "epub",
+            Self::Pdf => "pdf",
         }
     }
 
-    /// EPUB is itself a zip container, so it is never re-zipped.
-    pub fn is_container(self) -> bool {
-        matches!(self, Self::Epub)
+    /// Binary formats (EPUB, PDF) are written directly, never rendered to a
+    /// string or re-zipped.
+    pub fn is_binary(self) -> bool {
+        matches!(self, Self::Epub | Self::Pdf)
     }
 }
 
@@ -159,9 +164,9 @@ pub fn render(chapters: &[TranslatedChapter], format: OutputFormat, meta: &Outpu
     match format {
         OutputFormat::Txt => txt::render(chapters),
         OutputFormat::Fb2 => fb2::render(chapters, meta),
-        // EPUB is a binary container — written directly by `export`, not rendered
-        // to a string; callers must not route it through render()/export_zip().
-        OutputFormat::Epub => String::new(),
+        // Binary formats are written directly by `export`, not rendered to a
+        // string; callers must not route them through render()/export_zip().
+        OutputFormat::Epub | OutputFormat::Pdf => String::new(),
     }
 }
 
@@ -176,6 +181,7 @@ pub fn export(
         OutputFormat::Txt => txt::export(chapters, out_path),
         OutputFormat::Fb2 => fb2::export(chapters, meta, out_path),
         OutputFormat::Epub => epub::export(chapters, meta, out_path),
+        OutputFormat::Pdf => pdf::export(chapters, meta, out_path),
     }
 }
 

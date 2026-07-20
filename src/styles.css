@@ -42,6 +42,7 @@ body { background: var(--bg); color: var(--fg); overflow: hidden; }
 .mi:hover { background: var(--accent); color: var(--accent-fg); }
 .mi.disabled { opacity: 0.4; pointer-events: none; }
 .sep { height: 1px; background: var(--line); margin: 4px 0; }
+.mi-label { padding: 4px 10px 2px; font-size: 10px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); }
 .menu-backdrop { position: fixed; inset: 0; z-index: 20; }
 
 /* indeterminate loading bar under the menu bar */

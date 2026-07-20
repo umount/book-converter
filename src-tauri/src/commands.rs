@@ -508,8 +508,8 @@ impl OutputTarget {
             out_path.to_string()
         };
         let format = OutputFormat::from_path(Path::new(&inner_path)).unwrap_or(OutputFormat::Fb2);
-        // EPUB is already a zip container, so never re-zip it.
-        let zipped = (ends_zip || zipped_input) && !format.is_container();
+        // Binary formats (EPUB/PDF) are written directly, never re-zipped.
+        let zipped = (ends_zip || zipped_input) && !format.is_binary();
 
         let ext = format.ext();
         let inner_stem = Path::new(&inner_path)

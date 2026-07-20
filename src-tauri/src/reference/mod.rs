@@ -210,6 +210,7 @@ mod tests {
         let reference = Reference {
             meta: BookMeta::default(),
             chapters: (1..=4).map(|i| chapter(i, Some(i), "r")).collect(),
+            head: None,
         };
         assert_eq!(max_covered_number(&reference), Some(4));
         let next = continue_from(&source, &reference, 3);

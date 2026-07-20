@@ -129,7 +129,7 @@ export default function App() {
 
   async function openBook() {
     setMenu(null);
-    const path = await open({ filters: [{ name: "Book", extensions: ["txt", "fb2", "zip"] }] });
+    const path = await open({ filters: [{ name: "Book", extensions: ["txt", "fb2", "pdf", "zip"] }] });
     if (typeof path !== "string") return;
     const existing = projects.findIndex((p) => p.path === path);
     if (existing >= 0) { setActive(existing); return; }
@@ -146,7 +146,7 @@ export default function App() {
   async function openReference() {
     setMenu(null);
     if (!activeProject) return;
-    const path = await open({ filters: [{ name: "Reference", extensions: ["fb2", "txt", "zip"] }] });
+    const path = await open({ filters: [{ name: "Reference", extensions: ["fb2", "txt", "pdf", "zip"] }] });
     if (typeof path !== "string") return;
     setBusy("Loading reference…");
     const info = await call<RefInfo>("load_reference", { path });
@@ -204,15 +204,17 @@ export default function App() {
   }
   async function saveSummary(text: string) { await call("set_summary", { summary: text }); }
   async function pinTerm(t: Term, target: string) { await call("update_term", { term: { ...t, target, pinned: true } }); refreshGlossary(); }
-  async function exportBook() {
+  async function exportAs(fmt: "fb2" | "epub" | "pdf" | "txt") {
     setMenu(null);
-    const outPath = await save({ filters: [{ name: "Output", extensions: ["fb2", "epub", "txt", "zip"] }] });
+    const outPath = await save({ defaultPath: `book.${fmt}`, filters: [{ name: fmt.toUpperCase(), extensions: [fmt] }] });
     if (typeof outPath !== "string") return;
-    setBusy("Exporting…");
-    const p = await call<string>("export_book", { outPath });
+    const path = outPath.toLowerCase().endsWith(`.${fmt}`) ? outPath : `${outPath}.${fmt}`;
+    setBusy(`Exporting ${fmt.toUpperCase()}…`);
+    const p = await call<string>("export_book", { outPath: path });
     setBusy(null);
     if (p) addLog(`Exported → ${p}`);
   }
+  const canExport = !!progress && progress.done > 0;
 
   const pct = progress && progress.total > 0 ? Math.round((progress.done / progress.total) * 100) : 0;
   const filteredGlossary = useMemo(() => {
@@ -245,7 +247,11 @@ export default function App() {
               <div className="mi" onClick={openBook}>Open book…</div>
               <div className={`mi ${!activeProject ? "disabled" : ""}`} onClick={() => activeProject && openReference()}>Open reference…</div>
               <div className="sep" />
-              <div className={`mi ${!progress || progress.done === 0 ? "disabled" : ""}`} onClick={() => progress && progress.done > 0 && exportBook()}>Export…</div>
+              <div className="mi-label">Export as</div>
+              <div className={`mi ${!canExport ? "disabled" : ""}`} onClick={() => canExport && exportAs("fb2")}>FB2</div>
+              <div className={`mi ${!canExport ? "disabled" : ""}`} onClick={() => canExport && exportAs("epub")}>EPUB</div>
+              <div className={`mi ${!canExport ? "disabled" : ""}`} onClick={() => canExport && exportAs("pdf")}>PDF</div>
+              <div className={`mi ${!canExport ? "disabled" : ""}`} onClick={() => canExport && exportAs("txt")}>TXT</div>
             </div>
           )}
         </div>
