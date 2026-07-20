@@ -18,7 +18,8 @@ use std::path::Path;
 
 use anyhow::Result;
 
-use crate::book::{load_book, BookMeta, Chapter};
+use crate::book::{detect_format, load_book_text, read_book_file, BookMeta, Chapter, InputFormat};
+use crate::export::fb2::{extract_head, Fb2Head};
 use crate::export::TranslatedChapter;
 use crate::glossary::{self, Term};
 use crate::translator::DeepSeekClient;
@@ -28,14 +29,23 @@ use crate::translator::DeepSeekClient;
 pub struct Reference {
     pub meta: BookMeta,
     pub chapters: Vec<Chapter>,
+    /// Original FB2 head (description + cover), preserved on continuation export.
+    pub head: Option<Fb2Head>,
 }
 
 /// Load a reference translation from a file (any supported format).
 pub fn load_reference(path: &Path) -> Result<Reference> {
-    let book = load_book(path)?;
+    let decoded = read_book_file(path)?;
+    let book = load_book_text(&decoded.text, decoded.encoding)?;
+    let head = if detect_format(&decoded.text) == InputFormat::Fb2 {
+        Some(extract_head(&decoded.text))
+    } else {
+        None
+    };
     Ok(Reference {
         meta: book.meta,
         chapters: book.chapters,
+        head,
     })
 }
 

@@ -19,7 +19,9 @@ pub struct Config {
     /// Target language, e.g. "Russian".
     pub target_lang: String,
 
-    /// Sampling temperature. DeepSeek suggests ~1.3 for translation.
+    /// Sampling temperature. Kept low for faithful translation: high values
+    /// (DeepSeek's nominal 1.3) make long chapter outputs degenerate into
+    /// gibberish near the end.
     pub temperature: f32,
     /// Per-request timeout in seconds.
     pub request_timeout_secs: u64,
@@ -40,7 +42,7 @@ impl Default for Config {
             model: "deepseek-chat".into(),
             source_lang: "Chinese".into(),
             target_lang: "Russian".into(),
-            temperature: 1.3,
+            temperature: 0.3,
             request_timeout_secs: 120,
             concurrency: 4,
             max_chunk_chars: 6000,

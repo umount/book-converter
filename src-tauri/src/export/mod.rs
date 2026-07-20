@@ -7,6 +7,7 @@ pub mod txt;
 use std::path::Path;
 
 use anyhow::Result;
+use regex::Regex;
 
 /// A translated chapter ready for export.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -56,6 +57,39 @@ pub fn combine(
     result
 }
 
+/// Normalize numbered chapter titles to a uniform "`<label> <n>. <name>`" form.
+///
+/// Strips a leading chapter marker the model may have left untranslated (`第N章`,
+/// `Том N`, `Chapter N`, a bare number, or an existing `<label> N[.M]`) and
+/// re-prefixes a consistent label. Idempotent, so re-running is safe.
+pub fn normalize_titles(chapters: &mut [TranslatedChapter], label: &str) {
+    let marker = leading_marker_regex();
+    for ch in chapters.iter_mut() {
+        if let Some(n) = ch.number {
+            let name = marker.replace(ch.title.trim(), "").trim().to_string();
+            ch.title = if name.is_empty() {
+                format!("{label} {n}")
+            } else {
+                format!("{label} {n}. {name}")
+            };
+        }
+    }
+}
+
+fn leading_marker_regex() -> Regex {
+    // A leading chapter marker + trailing separators, any of these forms.
+    Regex::new(
+        r"(?ix)^\s*(?:
+            第[0-9一二三四五六七八九十百千零两〇]+章 |
+            глава \s+ [0-9.]+ |
+            том \s+ [0-9]+ |
+            chapter \s+ [0-9]+ |
+            [0-9]+
+        )\s*[.:、]?\s*",
+    )
+    .expect("leading marker regex is valid")
+}
+
 /// Output format.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum OutputFormat {
@@ -98,16 +132,18 @@ impl Default for OutputMeta {
     }
 }
 
-/// Write `chapters` to `out_path` in the given format.
+/// Write `chapters` to `out_path` in the given format. `head` (an FB2 source head
+/// to preserve author/cover) is used only by the FB2 writer.
 pub fn export(
     chapters: &[TranslatedChapter],
     format: OutputFormat,
     meta: &OutputMeta,
+    head: Option<&fb2::Fb2Head>,
     out_path: &Path,
 ) -> Result<()> {
     match format {
         OutputFormat::Txt => txt::export(chapters, out_path),
-        OutputFormat::Fb2 => fb2::export(chapters, meta, out_path),
+        OutputFormat::Fb2 => fb2::export(chapters, meta, head, out_path),
     }
 }
 
@@ -143,5 +179,19 @@ mod tests {
         let merged = combine(existing, new);
         assert_eq!(merged.len(), 1);
         assert_eq!(merged[0].body, "fresh");
+    }
+
+    #[test]
+    fn normalize_titles_fixes_markers() {
+        let mut chs = vec![
+            TranslatedChapter { index: 1, number: Some(516), title: "第516章 Запретная Земля".into(), body: "b".into() },
+            TranslatedChapter { index: 2, number: Some(525), title: "Том 525 Вырвать добычу".into(), body: "b".into() },
+            TranslatedChapter { index: 3, number: Some(514), title: "Глава 514. Но я его учитель!".into(), body: "b".into() },
+        ];
+        normalize_titles(&mut chs, "Глава");
+        assert_eq!(chs[0].title, "Глава 516. Запретная Земля");
+        assert_eq!(chs[1].title, "Глава 525. Вырвать добычу");
+        // already-correct titles stay stable (idempotent)
+        assert_eq!(chs[2].title, "Глава 514. Но я его учитель!");
     }
 }

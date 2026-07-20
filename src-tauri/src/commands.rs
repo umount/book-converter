@@ -343,13 +343,14 @@ pub fn update_term(term: TermDto, state: State<AppState>) -> Result<(), String> 
 /// Export the translated chapters to `out_path` (format inferred from extension).
 #[tauri::command]
 pub fn export_book(out_path: String, state: State<AppState>) -> Result<String, String> {
-    let (db, source_path, title, author) = {
+    let (db, source_path, title, author, head) = {
         let s = state.0.lock().unwrap();
         (
             s.db_path.clone(),
             s.source_path.clone(),
             s.title.clone(),
             s.author.clone(),
+            s.reference.as_ref().and_then(|r| r.head.clone()),
         )
     };
     let db = db.ok_or("no source loaded")?;
@@ -368,7 +369,7 @@ pub fn export_book(out_path: String, state: State<AppState>) -> Result<String, S
     let source = load_book(Path::new(&source_path)).map_err(err)?;
     let num_by_idx: HashMap<usize, Option<usize>> =
         source.chapters.iter().map(|c| (c.index, c.number)).collect();
-    let chapters: Vec<TranslatedChapter> = rows
+    let mut chapters: Vec<TranslatedChapter> = rows
         .into_iter()
         .map(|(idx, title, body)| TranslatedChapter {
             index: idx,
@@ -379,12 +380,13 @@ pub fn export_book(out_path: String, state: State<AppState>) -> Result<String, S
         .collect();
 
     let config = Config::load();
+    export::normalize_titles(&mut chapters, chapter_label(&config.target_lang));
     let meta = OutputMeta {
         title: title.unwrap_or_else(|| "Untitled".into()),
         author: author.unwrap_or_else(|| "Unknown".into()),
         lang: lang_code(&config.target_lang),
     };
-    export::export(&chapters, format, &meta, Path::new(&out_path)).map_err(err)?;
+    export::export(&chapters, format, &meta, head.as_ref(), Path::new(&out_path)).map_err(err)?;
     Ok(out_path)
 }
 
@@ -395,6 +397,16 @@ fn term_to_dto(t: Term) -> TermDto {
         kind: t.kind.label().to_string(),
         frequency: t.frequency,
         pinned: t.pinned,
+    }
+}
+
+/// Chapter-heading label in the target language (for normalizing output titles).
+fn chapter_label(target_lang: &str) -> &'static str {
+    let l = target_lang.to_lowercase();
+    if l.contains("russ") || l.contains("рус") {
+        "Глава"
+    } else {
+        "Chapter"
     }
 }
 
