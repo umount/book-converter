@@ -84,11 +84,11 @@ fn push_front_matter(
     chapters: &[TranslatedChapter],
     pages: &[usize],
 ) {
-    // cover + title + author
+    // cover + title + author. genpdf's image support only decodes JPEG, so any
+    // cover (PNG/GIF/WebP/…) is normalized to JPEG first.
     if let Some(cover) = &meta.cover {
-        use base64::Engine as _;
-        if let Ok(bytes) = base64::engine::general_purpose::STANDARD.decode(cover.base64.trim()) {
-            if let Ok(image) = elements::Image::from_reader(Cursor::new(bytes)) {
+        if let Some(jpeg) = cover_as_jpeg(&cover.base64) {
+            if let Ok(image) = elements::Image::from_reader(Cursor::new(jpeg)) {
                 doc.push(image.with_alignment(Alignment::Center).with_dpi(150.0));
             }
         }
@@ -147,6 +147,18 @@ fn push_chapter(doc: &mut Document, ch: &TranslatedChapter) {
     for para in ch.body.lines().map(str::trim).filter(|l| !l.is_empty()) {
         doc.push(elements::Paragraph::new(para).padded(Margins::trbl(0.0, 0.0, 2.2, 0.0)));
     }
+}
+
+/// Decode a base64 cover (any common format) and re-encode it as JPEG bytes,
+/// because genpdf can only embed JPEG.
+fn cover_as_jpeg(base64: &str) -> Option<Vec<u8>> {
+    use base64::Engine as _;
+    let bytes = base64::engine::general_purpose::STANDARD.decode(base64.trim()).ok()?;
+    let img = image::load_from_memory(&bytes).ok()?;
+    let rgb = image::DynamicImage::ImageRgb8(img.to_rgb8());
+    let mut out = Vec::new();
+    rgb.write_to(&mut Cursor::new(&mut out), image::ImageFormat::Jpeg).ok()?;
+    Some(out)
 }
 
 fn page_count(bytes: &[u8]) -> Result<usize> {

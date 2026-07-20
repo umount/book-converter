@@ -43,6 +43,7 @@ base64 = "0.22"        # cover image ↔ base64 (FB2 <binary>, data URLs, EPUB)
 # --- Export ---
 epub-builder = "0.7"
 genpdf = { version = "0.2", features = ["images"] }  # PDF output (with cover image)
+image = { version = "0.25", default-features = false, features = ["jpeg", "png", "gif", "webp"] }  # normalize cover → JPEG for PDF
 pdf-extract = "0.12"   # PDF input (text extraction)
 lopdf = "0.42"         # patch PDF Info metadata (Unicode title) post-render
 
