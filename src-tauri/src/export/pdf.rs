@@ -1,17 +1,19 @@
 //! Export to PDF: genpdf handles text layout/pagination (embedded Cyrillic font,
-//! readable spacing, cover, contents), and lopdf adds real **bookmarks** (a
-//! clickable outline) plus a correct Unicode document title.
+//! readable spacing, cover, a contents page with page numbers), and lopdf adds
+//! real **bookmarks** (a clickable outline) plus a correct Unicode document title.
 //!
-//! Bookmarks need each chapter's start page. genpdf paginates internally, so we
-//! render the front matter and each chapter both into the final document and
-//! (once more) on their own just to count pages — chapters start on a fresh page,
-//! so the standalone page count equals the count inside the full document.
+//! Chapter start pages are needed both for the contents' page numbers and for the
+//! bookmarks. genpdf paginates internally, so the front matter and each chapter
+//! are also rendered on their own to count pages — a chapter starts on a fresh
+//! page, so its standalone page count equals the count inside the full document.
+//! The contents lists one row per chapter, so its own length does not depend on
+//! the page-number text (no circular dependency).
 
 use std::io::Cursor;
 use std::path::Path;
 
 use anyhow::{anyhow, Result};
-use genpdf::{elements, fonts, style, Alignment, Document, Element as _, Margins, Scale};
+use genpdf::{elements, fonts, style, Alignment, Document, Element as _, Margins};
 
 use super::{OutputMeta, TranslatedChapter};
 
@@ -19,19 +21,29 @@ use super::{OutputMeta, TranslatedChapter};
 pub fn export(chapters: &[TranslatedChapter], meta: &OutputMeta, out_path: &Path) -> Result<()> {
     let family = font_family()?;
 
-    // Final document: front matter + every chapter.
-    let bytes = render(family.clone(), |doc| {
-        push_front_matter(doc, meta, chapters);
+    // --- pass 1: chapter start pages ---
+    let placeholder = vec![0usize; chapters.len()];
+    let front_pages =
+        page_count(&render(family.clone(), |d| push_front_matter(d, meta, chapters, &placeholder))?)?;
+    let mut starts: Vec<usize> = Vec::with_capacity(chapters.len());
+    let mut cur = front_pages;
+    for ch in chapters {
+        starts.push(cur + 1); // 1-based page number of this chapter's first page
+        cur += page_count(&render(family.clone(), |d| push_chapter(d, ch))?)?;
+    }
+
+    // --- pass 2: final document with page numbers in the contents ---
+    let bytes = render(family.clone(), |d| {
+        push_front_matter(d, meta, chapters, &starts);
         for ch in chapters {
-            doc.push(elements::PageBreak::new());
-            push_chapter(doc, ch);
+            d.push(elements::PageBreak::new());
+            push_chapter(d, ch);
         }
     })?;
     std::fs::write(out_path, &bytes).map_err(|e| anyhow!("writing {}: {e}", out_path.display()))?;
 
-    // Compute each chapter's start page (page counts of the same content rendered
-    // alone), then add bookmarks + a proper Unicode title.
-    if let Err(e) = add_outline(out_path, meta, chapters, &family) {
+    // --- pass 3: bookmarks (outline) + Unicode title ---
+    if let Err(e) = add_outline(out_path, meta, chapters, &starts) {
         tracing::warn!("PDF outline/metadata step failed: {e:#}");
     }
     Ok(())
@@ -50,7 +62,6 @@ fn font_family() -> Result<fonts::FontFamily<fonts::FontData>> {
     })
 }
 
-/// Build a genpdf document with `fill` and render it to bytes.
 fn render(
     family: fonts::FontFamily<fonts::FontData>,
     fill: impl FnOnce(&mut Document),
@@ -67,12 +78,18 @@ fn render(
     Ok(buf)
 }
 
-fn push_front_matter(doc: &mut Document, meta: &OutputMeta, chapters: &[TranslatedChapter]) {
+fn push_front_matter(
+    doc: &mut Document,
+    meta: &OutputMeta,
+    chapters: &[TranslatedChapter],
+    pages: &[usize],
+) {
+    // cover + title + author
     if let Some(cover) = &meta.cover {
         use base64::Engine as _;
         if let Ok(bytes) = base64::engine::general_purpose::STANDARD.decode(cover.base64.trim()) {
             if let Ok(image) = elements::Image::from_reader(Cursor::new(bytes)) {
-                doc.push(image.with_alignment(Alignment::Center).with_scale(Scale::new(1.0, 1.0)).with_dpi(150.0));
+                doc.push(image.with_alignment(Alignment::Center).with_dpi(150.0));
             }
         }
     }
@@ -90,18 +107,32 @@ fn push_front_matter(doc: &mut Document, meta: &OutputMeta, chapters: &[Translat
         );
     }
 
+    // contents: "Title .......... page"
     doc.push(elements::PageBreak::new());
     doc.push(
         elements::Paragraph::new(contents_label(&meta.lang))
             .styled(style::Style::new().bold().with_font_size(18)),
     );
     doc.push(elements::Break::new(0.6));
-    for ch in chapters {
+
+    let mut table = elements::TableLayout::new(vec![10, 1]);
+    table.set_cell_decorator(elements::FrameCellDecorator::new(false, false, false));
+    for (ch, page) in chapters.iter().zip(pages.iter()) {
         let title = ch.title.trim();
-        if !title.is_empty() {
-            doc.push(elements::Paragraph::new(title).padded(Margins::trbl(0.0, 0.0, 1.2, 0.0)));
+        if title.is_empty() {
+            continue;
         }
+        let _ = table
+            .row()
+            .element(elements::Paragraph::new(title).padded(Margins::trbl(0.5, 2.0, 0.5, 0.0)))
+            .element(
+                elements::Paragraph::new(page.to_string())
+                    .aligned(Alignment::Right)
+                    .padded(Margins::trbl(0.5, 0.0, 0.5, 0.0)),
+            )
+            .push();
     }
+    doc.push(table);
 }
 
 fn push_chapter(doc: &mut Document, ch: &TranslatedChapter) {
@@ -118,38 +149,27 @@ fn push_chapter(doc: &mut Document, ch: &TranslatedChapter) {
     }
 }
 
-/// Count pages of a rendered PDF.
 fn page_count(bytes: &[u8]) -> Result<usize> {
     Ok(lopdf::Document::load_mem(bytes)?.get_pages().len())
 }
 
-/// Add a clickable outline (bookmarks per chapter) + Unicode title to the file.
+/// Add a clickable outline (bookmark per chapter, at its start page) + a Unicode
+/// title to the saved file.
 fn add_outline(
     path: &Path,
     meta: &OutputMeta,
     chapters: &[TranslatedChapter],
-    family: &fonts::FontFamily<fonts::FontData>,
+    starts: &[usize],
 ) -> Result<()> {
     use lopdf::{Bookmark, Document as LDoc, Object, StringFormat};
-
-    // Front-matter page count.
-    let front_bytes = render(family.clone(), |doc| push_front_matter(doc, meta, chapters))?;
-    let mut start = page_count(&front_bytes)?; // pages before chapter 1 (0-based index of ch.1 page)
-
-    // (chapter title, 1-based start page).
-    let mut starts: Vec<(String, usize)> = Vec::new();
-    for ch in chapters {
-        starts.push((ch.title.trim().to_string(), start + 1));
-        let ch_bytes = render(family.clone(), |doc| push_chapter(doc, ch))?;
-        start += page_count(&ch_bytes)?;
-    }
 
     let mut doc = LDoc::load(path)?;
     let pages: Vec<lopdf::ObjectId> = doc.get_pages().into_values().collect();
 
-    for (title, page_no) in &starts {
-        if let Some(&page_id) = pages.get(page_no.saturating_sub(1)) {
-            let name = if title.is_empty() { "—".to_string() } else { title.clone() };
+    for (ch, &start) in chapters.iter().zip(starts.iter()) {
+        if let Some(&page_id) = pages.get(start.saturating_sub(1)) {
+            let title = ch.title.trim();
+            let name = if title.is_empty() { "—".to_string() } else { title.to_string() };
             doc.add_bookmark(Bookmark::new(name, [0.0, 0.0, 0.0], 0, page_id), None);
         }
     }
@@ -161,7 +181,6 @@ fn add_outline(
         }
     }
 
-    // Unicode (UTF-16BE) title metadata.
     let mut title_bytes = vec![0xFE, 0xFF];
     for u in meta.title.trim().encode_utf16() {
         title_bytes.extend_from_slice(&u.to_be_bytes());
@@ -182,7 +201,6 @@ fn add_outline(
     Ok(())
 }
 
-/// Localized "Contents" heading for the few languages we target.
 fn contents_label(lang: &str) -> &'static str {
     if lang.to_lowercase().starts_with("ru") {
         "Содержание"
@@ -206,7 +224,6 @@ mod tests {
         export(&chapters, &meta, &path).unwrap();
         let doc = lopdf::Document::load(&path).unwrap();
         let _ = std::fs::remove_file(&path);
-        // outline present
         let root = doc.trailer.get(b"Root").unwrap().as_reference().unwrap();
         let cat = doc.get_object(root).unwrap().as_dict().unwrap();
         assert!(cat.has(b"Outlines"), "expected an outline (bookmarks)");
