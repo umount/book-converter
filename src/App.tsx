@@ -11,7 +11,7 @@ type BookInfo = {
 type RefInfo = { title: string; chapters: number; max_covered: number | null };
 type Progress = { done: number; total: number; failed: number; pending: number; running: boolean };
 type Term = { source: string; target: string; kind: string; frequency: number; pinned: boolean };
-type BookDetails = { title: string; author: string; title_translated: string | null; summary: string | null; cover: string | null };
+type BookDetails = { title: string; author: string; title_translated: string | null; author_translated: string | null; summary: string | null; cover: string | null };
 type ChapterRow = { idx: number; number: number | null; title: string; status: string };
 type ChapterView = {
   idx: number; number: number | null; source_title: string; source: string;
@@ -328,7 +328,7 @@ export default function App() {
                           <button onClick={replaceCover}>Replace cover</button>
                         </div>
                         {details?.title_translated && details?.title && <div className="muted">original: {details.title}</div>}
-                        <div className="muted">{details?.author}</div>
+                        <div className="muted">{details?.author_translated || details?.author}</div>
                         <textarea className="summary" placeholder="Summary / annotation…"
                           key={active + (details?.summary ?? "")} defaultValue={details?.summary || ""}
                           onBlur={(e) => saveSummary(e.target.value)} />

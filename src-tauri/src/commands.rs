@@ -39,6 +39,9 @@ pub struct Session {
     zipped_input: bool,
     /// Translated book title shown in the UI and written to output.
     title_translated: Option<String>,
+    /// Translated / transliterated author, so a Chinese name is not rendered as
+    /// boxes in the Latin/Cyrillic-only PDF font.
+    author_translated: Option<String>,
     /// Annotation / summary (auto from a source FB2, or edited by the user).
     summary: Option<String>,
     /// Cover image (auto from a source FB2, or replaced by the user).
@@ -159,6 +162,7 @@ pub async fn load_source(path: String, state: State<'_, AppState>) -> Result<Boo
 
     // Per-project details persisted in this book's DB (survive project switches).
     let saved_title = store.get_meta("title_translated").ok().flatten();
+    let saved_author = store.get_meta("author_translated").ok().flatten();
     let saved_summary = store.get_meta("summary").ok().flatten();
     let saved_cover = match (
         store.get_meta("cover_ct").ok().flatten(),
@@ -181,6 +185,7 @@ pub async fn load_source(path: String, state: State<'_, AppState>) -> Result<Boo
         s.title = book.meta.title.clone();
         s.author = book.meta.author.clone();
         s.title_translated = saved_title;
+        s.author_translated = saved_author;
         s.summary = saved_summary.or_else(|| head.as_ref().and_then(|h| h.annotation.clone()));
         s.cover = saved_cover.or_else(|| head.as_ref().and_then(|h| h.cover.clone()));
     }
@@ -210,6 +215,7 @@ pub async fn load_reference(path: String, state: State<'_, AppState>) -> Result<
     let annotation = reference.head.as_ref().and_then(|h| h.annotation.clone());
     let cover = reference.head.as_ref().and_then(|h| h.cover.clone());
     let ref_title = reference.meta.title.clone();
+    let ref_author = reference.meta.author.clone();
 
     let mut s = state.0.lock().unwrap();
     s.zipped_input |= crate::book::source::is_zip(Path::new(&path));
@@ -223,6 +229,9 @@ pub async fn load_reference(path: String, state: State<'_, AppState>) -> Result<
     }
     if s.title_translated.is_none() {
         s.title_translated = ref_title;
+    }
+    if s.author_translated.is_none() {
+        s.author_translated = ref_author.filter(|a| !a.trim().is_empty());
     }
     s.reference = Some(reference);
     s.style = style;
@@ -428,7 +437,7 @@ pub async fn update_term(term: TermDto, state: State<'_, AppState>) -> Result<()
 /// Export the translated chapters to `out_path` (format inferred from extension).
 #[tauri::command]
 pub async fn export_book(out_path: String, state: State<'_, AppState>) -> Result<String, String> {
-    let (db, source_path, title, title_translated, author, summary, cover, zipped_input) = {
+    let (db, source_path, title, title_translated, author, author_translated, summary, cover, zipped_input) = {
         let s = state.0.lock().unwrap();
         (
             s.db_path.clone(),
@@ -436,6 +445,7 @@ pub async fn export_book(out_path: String, state: State<'_, AppState>) -> Result
             s.title.clone(),
             s.title_translated.clone(),
             s.author.clone(),
+            s.author_translated.clone(),
             s.summary.clone(),
             s.cover.clone(),
             s.zipped_input,
@@ -476,7 +486,10 @@ pub async fn export_book(out_path: String, state: State<'_, AppState>) -> Result
             .filter(|t| !t.trim().is_empty())
             .or(title)
             .unwrap_or_else(|| crate::i18n::label(&config.target_lang, "untitled")),
-        author: author.unwrap_or_else(|| crate::i18n::label(&config.target_lang, "unknown_author")),
+        author: author_translated
+            .filter(|a| !a.trim().is_empty())
+            .or(author)
+            .unwrap_or_else(|| crate::i18n::label(&config.target_lang, "unknown_author")),
         lang: crate::i18n::lang_code(&config.target_lang),
         annotation: summary,
         cover,
@@ -598,6 +611,7 @@ pub struct BookDetails {
     pub title: String,
     pub author: String,
     pub title_translated: Option<String>,
+    pub author_translated: Option<String>,
     pub summary: Option<String>,
     /// Cover as a `data:` URL, if any.
     pub cover: Option<String>,
@@ -611,36 +625,71 @@ pub async fn get_book_details(state: State<'_, AppState>) -> Result<BookDetails,
         title: s.title.clone().unwrap_or_default(),
         author: s.author.clone().unwrap_or_default(),
         title_translated: s.title_translated.clone(),
+        author_translated: s.author_translated.clone(),
         summary: s.summary.clone(),
         cover: s.cover.as_ref().map(|c| c.data_url()),
     })
 }
 
-/// Translate the source book title (auto). Keeps a reference-provided title.
+/// Translate the source book title and author (auto). Keeps reference-provided
+/// values. Translating the author matters for PDF, whose Latin/Cyrillic-only font
+/// renders an untranslated CJK name as boxes.
 #[tauri::command]
 pub async fn translate_title(state: State<'_, AppState>) -> Result<String, String> {
-    let (title, existing) = {
+    let (title, author, existing_title, existing_author) = {
         let s = state.0.lock().unwrap();
-        (s.title.clone(), s.title_translated.clone())
+        (
+            s.title.clone(),
+            s.author.clone(),
+            s.title_translated.clone(),
+            s.author_translated.clone(),
+        )
     };
-    if let Some(t) = existing.filter(|t| !t.trim().is_empty()) {
-        return Ok(t);
-    }
-    let title = title.filter(|t| !t.trim().is_empty()).ok_or("no book title to translate")?;
-
     let cfg = Config::load();
-    let system = format!(
-        "Translate this book title from {} to {}. Output only the translated title, nothing else.",
-        cfg.source_lang, cfg.target_lang
-    );
-    let translated = client()?.translate(&system, &title).await.map_err(err)?;
-    let translated = translated.trim().trim_matches('"').trim().to_string();
-    let db = {
-        let mut s = state.0.lock().unwrap();
-        s.title_translated = Some(translated.clone());
-        s.db_path.clone()
+
+    // --- title ---
+    let translated = match existing_title.filter(|t| !t.trim().is_empty()) {
+        Some(t) => t,
+        None => {
+            let title =
+                title.filter(|t| !t.trim().is_empty()).ok_or("no book title to translate")?;
+            let system = format!(
+                "Translate this book title from {} to {}. Output only the translated title, nothing else.",
+                cfg.source_lang, cfg.target_lang
+            );
+            let out = client()?.translate(&system, &title).await.map_err(err)?;
+            let out = out.trim().trim_matches('"').trim().to_string();
+            let db = {
+                let mut s = state.0.lock().unwrap();
+                s.title_translated = Some(out.clone());
+                s.db_path.clone()
+            };
+            persist_meta(&db, "title_translated", &out);
+            out
+        }
     };
-    persist_meta(&db, "title_translated", &translated);
+
+    // --- author (best-effort; a failure here must not fail the title) ---
+    if existing_author.filter(|a| !a.trim().is_empty()).is_none() {
+        if let Some(author) = author.filter(|a| !a.trim().is_empty()) {
+            let system = format!(
+                "Transliterate/translate this author name from {} to {}. Keep it a person's name (no extra words). Output only the name.",
+                cfg.source_lang, cfg.target_lang
+            );
+            if let Ok(out) = client()?.translate(&system, &author).await {
+                let out = out.trim().trim_matches('"').trim().to_string();
+                if !out.is_empty() {
+                    let db = {
+                        let mut s = state.0.lock().unwrap();
+                        s.author_translated = Some(out.clone());
+                        s.db_path.clone()
+                    };
+                    persist_meta(&db, "author_translated", &out);
+                }
+            }
+        }
+    }
+
     Ok(translated)
 }
 
