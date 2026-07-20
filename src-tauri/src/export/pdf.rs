@@ -84,16 +84,25 @@ fn push_front_matter(
     chapters: &[TranslatedChapter],
     pages: &[usize],
 ) {
-    // cover + title + author. genpdf's image support only decodes JPEG, so any
-    // cover (PNG/GIF/WebP/…) is normalized to JPEG first.
+    // --- page 1: cover only, centered (genpdf embeds JPEG, so normalize to it) ---
     if let Some(cover) = &meta.cover {
-        if let Some(jpeg) = cover_as_jpeg(&cover.base64) {
+        if let Some((jpeg, _w, h)) = cover_as_jpeg(&cover.base64) {
+            const DPI: f64 = 150.0;
+            // vertical center: top space = (usable height − cover height) / 2.
+            let usable_mm = 297.0 - 2.0 * 18.0; // A4 minus margins
+            let cover_mm = h as f64 / DPI * 25.4;
+            let line_mm = 5.7; // ≈ default line height
+            let top_lines = (((usable_mm - cover_mm) / 2.0).max(0.0) / line_mm).round();
+            doc.push(elements::Break::new(top_lines));
             if let Ok(image) = elements::Image::from_reader(Cursor::new(jpeg)) {
-                doc.push(image.with_alignment(Alignment::Center).with_dpi(150.0));
+                doc.push(image.with_alignment(Alignment::Center).with_dpi(DPI));
             }
+            doc.push(elements::PageBreak::new());
         }
     }
-    doc.push(elements::Break::new(1.0));
+
+    // --- page 2 (or 1 if no cover): title + author ---
+    doc.push(elements::Break::new(12.0));
     doc.push(
         elements::Paragraph::new(meta.title.trim())
             .aligned(Alignment::Center)
@@ -107,7 +116,7 @@ fn push_front_matter(
         );
     }
 
-    // contents: "Title .......... page"
+    // --- contents: "Title .......... page" ---
     doc.push(elements::PageBreak::new());
     doc.push(
         elements::Paragraph::new(contents_label(&meta.lang))
@@ -149,16 +158,17 @@ fn push_chapter(doc: &mut Document, ch: &TranslatedChapter) {
     }
 }
 
-/// Decode a base64 cover (any common format) and re-encode it as JPEG bytes,
-/// because genpdf can only embed JPEG.
-fn cover_as_jpeg(base64: &str) -> Option<Vec<u8>> {
+/// Decode a base64 cover (any common format), re-encode it as JPEG bytes (genpdf
+/// can only embed JPEG), and report its pixel dimensions.
+fn cover_as_jpeg(base64: &str) -> Option<(Vec<u8>, u32, u32)> {
     use base64::Engine as _;
     let bytes = base64::engine::general_purpose::STANDARD.decode(base64.trim()).ok()?;
     let img = image::load_from_memory(&bytes).ok()?;
+    let (w, h) = (img.width(), img.height());
     let rgb = image::DynamicImage::ImageRgb8(img.to_rgb8());
     let mut out = Vec::new();
     rgb.write_to(&mut Cursor::new(&mut out), image::ImageFormat::Jpeg).ok()?;
-    Some(out)
+    Some((out, w, h))
 }
 
 fn page_count(bytes: &[u8]) -> Result<usize> {
