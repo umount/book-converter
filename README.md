@@ -1,68 +1,94 @@
 # book-converter
 
-Desktop app to translate **large** books from Chinese to Russian via the **DeepSeek
-API**. Built with a Rust core (Tauri v2) and a React + TypeScript frontend.
+A desktop tool for translating **large books** with an LLM while keeping names,
+lore, and style consistent across the whole work — built for novels that are far
+too long to translate in a single request.
 
-Target case: the web novel `光阴之外` — ~11 MB, ~990 chapters.
+Powered by the **DeepSeek API**. Rust core, Tauri + React desktop app.
 
-See [`docs/`](docs/README.md) for architecture, roadmap, and design decisions.
+## Highlights
 
-## Prerequisites
+- **Handles book-length input.** A book is split into chapters and translated
+  sequentially; progress is stored in SQLite, so a run can be paused, interrupted,
+  and resumed at any time.
+- **Consistency where it matters.** An auto-growing **glossary** fixes the
+  canonical translation of names, places, sects, and terminology and enforces it
+  in every chapter.
+- **Narrative continuity.** Chapters are translated in order with a **rolling
+  summary** of the story so far, so meaning is not lost between chapters.
+- **Learn from a professional translation.** Point it at an existing reference
+  translation and it bootstraps a **pinned glossary** (names/lore) and a **style
+  exemplar**, and can **continue** the translation from where the reference ends.
+- **Universal, not hardcoded.** Configurable language pair; chapter detection uses
+  generic patterns and falls back to a model-inferred delimiter for unknown layouts.
+- **Formats.** Input: TXT, FB2, ZIP (encoding auto-detected — UTF-8 / GBK /
+  GB18030 / Big5). Output: FB2, EPUB, TXT, optionally zipped. Book title, cover,
+  and annotation are carried over (and can be replaced).
+- **IDE-style app.** A projects sidebar (each book is a project), a chapter reader
+  with side-by-side **original ↔ translation** panes and glossary highlighting, an
+  editable glossary, and per-project state.
 
-- **Rust** (stable) + Cargo — installed (`cargo 1.94`)
-- **Node.js** ≥ 18 + npm — installed (`node 26`, `npm 11`)
-- **Tauri system libs (Linux)** — currently **missing**, install before building:
+## Requirements
+
+- **Rust** (stable) + Cargo
+- **Node.js** ≥ 18 + npm
+- **Linux system libraries** for Tauri:
 
   ```bash
-  sudo apt update
-  sudo apt install -y libwebkit2gtk-4.1-dev build-essential curl wget file \
-    libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev
+  make deps-linux   # or:
+  sudo apt install -y libwebkit2gtk-4.1-dev build-essential libxdo-dev \
+    libssl-dev libayatana-appindicator3-dev librsvg2-dev
   ```
 
-  (`webkit2gtk-4.1` is the WebView backend Tauri renders into on Linux.)
+- A **DeepSeek API key**.
 
-- **DeepSeek API key** — put it in a local `.env` (gitignored, auto-loaded at
-  startup):
-
-  ```bash
-  cp .env.example .env
-  # then edit .env and set DEEPSEEK_API_KEY=sk-...
-  ```
-
-  Exporting `DEEPSEEK_API_KEY` in the shell also works and takes precedence.
-
-## Quickstart
+## Setup
 
 ```bash
-npm install                    # frontend deps
-cargo install tauri-cli        # or use the npm devDependency: npx tauri
-npm run tauri dev              # launch the app in dev mode
+make install            # frontend + CLI deps
+cp .env.example .env     # then set DEEPSEEK_API_KEY=sk-...
 ```
 
-Build a release bundle:
+The key is read from `.env` (auto-loaded) or the `DEEPSEEK_API_KEY` environment
+variable.
+
+## Run
 
 ```bash
-npm run tauri build
+make dev        # hot-reload dev window
+make binary     # standalone release binary → src-tauri/target/release/book-converter
+make bundle     # installers (.deb / .rpm / .AppImage)
+make run        # build the release binary and launch it
 ```
 
-## Project layout
+## Using the app
 
-```
-book-converter/
-├── src/                 # React + TS frontend
-├── src-tauri/           # Rust core (book_converter_lib) + Tauri app
-│   └── src/
-│       ├── book/        # parser + chunker
-│       ├── glossary/    # translation-consistency subsystem
-│       ├── translator/  # DeepSeek client + prompts
-│       ├── state/       # SQLite progress store
-│       ├── export/      # TXT + EPUB
-│       ├── config.rs
-│       └── commands.rs  # Tauri IPC bridge
-└── docs/                # ARCHITECTURE, ROADMAP, DECISIONS
-```
+1. **Open book** — pick a `.txt` / `.fb2` / `.zip`. It becomes a project in the
+   sidebar.
+2. *(Optional)* **Open reference** — a professional translation of the same book;
+   then **Bootstrap** the glossary from it. Enable **Continue mode** to keep the
+   professional chapters and translate only what follows.
+3. Set how many chapters to translate (or leave blank for all) and press **Start**.
+   Watch progress; **Pause** stops after the current chapter.
+4. **Translation** view: read any chapter with original and translation side by
+   side, with glossary terms highlighted.
+5. **Export** to FB2 / EPUB / TXT (zipped if you like). Cover, title, and summary
+   are included.
 
-## Status
+## Documentation
 
-Scaffold + design docs. Implementation follows the staged plan in
-[`docs/ROADMAP.md`](docs/ROADMAP.md).
+See [`docs/`](docs/README.md): architecture and design decisions.
+
+## Configuration
+
+Environment / `.env`:
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `DEEPSEEK_API_KEY` | — | API key (required) |
+| `DEEPSEEK_MODEL` | `deepseek-chat` | Model |
+| `DEEPSEEK_BASE_URL` | `https://api.deepseek.com` | API base URL |
+
+## License
+
+MIT.

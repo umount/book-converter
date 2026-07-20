@@ -1,7 +1,7 @@
 //! book-converter — application core (Rust) for translating large books
 //! (Chinese → Russian) via the DeepSeek API. GUI is Tauri + React.
 //!
-//! Architecture: `docs/ARCHITECTURE.md`, work plan: `docs/ROADMAP.md`.
+//! Architecture and design: see `docs/ARCHITECTURE.md` and `docs/DECISIONS.md`.
 //! The modules below are UI-agnostic; the frontend calls them via `commands`.
 
 mod book;

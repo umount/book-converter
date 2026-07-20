@@ -53,6 +53,7 @@ export default function App() {
   const [chapters, setChapters] = useState<ChapterRow[]>([]);
   const [chapterIdx, setChapterIdx] = useState<number | null>(null);
   const [chapter, setChapter] = useState<ChapterView | null>(null);
+  const [chapterLoading, setChapterLoading] = useState(false);
   const [panes, setPanes] = useState({ orig: true, transl: true });
   const [hl, setHl] = useState(true);
 
@@ -189,7 +190,12 @@ export default function App() {
       if (chapterIdx == null && cs.length) setChapterIdx((cs.find((c) => c.status === "done") || cs[0]).idx);
     }
   }
-  async function openChapter(idx: number) { const c = await call<ChapterView>("get_chapter", { index: idx }); if (c) setChapter(c); }
+  async function openChapter(idx: number) {
+    setChapterLoading(true);
+    const c = await call<ChapterView>("get_chapter", { index: idx });
+    if (c) setChapter(c);
+    setChapterLoading(false);
+  }
 
   async function replaceCover() {
     const path = await open({ filters: [{ name: "Image", extensions: ["jpg", "jpeg", "png", "gif", "webp"] }] });
@@ -256,6 +262,7 @@ export default function App() {
         <div className="menu-spacer" />
         {busy && <span className="busy-inline">{busy}</span>}
       </header>
+      {busy && <div className="loadbar" />}
       {menu && <div className="menu-backdrop" onClick={() => setMenu(null)} />}
 
       <div className="body">
@@ -405,8 +412,10 @@ export default function App() {
                           <button className="icon" onClick={() => setPanes((p) => ({ ...p, orig: false }))}>×</button>
                         </div>
                         <div className="pane-body">
-                          <div className="chtitle">{chapter?.source_title}</div>
-                          <div className="chtext">{chapter ? (hl ? highlight(chapter.source, sourceTerms) : chapter.source) : ""}</div>
+                          {chapterLoading ? <div className="loading"><span className="spinner" /> loading…</div> : <>
+                            <div className="chtitle">{chapter?.source_title}</div>
+                            <div className="chtext">{chapter ? (hl ? highlight(chapter.source, sourceTerms) : chapter.source) : ""}</div>
+                          </>}
                         </div>
                       </div>
                     )}
@@ -417,10 +426,12 @@ export default function App() {
                           <button className="icon" onClick={() => setPanes((p) => ({ ...p, transl: false }))}>×</button>
                         </div>
                         <div className="pane-body">
-                          <div className="chtitle">{chapter?.translated_title}</div>
-                          <div className="chtext">
-                            {chapter?.translated ? (hl ? highlight(chapter.translated, targetTerms) : chapter.translated) : <span className="muted">— not translated yet —</span>}
-                          </div>
+                          {chapterLoading ? <div className="loading"><span className="spinner" /> loading…</div> : <>
+                            <div className="chtitle">{chapter?.translated_title}</div>
+                            <div className="chtext">
+                              {chapter?.translated ? (hl ? highlight(chapter.translated, targetTerms) : chapter.translated) : <span className="muted">— not translated yet —</span>}
+                            </div>
+                          </>}
                         </div>
                       </div>
                     )}

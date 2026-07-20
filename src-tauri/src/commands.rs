@@ -139,7 +139,7 @@ fn db_path_for(source: &str) -> String {
 
 /// Load a source book (TXT/FB2), open/create its progress DB, and register chapters.
 #[tauri::command]
-pub fn load_source(path: String, state: State<AppState>) -> Result<BookInfo, String> {
+pub async fn load_source(path: String, state: State<'_, AppState>) -> Result<BookInfo, String> {
     let book = load_book(Path::new(&path)).map_err(err)?;
     let db = db_path_for(&path);
     let store = Store::open(&db).map_err(err)?;
@@ -199,7 +199,7 @@ pub fn load_source(path: String, state: State<AppState>) -> Result<BookInfo, Str
 
 /// Load a reference translation (used for canon/style and "continue" mode).
 #[tauri::command]
-pub fn load_reference(path: String, state: State<AppState>) -> Result<RefInfo, String> {
+pub async fn load_reference(path: String, state: State<'_, AppState>) -> Result<RefInfo, String> {
     let reference = reference::load_reference(Path::new(&path)).map_err(err)?;
     let info = RefInfo {
         title: reference.meta.title.clone().unwrap_or_default(),
@@ -256,7 +256,7 @@ pub async fn bootstrap_glossary(
 /// "Continue" mode: mark chapters the reference already covers as done, using the
 /// professional text, so only the remaining chapters get machine-translated.
 #[tauri::command]
-pub fn use_reference_as_base(state: State<AppState>) -> Result<usize, String> {
+pub async fn use_reference_as_base(state: State<'_, AppState>) -> Result<usize, String> {
     let (db, source_path, reference) = {
         let s = state.0.lock().unwrap();
         (s.db_path.clone(), s.source_path.clone(), s.reference.clone())
@@ -289,7 +289,7 @@ pub fn use_reference_as_base(state: State<AppState>) -> Result<usize, String> {
 pub fn start_translation(
     limit: Option<usize>,
     app: AppHandle,
-    state: State<AppState>,
+    state: State<'_, AppState>,
 ) -> Result<(), String> {
     let (db, style, cancel) = {
         let mut s = state.0.lock().unwrap();
@@ -355,7 +355,7 @@ async fn run_job(
 
 /// Request a pause: the run stops after the current chapter.
 #[tauri::command]
-pub fn pause_translation(state: State<AppState>) -> Result<(), String> {
+pub fn pause_translation(state: State<'_, AppState>) -> Result<(), String> {
     let s = state.0.lock().unwrap();
     if let Some(c) = &s.cancel {
         c.store(true, Ordering::Relaxed);
@@ -365,7 +365,7 @@ pub fn pause_translation(state: State<AppState>) -> Result<(), String> {
 
 /// Current progress.
 #[tauri::command]
-pub fn get_progress(state: State<AppState>) -> Result<Progress, String> {
+pub async fn get_progress(state: State<'_, AppState>) -> Result<Progress, String> {
     let (db, running) = {
         let s = state.0.lock().unwrap();
         (s.db_path.clone(), s.running)
@@ -384,7 +384,7 @@ pub fn get_progress(state: State<AppState>) -> Result<Progress, String> {
 
 /// The whole glossary (most frequent first).
 #[tauri::command]
-pub fn get_glossary(state: State<AppState>) -> Result<Vec<TermDto>, String> {
+pub async fn get_glossary(state: State<'_, AppState>) -> Result<Vec<TermDto>, String> {
     let db = state
         .0
         .lock()
@@ -400,7 +400,7 @@ pub fn get_glossary(state: State<AppState>) -> Result<Vec<TermDto>, String> {
 
 /// Manually edit / pin a term.
 #[tauri::command]
-pub fn update_term(term: TermDto, state: State<AppState>) -> Result<(), String> {
+pub async fn update_term(term: TermDto, state: State<'_, AppState>) -> Result<(), String> {
     let db = state
         .0
         .lock()
@@ -427,7 +427,7 @@ pub fn update_term(term: TermDto, state: State<AppState>) -> Result<(), String> 
 
 /// Export the translated chapters to `out_path` (format inferred from extension).
 #[tauri::command]
-pub fn export_book(out_path: String, state: State<AppState>) -> Result<String, String> {
+pub async fn export_book(out_path: String, state: State<'_, AppState>) -> Result<String, String> {
     let (db, source_path, title, title_translated, author, summary, cover, zipped_input) = {
         let s = state.0.lock().unwrap();
         (
@@ -561,7 +561,7 @@ pub struct ChapterView {
 
 /// List chapters of the active project (for the reader).
 #[tauri::command]
-pub fn list_chapters(state: State<AppState>) -> Result<Vec<ChapterRow>, String> {
+pub async fn list_chapters(state: State<'_, AppState>) -> Result<Vec<ChapterRow>, String> {
     let db = state.0.lock().unwrap().db_path.clone().ok_or("no source loaded")?;
     let store = Store::open(&db).map_err(err)?;
     let rows = store.list_chapters().map_err(err)?;
@@ -573,7 +573,7 @@ pub fn list_chapters(state: State<AppState>) -> Result<Vec<ChapterRow>, String> 
 
 /// Original + translation for one chapter.
 #[tauri::command]
-pub fn get_chapter(index: usize, state: State<AppState>) -> Result<ChapterView, String> {
+pub async fn get_chapter(index: usize, state: State<'_, AppState>) -> Result<ChapterView, String> {
     let db = state.0.lock().unwrap().db_path.clone().ok_or("no source loaded")?;
     let store = Store::open(&db).map_err(err)?;
     let (number, source_title, source, status, translated_title, translated) = store
@@ -604,7 +604,7 @@ pub struct BookDetails {
 
 /// Current book details for display (cover, summary, translated title).
 #[tauri::command]
-pub fn get_book_details(state: State<AppState>) -> Result<BookDetails, String> {
+pub async fn get_book_details(state: State<'_, AppState>) -> Result<BookDetails, String> {
     let s = state.0.lock().unwrap();
     Ok(BookDetails {
         title: s.title.clone().unwrap_or_default(),
@@ -645,7 +645,7 @@ pub async fn translate_title(state: State<'_, AppState>) -> Result<String, Strin
 
 /// Set / replace the annotation (summary).
 #[tauri::command]
-pub fn set_summary(summary: String, state: State<AppState>) -> Result<(), String> {
+pub async fn set_summary(summary: String, state: State<'_, AppState>) -> Result<(), String> {
     let db = {
         let mut s = state.0.lock().unwrap();
         s.summary = if summary.trim().is_empty() { None } else { Some(summary.clone()) };
@@ -657,7 +657,7 @@ pub fn set_summary(summary: String, state: State<AppState>) -> Result<(), String
 
 /// Replace the cover image from a file; returns its `data:` URL for preview.
 #[tauri::command]
-pub fn set_cover(path: String, state: State<AppState>) -> Result<String, String> {
+pub async fn set_cover(path: String, state: State<'_, AppState>) -> Result<String, String> {
     use base64::Engine as _;
     let bytes = std::fs::read(&path).map_err(err)?;
     let cover = Cover {
