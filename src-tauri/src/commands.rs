@@ -94,9 +94,40 @@ fn client() -> Result<DeepSeekClient, String> {
     DeepSeekClient::new(Config::load()).map_err(err)
 }
 
+/// App data directory for working files (progress DBs), per XDG.
+fn app_data_dir() -> std::path::PathBuf {
+    let base = std::env::var_os("XDG_DATA_HOME")
+        .map(std::path::PathBuf::from)
+        .or_else(|| std::env::var_os("HOME").map(|h| std::path::PathBuf::from(h).join(".local/share")))
+        .unwrap_or_else(std::env::temp_dir);
+    base.join("book-converter")
+}
+
 /// Where the resumable progress DB lives for a given source file.
+///
+/// Kept in the app data directory (not next to the book) so the source can live
+/// on a read-only or permission-restricted mount (USB, /media/…) without breaking.
 fn db_path_for(source: &str) -> String {
-    format!("{source}.progress.db")
+    use std::hash::{Hash, Hasher};
+
+    let dir = app_data_dir();
+    let _ = std::fs::create_dir_all(&dir);
+
+    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    source.hash(&mut hasher);
+    let stem = std::path::Path::new(source)
+        .file_stem()
+        .and_then(|s| s.to_str())
+        .unwrap_or("book");
+    let safe: String = stem
+        .chars()
+        .take(40)
+        .map(|c| if c.is_alphanumeric() { c } else { '_' })
+        .collect();
+
+    dir.join(format!("{safe}-{:016x}.progress.db", hasher.finish()))
+        .to_string_lossy()
+        .into_owned()
 }
 
 /// Load a source book (TXT/FB2), open/create its progress DB, and register chapters.
