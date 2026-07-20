@@ -42,8 +42,9 @@ base64 = "0.22"        # cover image ↔ base64 (FB2 <binary>, data URLs, EPUB)
 
 # --- Export ---
 epub-builder = "0.7"
-genpdf = "0.2"         # PDF output
+genpdf = { version = "0.2", features = ["images"] }  # PDF output (with cover image)
 pdf-extract = "0.12"   # PDF input (text extraction)
+lopdf = "0.42"         # patch PDF Info metadata (Unicode title) post-render
 
 # --- Config ---
 dotenvy = "0.15"       # load DEEPSEEK_API_KEY from a local .env at startup
