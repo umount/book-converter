@@ -119,7 +119,7 @@ fn push_front_matter(
     // --- contents: "Title .......... page" ---
     doc.push(elements::PageBreak::new());
     doc.push(
-        elements::Paragraph::new(contents_label(&meta.lang))
+        elements::Paragraph::new(crate::i18n::label(&meta.lang, "contents"))
             .styled(style::Style::new().bold().with_font_size(18)),
     );
     doc.push(elements::Break::new(0.6));
@@ -221,14 +221,6 @@ fn add_outline(
 
     doc.save(path)?;
     Ok(())
-}
-
-fn contents_label(lang: &str) -> &'static str {
-    if lang.to_lowercase().starts_with("ru") {
-        "Содержание"
-    } else {
-        "Contents"
-    }
 }
 
 #[cfg(test)]

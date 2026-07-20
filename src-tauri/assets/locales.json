@@ -1,0 +1,20 @@
+{
+  "ru": {
+    "contents": "Содержание",
+    "chapter": "Глава",
+    "untitled": "Без названия",
+    "unknown_author": "Неизвестный автор"
+  },
+  "en": {
+    "contents": "Contents",
+    "chapter": "Chapter",
+    "untitled": "Untitled",
+    "unknown_author": "Unknown author"
+  },
+  "zh": {
+    "contents": "目录",
+    "chapter": "第",
+    "untitled": "无标题",
+    "unknown_author": "佚名"
+  }
+}

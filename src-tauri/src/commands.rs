@@ -469,14 +469,15 @@ pub async fn export_book(out_path: String, state: State<'_, AppState>) -> Result
         .collect();
 
     let config = Config::load();
-    export::normalize_titles(&mut chapters, chapter_label(&config.target_lang));
+    let chapter_label = crate::i18n::label(&config.target_lang, "chapter");
+    export::normalize_titles(&mut chapters, &chapter_label);
     let meta = OutputMeta {
         title: title_translated
             .filter(|t| !t.trim().is_empty())
             .or(title)
-            .unwrap_or_else(|| "Untitled".into()),
-        author: author.unwrap_or_else(|| "Unknown".into()),
-        lang: lang_code(&config.target_lang),
+            .unwrap_or_else(|| crate::i18n::label(&config.target_lang, "untitled")),
+        author: author.unwrap_or_else(|| crate::i18n::label(&config.target_lang, "unknown_author")),
+        lang: crate::i18n::lang_code(&config.target_lang),
         annotation: summary,
         cover,
     };
@@ -713,26 +714,3 @@ fn term_to_dto(t: Term) -> TermDto {
     }
 }
 
-/// Chapter-heading label in the target language (for normalizing output titles).
-fn chapter_label(target_lang: &str) -> &'static str {
-    let l = target_lang.to_lowercase();
-    if l.contains("russ") || l.contains("рус") {
-        "Глава"
-    } else {
-        "Chapter"
-    }
-}
-
-/// Best-effort BCP-47-ish language code for FB2 `<lang>`.
-fn lang_code(target_lang: &str) -> String {
-    let l = target_lang.to_lowercase();
-    if l.contains("russ") || l.contains("рус") {
-        "ru".into()
-    } else if l.contains("engl") || l.contains("англ") {
-        "en".into()
-    } else if l.contains("chin") || l.contains("кит") {
-        "zh".into()
-    } else {
-        "und".into()
-    }
-}

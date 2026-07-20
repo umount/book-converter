@@ -9,6 +9,7 @@ mod commands;
 mod config;
 mod export;
 mod glossary;
+mod i18n;
 mod orchestrator;
 mod reference;
 mod state;
