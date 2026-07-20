@@ -2,17 +2,22 @@
 # Stack: Tauri v2 (Rust core) + React/TS frontend
 
 TAURI_DIR := src-tauri
+BIN := $(TAURI_DIR)/target/release/book-converter
+# Use the local Tauri CLI via npx: `npm run tauri dev` does NOT forward the
+# subcommand under npm 11.
+TAURI := npx tauri
 
 .DEFAULT_GOAL := help
 
 # List available targets
 help:
 	@echo "book-converter — available commands:"
-	@echo "  make install     install dependencies (npm + tauri-cli)"
+	@echo "  make install     install frontend + CLI deps (npm)"
 	@echo "  make deps-linux  Tauri system packages for Linux (needs sudo)"
-	@echo "  make dev         run the app in dev mode"
-	@echo "  make build       build a release bundle"
-	@echo "  make run         build and run the core (no frontend)"
+	@echo "  make dev         run the app with hot-reload (Vite + window)"
+	@echo "  make binary      build a standalone release binary (no installer)"
+	@echo "  make bundle      build installers (.deb / .rpm / .AppImage)"
+	@echo "  make run         build the release binary and launch it"
 	@echo "  make check       cargo check + tsc (no build)"
 	@echo "  make fmt         format (cargo fmt)"
 	@echo "  make lint        cargo clippy"
@@ -21,12 +26,10 @@ help:
 
 # --- Dependencies ---
 
-# Install frontend deps and tauri-cli
+# Install frontend + Tauri CLI (devDependency) via npm
 install:
-	@echo "Installing frontend deps..."
+	@echo "Installing deps..."
 	@npm install
-	@echo "Installing tauri-cli..."
-	@cargo install tauri-cli --locked
 
 # Tauri system libraries for Linux (Debian/Ubuntu)
 deps-linux:
@@ -37,17 +40,22 @@ deps-linux:
 
 # --- Development ---
 
-# Dev mode: Vite + Tauri with hot-reload
+# Dev mode: Vite dev server + Tauri window with hot-reload
 dev:
-	@npm run tauri dev
+	@$(TAURI) dev
 
-# Release bundle
-build:
-	@npm run tauri build
+# Standalone release binary with the frontend embedded (runs without Vite)
+binary:
+	@$(TAURI) build --no-bundle
+	@echo "Binary: $(BIN)"
 
-# Build and run the Rust core only (handy for CLI checks of the core)
-run:
-	@cd $(TAURI_DIR) && cargo run
+# Full installers (.deb / .rpm / .AppImage on Linux)
+bundle:
+	@$(TAURI) build
+
+# Build the release binary and run it
+run: binary
+	@./$(BIN)
 
 # --- Quality ---
 
@@ -77,4 +85,4 @@ clean:
 	@cd $(TAURI_DIR) && cargo clean
 	@rm -rf dist node_modules
 
-.PHONY: help install deps-linux dev build run check fmt lint test clean
+.PHONY: help install deps-linux dev binary bundle run check fmt lint test clean
