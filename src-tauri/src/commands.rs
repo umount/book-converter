@@ -34,6 +34,8 @@ pub struct Session {
     style: Option<String>,
     cancel: Option<Arc<AtomicBool>>,
     running: bool,
+    /// Source or reference was a `.zip` → default to a zipped output.
+    zipped_input: bool,
 }
 
 /// Managed app state.
@@ -110,6 +112,7 @@ pub fn load_source(path: String, state: State<AppState>) -> Result<BookInfo, Str
 
     {
         let mut s = state.0.lock().unwrap();
+        s.zipped_input |= crate::book::source::is_zip(Path::new(&path));
         s.db_path = Some(db);
         s.source_path = Some(path);
         s.title = book.meta.title.clone();
@@ -139,6 +142,7 @@ pub fn load_reference(path: String, state: State<AppState>) -> Result<RefInfo, S
     };
     let style = reference::style_exemplar(&reference, 600);
     let mut s = state.0.lock().unwrap();
+    s.zipped_input |= crate::book::source::is_zip(Path::new(&path));
     s.reference = Some(reference);
     s.style = style;
     Ok(info)
@@ -343,7 +347,7 @@ pub fn update_term(term: TermDto, state: State<AppState>) -> Result<(), String> 
 /// Export the translated chapters to `out_path` (format inferred from extension).
 #[tauri::command]
 pub fn export_book(out_path: String, state: State<AppState>) -> Result<String, String> {
-    let (db, source_path, title, author, head) = {
+    let (db, source_path, title, author, head, zipped_input) = {
         let s = state.0.lock().unwrap();
         (
             s.db_path.clone(),
@@ -351,13 +355,15 @@ pub fn export_book(out_path: String, state: State<AppState>) -> Result<String, S
             s.title.clone(),
             s.author.clone(),
             s.reference.as_ref().and_then(|r| r.head.clone()),
+            s.zipped_input,
         )
     };
     let db = db.ok_or("no source loaded")?;
     let source_path = source_path.ok_or("no source loaded")?;
 
-    let format = OutputFormat::from_path(Path::new(&out_path))
-        .ok_or("unknown output format (use .txt or .fb2)")?;
+    // Decide zip vs plain, and the inner format. Zip when the path ends in .zip
+    // or the input was itself zipped ("zip in → zip out").
+    let out = OutputTarget::resolve(&out_path, zipped_input)?;
 
     let store = Store::open(&db).map_err(err)?;
     let rows = store.translated_chapters().map_err(err)?;
@@ -386,8 +392,72 @@ pub fn export_book(out_path: String, state: State<AppState>) -> Result<String, S
         author: author.unwrap_or_else(|| "Unknown".into()),
         lang: lang_code(&config.target_lang),
     };
-    export::export(&chapters, format, &meta, head.as_ref(), Path::new(&out_path)).map_err(err)?;
-    Ok(out_path)
+
+    if out.zipped {
+        export::export_zip(
+            &chapters,
+            out.format,
+            &meta,
+            head.as_ref(),
+            &out.inner_name,
+            Path::new(&out.path),
+        )
+        .map_err(err)?;
+    } else {
+        export::export(&chapters, out.format, &meta, head.as_ref(), Path::new(&out.path))
+            .map_err(err)?;
+    }
+    Ok(out.path)
+}
+
+/// Resolved output: final path, format, whether to zip, and the inner file name.
+struct OutputTarget {
+    path: String,
+    format: OutputFormat,
+    zipped: bool,
+    inner_name: String,
+}
+
+impl OutputTarget {
+    fn resolve(out_path: &str, zipped_input: bool) -> Result<Self, String> {
+        let ends_zip = out_path.to_ascii_lowercase().ends_with(".zip");
+        // The book file part (path without a trailing .zip).
+        let inner_path = if ends_zip {
+            out_path[..out_path.len() - 4].to_string()
+        } else {
+            out_path.to_string()
+        };
+        let format = OutputFormat::from_path(Path::new(&inner_path)).unwrap_or(OutputFormat::Fb2);
+        let zipped = ends_zip || zipped_input;
+
+        let ext = match format {
+            OutputFormat::Txt => "txt",
+            OutputFormat::Fb2 => "fb2",
+        };
+        let inner_stem = Path::new(&inner_path)
+            .file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or("book");
+        let inner_name = if inner_stem.to_ascii_lowercase().ends_with(&format!(".{ext}")) {
+            inner_stem.to_string()
+        } else {
+            format!("{inner_stem}.{ext}")
+        };
+        let path = if !zipped {
+            out_path.to_string()
+        } else if ends_zip {
+            out_path.to_string()
+        } else {
+            format!("{out_path}.zip")
+        };
+
+        Ok(OutputTarget {
+            path,
+            format,
+            zipped,
+            inner_name,
+        })
+    }
 }
 
 fn term_to_dto(t: Term) -> TermDto {

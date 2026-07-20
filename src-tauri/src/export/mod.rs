@@ -6,7 +6,7 @@ pub mod txt;
 
 use std::path::Path;
 
-use anyhow::Result;
+use anyhow::{Context, Result};
 use regex::Regex;
 
 /// A translated chapter ready for export.
@@ -132,6 +132,19 @@ impl Default for OutputMeta {
     }
 }
 
+/// Render the book to a string in the given format.
+pub fn render(
+    chapters: &[TranslatedChapter],
+    format: OutputFormat,
+    meta: &OutputMeta,
+    head: Option<&fb2::Fb2Head>,
+) -> String {
+    match format {
+        OutputFormat::Txt => txt::render(chapters),
+        OutputFormat::Fb2 => fb2::render(chapters, meta, head),
+    }
+}
+
 /// Write `chapters` to `out_path` in the given format. `head` (an FB2 source head
 /// to preserve author/cover) is used only by the FB2 writer.
 pub fn export(
@@ -145,6 +158,30 @@ pub fn export(
         OutputFormat::Txt => txt::export(chapters, out_path),
         OutputFormat::Fb2 => fb2::export(chapters, meta, head, out_path),
     }
+}
+
+/// Write `chapters` into a `.zip` at `zip_path`, containing a single file named
+/// `inner_name` (e.g. "book.fb2"). Used when the output should be zipped.
+pub fn export_zip(
+    chapters: &[TranslatedChapter],
+    format: OutputFormat,
+    meta: &OutputMeta,
+    head: Option<&fb2::Fb2Head>,
+    inner_name: &str,
+    zip_path: &Path,
+) -> Result<()> {
+    use std::io::Write as _;
+
+    let content = render(chapters, format, meta, head);
+    let file = std::fs::File::create(zip_path)
+        .with_context(|| format!("creating {}", zip_path.display()))?;
+    let mut zip = zip::ZipWriter::new(file);
+    let options = zip::write::SimpleFileOptions::default()
+        .compression_method(zip::CompressionMethod::Deflated);
+    zip.start_file(inner_name, options)?;
+    zip.write_all(content.as_bytes())?;
+    zip.finish()?;
+    Ok(())
 }
 
 #[cfg(test)]

@@ -27,9 +27,61 @@ pub struct DecodedText {
 }
 
 /// Read a book file from disk and decode it to UTF-8.
+///
+/// A `.zip` input is transparently unpacked: the first `.fb2`/`.txt` entry (or,
+/// failing that, the first file) is read from the archive.
 pub fn read_book_file(path: &Path) -> std::io::Result<DecodedText> {
-    let bytes = std::fs::read(path)?;
+    let bytes = if is_zip(path) {
+        read_first_book_from_zip(path)?
+    } else {
+        std::fs::read(path)?
+    };
     Ok(decode_book_bytes(&bytes))
+}
+
+/// True if `path` looks like a zip archive (by extension).
+pub fn is_zip(path: &Path) -> bool {
+    path.extension()
+        .and_then(|e| e.to_str())
+        .map(|e| e.eq_ignore_ascii_case("zip"))
+        .unwrap_or(false)
+}
+
+/// Read the bytes of the first book entry inside a zip archive.
+fn read_first_book_from_zip(path: &Path) -> std::io::Result<Vec<u8>> {
+    use std::io::Read;
+
+    let file = std::fs::File::open(path)?;
+    let mut zip = zip::ZipArchive::new(file)
+        .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
+
+    // Prefer a .fb2/.txt entry; fall back to the first regular file.
+    let mut fallback: Option<usize> = None;
+    let mut chosen: Option<usize> = None;
+    for i in 0..zip.len() {
+        let entry = zip
+            .by_index(i)
+            .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
+        if !entry.is_file() {
+            continue;
+        }
+        let name = entry.name().to_ascii_lowercase();
+        if name.ends_with(".fb2") || name.ends_with(".txt") {
+            chosen = Some(i);
+            break;
+        }
+        fallback.get_or_insert(i);
+    }
+
+    let idx = chosen
+        .or(fallback)
+        .ok_or_else(|| std::io::Error::new(std::io::ErrorKind::NotFound, "empty zip archive"))?;
+    let mut entry = zip
+        .by_index(idx)
+        .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
+    let mut buf = Vec::new();
+    entry.read_to_end(&mut buf)?;
+    Ok(buf)
 }
 
 /// Detect the encoding of `bytes` and decode to UTF-8.

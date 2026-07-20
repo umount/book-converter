@@ -6,8 +6,8 @@ use anyhow::{Context, Result};
 
 use super::TranslatedChapter;
 
-/// Assemble the book into a single .txt file.
-pub fn export(chapters: &[TranslatedChapter], out_path: &Path) -> Result<()> {
+/// Render the book as a single plain-text string.
+pub fn render(chapters: &[TranslatedChapter]) -> String {
     let mut out = String::new();
     for ch in chapters {
         let title = ch.title.trim();
@@ -18,7 +18,12 @@ pub fn export(chapters: &[TranslatedChapter], out_path: &Path) -> Result<()> {
         out.push_str(ch.body.trim());
         out.push_str("\n\n\n");
     }
-    std::fs::write(out_path, out)
+    out
+}
+
+/// Assemble the book into a single .txt file.
+pub fn export(chapters: &[TranslatedChapter], out_path: &Path) -> Result<()> {
+    std::fs::write(out_path, render(chapters))
         .with_context(|| format!("writing {}", out_path.display()))?;
     Ok(())
 }

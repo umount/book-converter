@@ -36,6 +36,9 @@ encoding_rs = "0.8"    # decode bytes → UTF-8 for a detected encoding
 chardetng = "0.1"      # detect the source encoding (GBK, Big5, UTF-8, …)
 quick-xml = "0.36"     # parse FB2 (FictionBook XML) input and reference
 
+# --- Archives ---
+zip = { version = "2", default-features = false, features = ["deflate"] }
+
 # --- Export ---
 epub-builder = "0.7"
 
