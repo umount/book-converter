@@ -148,7 +148,7 @@ pub fn load_source(path: String, state: State<AppState>) -> Result<BookInfo, Str
     let title = book.meta.title.clone().unwrap_or_default();
     let author = book.meta.author.clone().unwrap_or_default();
 
-    // If the source itself is FB2, pull its annotation + cover.
+    // If the source itself is FB2, pull its annotation + cover as defaults.
     let head = if book.format == crate::book::InputFormat::Fb2 {
         crate::book::read_book_file(Path::new(&path))
             .ok()
@@ -157,19 +157,32 @@ pub fn load_source(path: String, state: State<AppState>) -> Result<BookInfo, Str
         None
     };
 
+    // Per-project details persisted in this book's DB (survive project switches).
+    let saved_title = store.get_meta("title_translated").ok().flatten();
+    let saved_summary = store.get_meta("summary").ok().flatten();
+    let saved_cover = match (
+        store.get_meta("cover_ct").ok().flatten(),
+        store.get_meta("cover_b64").ok().flatten(),
+    ) {
+        (Some(content_type), Some(base64)) => Some(Cover { content_type, base64 }),
+        _ => None,
+    };
+
     {
+        // Switching projects: reset session, then load this project's state.
         let mut s = state.0.lock().unwrap();
-        s.zipped_input |= crate::book::source::is_zip(Path::new(&path));
+        s.reference = None;
+        s.style = None;
+        s.cancel = None;
+        s.running = false;
+        s.zipped_input = crate::book::source::is_zip(Path::new(&path));
         s.db_path = Some(db);
         s.source_path = Some(path);
         s.title = book.meta.title.clone();
         s.author = book.meta.author.clone();
-        if s.summary.is_none() {
-            s.summary = head.as_ref().and_then(|h| h.annotation.clone());
-        }
-        if s.cover.is_none() {
-            s.cover = head.as_ref().and_then(|h| h.cover.clone());
-        }
+        s.title_translated = saved_title;
+        s.summary = saved_summary.or_else(|| head.as_ref().and_then(|h| h.annotation.clone()));
+        s.cover = saved_cover.or_else(|| head.as_ref().and_then(|h| h.cover.clone()));
     }
 
     Ok(BookInfo {
@@ -568,15 +581,24 @@ pub async fn translate_title(state: State<'_, AppState>) -> Result<String, Strin
     );
     let translated = client()?.translate(&system, &title).await.map_err(err)?;
     let translated = translated.trim().trim_matches('"').trim().to_string();
-    state.0.lock().unwrap().title_translated = Some(translated.clone());
+    let db = {
+        let mut s = state.0.lock().unwrap();
+        s.title_translated = Some(translated.clone());
+        s.db_path.clone()
+    };
+    persist_meta(&db, "title_translated", &translated);
     Ok(translated)
 }
 
 /// Set / replace the annotation (summary).
 #[tauri::command]
 pub fn set_summary(summary: String, state: State<AppState>) -> Result<(), String> {
-    let mut s = state.0.lock().unwrap();
-    s.summary = if summary.trim().is_empty() { None } else { Some(summary) };
+    let db = {
+        let mut s = state.0.lock().unwrap();
+        s.summary = if summary.trim().is_empty() { None } else { Some(summary.clone()) };
+        s.db_path.clone()
+    };
+    persist_meta(&db, "summary", &summary);
     Ok(())
 }
 
@@ -590,8 +612,27 @@ pub fn set_cover(path: String, state: State<AppState>) -> Result<String, String>
         base64: base64::engine::general_purpose::STANDARD.encode(&bytes),
     };
     let url = cover.data_url();
-    state.0.lock().unwrap().cover = Some(cover);
+    let db = {
+        let mut s = state.0.lock().unwrap();
+        s.cover = Some(cover.clone());
+        s.db_path.clone()
+    };
+    if let Some(db) = db {
+        if let Ok(store) = Store::open(&db) {
+            let _ = store.set_meta("cover_ct", &cover.content_type);
+            let _ = store.set_meta("cover_b64", &cover.base64);
+        }
+    }
     Ok(url)
+}
+
+/// Persist a single meta value to the current project's DB (best-effort).
+fn persist_meta(db: &Option<String>, key: &str, value: &str) {
+    if let Some(db) = db {
+        if let Ok(store) = Store::open(db) {
+            let _ = store.set_meta(key, value);
+        }
+    }
 }
 
 fn cover_mime(path: &str) -> String {
