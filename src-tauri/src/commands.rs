@@ -538,6 +538,59 @@ impl OutputTarget {
     }
 }
 
+/// A chapter row for the reader's chapter list.
+#[derive(Serialize)]
+pub struct ChapterRow {
+    pub idx: usize,
+    pub number: Option<usize>,
+    pub title: String,
+    pub status: String,
+}
+
+/// Full chapter view: original + translation.
+#[derive(Serialize)]
+pub struct ChapterView {
+    pub idx: usize,
+    pub number: Option<usize>,
+    pub source_title: String,
+    pub source: String,
+    pub translated_title: Option<String>,
+    pub translated: Option<String>,
+    pub status: String,
+}
+
+/// List chapters of the active project (for the reader).
+#[tauri::command]
+pub fn list_chapters(state: State<AppState>) -> Result<Vec<ChapterRow>, String> {
+    let db = state.0.lock().unwrap().db_path.clone().ok_or("no source loaded")?;
+    let store = Store::open(&db).map_err(err)?;
+    let rows = store.list_chapters().map_err(err)?;
+    Ok(rows
+        .into_iter()
+        .map(|(idx, number, title, status)| ChapterRow { idx, number, title, status })
+        .collect())
+}
+
+/// Original + translation for one chapter.
+#[tauri::command]
+pub fn get_chapter(index: usize, state: State<AppState>) -> Result<ChapterView, String> {
+    let db = state.0.lock().unwrap().db_path.clone().ok_or("no source loaded")?;
+    let store = Store::open(&db).map_err(err)?;
+    let (number, source_title, source, status, translated_title, translated) = store
+        .chapter_full(index)
+        .map_err(err)?
+        .ok_or("chapter not found")?;
+    Ok(ChapterView {
+        idx: index,
+        number,
+        source_title,
+        source,
+        translated_title,
+        translated,
+        status,
+    })
+}
+
 /// Book cover + metadata for the UI.
 #[derive(Serialize)]
 pub struct BookDetails {

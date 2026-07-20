@@ -44,6 +44,8 @@ pub fn run() {
             commands::translate_title,
             commands::set_summary,
             commands::set_cover,
+            commands::list_chapters,
+            commands::get_chapter,
         ])
         .run(tauri::generate_context!())
         .expect("failed to start the Tauri application");

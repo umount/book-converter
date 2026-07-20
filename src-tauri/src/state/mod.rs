@@ -211,6 +211,51 @@ impl Store {
         Ok(stats)
     }
 
+    /// List chapters for the UI: `(idx, number, title, status)` in reading order.
+    pub fn list_chapters(&self) -> Result<Vec<(usize, Option<usize>, String, String)>> {
+        let mut stmt = self
+            .conn
+            .prepare("SELECT idx, number, title, status FROM chapters ORDER BY idx")?;
+        let rows = stmt
+            .query_map([], |r| {
+                Ok((
+                    r.get::<_, i64>(0)? as usize,
+                    r.get::<_, Option<i64>>(1)?.map(|n| n as usize),
+                    r.get::<_, String>(2)?,
+                    r.get::<_, String>(3)?,
+                ))
+            })?
+            .collect::<rusqlite::Result<Vec<_>>>()?;
+        Ok(rows)
+    }
+
+    /// Full chapter view: `(number, source_title, source, status, translated_title, translated)`.
+    #[allow(clippy::type_complexity)]
+    pub fn chapter_full(
+        &self,
+        index: usize,
+    ) -> Result<Option<(Option<usize>, String, String, String, Option<String>, Option<String>)>> {
+        let row = self
+            .conn
+            .query_row(
+                "SELECT number, title, source, status, translated_title, translated
+                 FROM chapters WHERE idx = ?1",
+                params![index as i64],
+                |r| {
+                    Ok((
+                        r.get::<_, Option<i64>>(0)?.map(|n| n as usize),
+                        r.get::<_, String>(1)?,
+                        r.get::<_, String>(2)?,
+                        r.get::<_, String>(3)?,
+                        r.get::<_, Option<String>>(4)?,
+                        r.get::<_, Option<String>>(5)?,
+                    ))
+                },
+            )
+            .optional()?;
+        Ok(row)
+    }
+
     /// All translated chapters in reading order (for export).
     /// Returns `(index, translated_title, translated_body)` — the translated
     /// title falls back to the source title if a run predates title translation.
