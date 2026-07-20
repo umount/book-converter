@@ -40,6 +40,10 @@ pub fn run() {
             commands::get_glossary,
             commands::update_term,
             commands::export_book,
+            commands::get_book_details,
+            commands::translate_title,
+            commands::set_summary,
+            commands::set_cover,
         ])
         .run(tauri::generate_context!())
         .expect("failed to start the Tauri application");

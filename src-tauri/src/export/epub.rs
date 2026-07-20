@@ -17,6 +17,18 @@ pub fn export(chapters: &[TranslatedChapter], meta: &OutputMeta, out_path: &Path
         .and_then(|b| b.metadata("author", &meta.author))
         .and_then(|b| b.metadata("lang", &meta.lang))
         .map_err(|e| anyhow::anyhow!("epub metadata: {e}"))?;
+
+    // Cover image, if any (decode the stored base64).
+    if let Some(cover) = &meta.cover {
+        use base64::Engine as _;
+        if let Ok(bytes) = base64::engine::general_purpose::STANDARD.decode(cover.base64.trim()) {
+            let name = format!("cover.{}", cover_ext(&cover.content_type));
+            builder
+                .add_cover_image(&name, bytes.as_slice(), &cover.content_type)
+                .map_err(|e| anyhow::anyhow!("epub cover: {e}"))?;
+        }
+    }
+
     builder.inline_toc();
 
     for ch in chapters {
@@ -57,6 +69,16 @@ fn chapter_xhtml(ch: &TranslatedChapter) -> String {
         esc(title),
         body,
     )
+}
+
+/// File extension for a cover image MIME type.
+fn cover_ext(content_type: &str) -> &str {
+    match content_type {
+        "image/png" => "png",
+        "image/gif" => "gif",
+        "image/webp" => "webp",
+        _ => "jpg",
+    }
 }
 
 /// Escape XML/XHTML text content.

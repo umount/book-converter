@@ -1,8 +1,5 @@
-//! Export to FB2 (FictionBook 2.0): one `<section>` per chapter + book metadata.
-//!
-//! When continuing from a reference FB2, the original `<description>` (title,
-//! author, cover reference, annotation) and `<binary>` blocks (the cover image)
-//! are carried over verbatim via [`Fb2Head`], so metadata and cover are preserved.
+//! Export to FB2 (FictionBook 2.0): one `<section>` per chapter + book metadata
+//! (translated title, author, annotation/summary, cover image).
 
 use std::fmt::Write as _;
 use std::path::Path;
@@ -11,36 +8,59 @@ use anyhow::{Context, Result};
 
 use super::{OutputMeta, TranslatedChapter};
 
-/// Original FB2 head to preserve on export: the raw `<description>` block and the
-/// raw `<binary>` blocks (e.g. the cover image).
+/// A cover image: its MIME type and base64-encoded bytes.
 #[derive(Debug, Clone, Default)]
-pub struct Fb2Head {
-    pub description: Option<String>,
-    pub binaries: Vec<String>,
+pub struct Cover {
+    pub content_type: String,
+    pub base64: String,
 }
 
-/// Extract the `<description>` and all `<binary>` blocks from FB2 XML.
-pub fn extract_head(xml: &str) -> Fb2Head {
-    Fb2Head {
-        description: slice_first(xml, "description"),
-        binaries: slice_all(xml, "binary"),
+impl Cover {
+    /// `data:` URL for showing the cover in the UI.
+    pub fn data_url(&self) -> String {
+        format!("data:{};base64,{}", self.content_type, self.base64)
+    }
+
+    /// File extension implied by the content type (for the FB2 binary id).
+    fn ext(&self) -> &str {
+        match self.content_type.as_str() {
+            "image/png" => "png",
+            "image/gif" => "gif",
+            "image/webp" => "webp",
+            _ => "jpg",
+        }
     }
 }
 
-/// Assemble the book into an .fb2 file (optionally preserving a source head).
-pub fn export(
-    chapters: &[TranslatedChapter],
-    meta: &OutputMeta,
-    head: Option<&Fb2Head>,
-    out_path: &Path,
-) -> Result<()> {
-    let xml = render(chapters, meta, head);
-    std::fs::write(out_path, xml).with_context(|| format!("writing {}", out_path.display()))?;
+/// Metadata found in a source FB2 that we can carry over / show: the annotation
+/// (summary) and the cover image.
+#[derive(Debug, Clone, Default)]
+pub struct Fb2Head {
+    pub annotation: Option<String>,
+    pub cover: Option<Cover>,
+}
+
+/// Extract the annotation (as plain text) and cover image from FB2 XML.
+pub fn extract_head(xml: &str) -> Fb2Head {
+    Fb2Head {
+        annotation: slice_first(xml, "annotation")
+            .map(|a| tags_to_text(&a))
+            .filter(|s| !s.trim().is_empty()),
+        cover: extract_cover(xml),
+    }
+}
+
+/// Assemble the book into an .fb2 file.
+pub fn export(chapters: &[TranslatedChapter], meta: &OutputMeta, out_path: &Path) -> Result<()> {
+    std::fs::write(out_path, render(chapters, meta))
+        .with_context(|| format!("writing {}", out_path.display()))?;
     Ok(())
 }
 
 /// Render the whole FB2 document as a string.
-pub fn render(chapters: &[TranslatedChapter], meta: &OutputMeta, head: Option<&Fb2Head>) -> String {
+pub fn render(chapters: &[TranslatedChapter], meta: &OutputMeta) -> String {
+    let cover_id = meta.cover.as_ref().map(|c| format!("cover.{}", c.ext()));
+
     let mut out = String::new();
     out.push_str("<?xml version=\"1.0\" encoding=\"utf-8\"?>\n");
     out.push_str(
@@ -48,24 +68,26 @@ pub fn render(chapters: &[TranslatedChapter], meta: &OutputMeta, head: Option<&F
          xmlns:l=\"http://www.w3.org/1999/xlink\">\n",
     );
 
-    // --- description: reuse the source one (keeps author + cover) if available ---
-    match head.and_then(|h| h.description.as_deref()) {
-        Some(desc) => {
-            out.push_str(desc);
-            out.push('\n');
+    // --- description ---
+    out.push_str("<description>\n<title-info>\n");
+    let _ = writeln!(out, "<genre>literature</genre>");
+    let _ = writeln!(out, "<author><nickname>{}</nickname></author>", esc(&meta.author));
+    let _ = writeln!(out, "<book-title>{}</book-title>", esc(&meta.title));
+    if let Some(annotation) = meta.annotation.as_deref().filter(|a| !a.trim().is_empty()) {
+        out.push_str("<annotation>\n");
+        for para in annotation.lines().map(str::trim).filter(|l| !l.is_empty()) {
+            let _ = writeln!(out, "<p>{}</p>", esc(para));
         }
-        None => {
-            out.push_str("<description>\n<title-info>\n");
-            let _ = writeln!(out, "<genre>literature</genre>");
-            let _ = writeln!(out, "<author><nickname>{}</nickname></author>", esc(&meta.author));
-            let _ = writeln!(out, "<book-title>{}</book-title>", esc(&meta.title));
-            let _ = writeln!(out, "<lang>{}</lang>", esc(&meta.lang));
-            out.push_str("</title-info>\n<document-info>\n");
-            let _ = writeln!(out, "<id>book-converter-{}</id>", slug(&meta.title));
-            out.push_str("<program-used>book-converter</program-used>\n");
-            out.push_str("</document-info>\n</description>\n");
-        }
+        out.push_str("</annotation>\n");
     }
+    if let Some(id) = &cover_id {
+        let _ = writeln!(out, "<coverpage><image l:href=\"#{id}\"/></coverpage>");
+    }
+    let _ = writeln!(out, "<lang>{}</lang>", esc(&meta.lang));
+    out.push_str("</title-info>\n<document-info>\n");
+    let _ = writeln!(out, "<id>book-converter-{}</id>", slug(&meta.title));
+    out.push_str("<program-used>book-converter</program-used>\n");
+    out.push_str("</document-info>\n</description>\n");
 
     // --- body ---
     out.push_str("<body>\n");
@@ -75,28 +97,66 @@ pub fn render(chapters: &[TranslatedChapter], meta: &OutputMeta, head: Option<&F
         if !title.is_empty() {
             let _ = writeln!(out, "<title><p>{}</p></title>", esc(title));
         }
-        for para in paragraphs(&ch.body) {
+        for para in ch.body.lines().map(str::trim).filter(|l| !l.is_empty()) {
             let _ = writeln!(out, "<p>{}</p>", esc(para));
         }
         out.push_str("</section>\n");
     }
     out.push_str("</body>\n");
 
-    // --- binaries (cover image, …) carried over verbatim ---
-    if let Some(h) = head {
-        for bin in &h.binaries {
-            out.push_str(bin);
-            out.push('\n');
-        }
+    // --- cover binary ---
+    if let (Some(id), Some(cover)) = (&cover_id, meta.cover.as_ref()) {
+        let _ = writeln!(
+            out,
+            "<binary id=\"{id}\" content-type=\"{}\">{}</binary>",
+            cover.content_type, cover.base64
+        );
     }
 
     out.push_str("</FictionBook>\n");
     out
 }
 
-/// Split a chapter body into paragraphs on line breaks (blank lines collapse).
-fn paragraphs(body: &str) -> impl Iterator<Item = &str> {
-    body.lines().map(str::trim).filter(|l| !l.is_empty())
+/// Find the first image `<binary>` block and return it as a `Cover`.
+fn extract_cover(xml: &str) -> Option<Cover> {
+    for block in slice_all(xml, "binary") {
+        let ct = attr(&block, "content-type")?;
+        if !ct.starts_with("image/") {
+            continue;
+        }
+        // inner text = base64 between the opening tag's '>' and '</binary>'
+        let start = block.find('>')? + 1;
+        let end = block.rfind("</binary>")?;
+        let base64: String = block[start..end].split_whitespace().collect();
+        if base64.is_empty() {
+            continue;
+        }
+        return Some(Cover {
+            content_type: ct.to_string(),
+            base64,
+        });
+    }
+    None
+}
+
+/// Read an attribute value from a tag string.
+fn attr<'a>(tag: &'a str, name: &str) -> Option<&'a str> {
+    let key = format!("{name}=\"");
+    let start = tag.find(&key)? + key.len();
+    let end = tag[start..].find('"')? + start;
+    Some(&tag[start..end])
+}
+
+/// Convert a fragment of FB2 markup to plain text (paragraph breaks preserved).
+fn tags_to_text(xml: &str) -> String {
+    let with_breaks = xml.replace("</p>", "\n").replace("<empty-line/>", "\n");
+    let re = regex::Regex::new(r"<[^>]+>").expect("valid regex");
+    let text = re.replace_all(&with_breaks, "");
+    text.lines()
+        .map(str::trim)
+        .filter(|l| !l.is_empty())
+        .collect::<Vec<_>>()
+        .join("\n")
 }
 
 /// Escape XML text content.
@@ -149,45 +209,42 @@ mod tests {
     use super::*;
 
     fn sample() -> Vec<TranslatedChapter> {
-        vec![
-            TranslatedChapter {
-                index: 1,
-                number: Some(1),
-                title: "Глава 1".into(),
-                body: "Первый абзац.\n\nВторой абзац с < & >.".into(),
-            },
-            TranslatedChapter { index: 2, number: Some(2), title: "Глава 2".into(), body: "Текст.".into() },
-        ]
+        vec![TranslatedChapter {
+            index: 1,
+            number: Some(1),
+            title: "Глава 1".into(),
+            body: "Абзац с < & >.".into(),
+        }]
     }
 
     #[test]
-    fn escapes_and_structures() {
-        let meta = OutputMeta { title: "Книга".into(), author: "Автор".into(), lang: "ru".into() };
-        let xml = render(&sample(), &meta, None);
+    fn builds_title_annotation_cover() {
+        let meta = OutputMeta {
+            title: "Книга".into(),
+            author: "Автор".into(),
+            lang: "ru".into(),
+            annotation: Some("Краткое описание.".into()),
+            cover: Some(Cover { content_type: "image/jpeg".into(), base64: "QUJD".into() }),
+        };
+        let xml = render(&sample(), &meta);
         assert!(xml.contains("<book-title>Книга</book-title>"));
-        assert!(xml.contains("<nickname>Автор</nickname>"));
+        assert!(xml.contains("<annotation>"));
+        assert!(xml.contains("Краткое описание."));
+        assert!(xml.contains("<coverpage><image l:href=\"#cover.jpg\"/></coverpage>"));
+        assert!(xml.contains("<binary id=\"cover.jpg\" content-type=\"image/jpeg\">QUJD</binary>"));
         assert!(xml.contains("&lt; &amp; &gt;"));
-        assert_eq!(xml.matches("<section>").count(), 2);
     }
 
     #[test]
-    fn preserves_head_description_and_cover() {
-        let source = r##"<FictionBook><description><title-info>
-<author><first-name>Er Gen</first-name></author><book-title>Src</book-title>
-<coverpage><image l:href="#cover.jpg"/></coverpage></title-info></description>
-<body><section><p>x</p></section></body>
-<binary id="cover.jpg" content-type="image/jpeg">QUJD</binary></FictionBook>"##;
-        let head = extract_head(source);
-        assert!(head.description.as_ref().unwrap().contains("Er Gen"));
-        assert_eq!(head.binaries.len(), 1);
-
-        let meta = OutputMeta::default();
-        let xml = render(&sample(), &meta, Some(&head));
-        // original author + cover reference carried over
-        assert!(xml.contains("Er Gen"));
-        assert!(xml.contains("coverpage"));
-        // cover binary carried over, placed after the body
-        assert!(xml.contains(r#"<binary id="cover.jpg""#));
-        assert!(xml.find("</body>").unwrap() < xml.find("<binary").unwrap());
+    fn extracts_annotation_and_cover() {
+        let src = r##"<FictionBook><description><title-info>
+<annotation><p>Первый абзац.</p><p>Второй.</p></annotation></title-info></description>
+<body/><binary id="c.jpg" content-type="image/jpeg">QUJDRA==</binary></FictionBook>"##;
+        let head = extract_head(src);
+        assert_eq!(head.annotation.as_deref(), Some("Первый абзац.\nВторой."));
+        let cover = head.cover.unwrap();
+        assert_eq!(cover.content_type, "image/jpeg");
+        assert_eq!(cover.base64, "QUJDRA==");
+        assert!(cover.data_url().starts_with("data:image/jpeg;base64,"));
     }
 }

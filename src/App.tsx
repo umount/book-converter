@@ -29,12 +29,20 @@ type Term = {
   frequency: number;
   pinned: boolean;
 };
+type BookDetails = {
+  title: string;
+  author: string;
+  title_translated: string | null;
+  summary: string | null;
+  cover: string | null;
+};
 
 export default function App() {
   const [book, setBook] = useState<BookInfo | null>(null);
   const [ref, setRef] = useState<RefInfo | null>(null);
   const [progress, setProgress] = useState<Progress | null>(null);
   const [glossary, setGlossary] = useState<Term[]>([]);
+  const [details, setDetails] = useState<BookDetails | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
 
@@ -85,6 +93,8 @@ export default function App() {
       setBook(info);
       addLog(`Loaded ${info.total_chapters} chapters (${info.format}, ${info.encoding})`);
       refreshProgress();
+      refreshDetails();
+      translateTitle();
     }
   }
 
@@ -97,6 +107,7 @@ export default function App() {
     if (info) {
       setRef(info);
       addLog(`Reference: ${info.chapters} chapters, covers up to #${info.max_covered ?? "?"}`);
+      refreshDetails();
     }
   }
 
@@ -135,6 +146,29 @@ export default function App() {
   async function refreshGlossary() {
     const g = await call<Term[]>("get_glossary", {});
     if (g) setGlossary(g);
+  }
+
+  async function refreshDetails() {
+    const d = await call<BookDetails>("get_book_details", {});
+    if (d) setDetails(d);
+  }
+
+  async function translateTitle() {
+    const t = await call<string>("translate_title", {});
+    if (t) refreshDetails();
+  }
+
+  async function replaceCover() {
+    const path = await open({
+      filters: [{ name: "Image", extensions: ["jpg", "jpeg", "png", "gif", "webp"] }],
+    });
+    if (typeof path !== "string") return;
+    await call("set_cover", { path });
+    refreshDetails();
+  }
+
+  async function saveSummary(text: string) {
+    await call("set_summary", { summary: text });
   }
 
   async function pinTerm(t: Term, target: string) {
@@ -257,6 +291,41 @@ export default function App() {
           </div>
         </section>
       </div>
+
+      {/* --- Book details (cover / title / summary) --- */}
+      {details && (book || ref) && (
+        <section className="card">
+          <h2>Book</h2>
+          <div className="book-details">
+            {details.cover ? (
+              <img className="cover" src={details.cover} alt="cover" />
+            ) : (
+              <div className="cover cover-empty">no cover</div>
+            )}
+            <div className="book-meta">
+              <div className="row">
+                <strong className="book-title">
+                  {details.title_translated || details.title || "(untitled)"}
+                </strong>
+                {!details.title_translated && (
+                  <button onClick={translateTitle}>Translate title</button>
+                )}
+                <button onClick={replaceCover}>Replace cover</button>
+              </div>
+              {details.title_translated && details.title && (
+                <div className="muted">original: {details.title}</div>
+              )}
+              <div className="muted">{details.author}</div>
+              <textarea
+                className="summary"
+                placeholder="Summary / annotation…"
+                defaultValue={details.summary || ""}
+                onBlur={(e) => saveSummary(e.target.value)}
+              />
+            </div>
+          </div>
+        </section>
+      )}
 
       {/* --- Glossary --- */}
       <section className="card">

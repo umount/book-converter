@@ -136,6 +136,10 @@ pub struct OutputMeta {
     pub author: String,
     /// Language tag for FB2 (`<lang>`), e.g. "ru".
     pub lang: String,
+    /// Annotation / summary (target language).
+    pub annotation: Option<String>,
+    /// Cover image.
+    pub cover: Option<fb2::Cover>,
 }
 
 impl Default for OutputMeta {
@@ -144,38 +148,33 @@ impl Default for OutputMeta {
             title: "Untitled".into(),
             author: "Unknown".into(),
             lang: "ru".into(),
+            annotation: None,
+            cover: None,
         }
     }
 }
 
 /// Render the book to a string in the given format.
-pub fn render(
-    chapters: &[TranslatedChapter],
-    format: OutputFormat,
-    meta: &OutputMeta,
-    head: Option<&fb2::Fb2Head>,
-) -> String {
+pub fn render(chapters: &[TranslatedChapter], format: OutputFormat, meta: &OutputMeta) -> String {
     match format {
         OutputFormat::Txt => txt::render(chapters),
-        OutputFormat::Fb2 => fb2::render(chapters, meta, head),
+        OutputFormat::Fb2 => fb2::render(chapters, meta),
         // EPUB is a binary container — written directly by `export`, not rendered
         // to a string; callers must not route it through render()/export_zip().
         OutputFormat::Epub => String::new(),
     }
 }
 
-/// Write `chapters` to `out_path` in the given format. `head` (an FB2 source head
-/// to preserve author/cover) is used only by the FB2 writer.
+/// Write `chapters` to `out_path` in the given format.
 pub fn export(
     chapters: &[TranslatedChapter],
     format: OutputFormat,
     meta: &OutputMeta,
-    head: Option<&fb2::Fb2Head>,
     out_path: &Path,
 ) -> Result<()> {
     match format {
         OutputFormat::Txt => txt::export(chapters, out_path),
-        OutputFormat::Fb2 => fb2::export(chapters, meta, head, out_path),
+        OutputFormat::Fb2 => fb2::export(chapters, meta, out_path),
         OutputFormat::Epub => epub::export(chapters, meta, out_path),
     }
 }
@@ -186,13 +185,12 @@ pub fn export_zip(
     chapters: &[TranslatedChapter],
     format: OutputFormat,
     meta: &OutputMeta,
-    head: Option<&fb2::Fb2Head>,
     inner_name: &str,
     zip_path: &Path,
 ) -> Result<()> {
     use std::io::Write as _;
 
-    let content = render(chapters, format, meta, head);
+    let content = render(chapters, format, meta);
     let file = std::fs::File::create(zip_path)
         .with_context(|| format!("creating {}", zip_path.display()))?;
     let mut zip = zip::ZipWriter::new(file);

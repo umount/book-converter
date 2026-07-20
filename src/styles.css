@@ -93,6 +93,39 @@ label { color: var(--muted); }
   color: var(--muted);
 }
 
+.book-details { display: flex; gap: 16px; align-items: flex-start; }
+.cover {
+  width: 120px;
+  height: 168px;
+  object-fit: cover;
+  border-radius: 6px;
+  border: 1px solid var(--line);
+  background: #0f1218;
+  flex-shrink: 0;
+}
+.cover-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--muted);
+  font-size: 12px;
+}
+.book-meta { flex: 1; min-width: 0; }
+.book-title { font-size: 16px; }
+.summary {
+  width: 100%;
+  min-height: 90px;
+  margin-top: 10px;
+  resize: vertical;
+  background: #0f1218;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  color: var(--fg);
+  padding: 8px;
+  font-family: inherit;
+  line-height: 1.4;
+}
+
 .table-wrap { overflow-x: auto; max-height: 420px; overflow-y: auto; }
 table { width: 100%; border-collapse: collapse; margin-top: 6px; }
 th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--line); }
