@@ -183,7 +183,7 @@ professional translation `За гранью времени`:
 - [x] **Chapter limit**: `Orchestrator::run(limit)` — translate the next N chapters
 - [x] Chapter titles translated too (title prepended to the request; `split_title_body`
       splits + cleans markdown noise), so appended chapters get target-language titles
-- [ ] `epub` output — deferred (after TXT/FB2)
+- [x] `epub` output — per-chapter XHTML + TOC via `epub-builder`
 
 **Verified (continue flow):** with a reference covering chapters 1–2, `continue_from`
 picked 3–4, the orchestrator translated them (limit 2), `combine` produced a 4-chapter

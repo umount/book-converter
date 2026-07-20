@@ -428,12 +428,10 @@ impl OutputTarget {
             out_path.to_string()
         };
         let format = OutputFormat::from_path(Path::new(&inner_path)).unwrap_or(OutputFormat::Fb2);
-        let zipped = ends_zip || zipped_input;
+        // EPUB is already a zip container, so never re-zip it.
+        let zipped = (ends_zip || zipped_input) && !format.is_container();
 
-        let ext = match format {
-            OutputFormat::Txt => "txt",
-            OutputFormat::Fb2 => "fb2",
-        };
+        let ext = format.ext();
         let inner_stem = Path::new(&inner_path)
             .file_name()
             .and_then(|n| n.to_str())

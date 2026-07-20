@@ -143,7 +143,9 @@ export default function App() {
   }
 
   async function exportBook() {
-    const outPath = await save({ filters: [{ name: "Output", extensions: ["fb2", "txt"] }] });
+    const outPath = await save({
+      filters: [{ name: "Output", extensions: ["fb2", "epub", "txt", "zip"] }],
+    });
     if (typeof outPath !== "string") return;
     setBusy("Exporting…");
     const p = await call<string>("export_book", { outPath });
@@ -243,7 +245,7 @@ export default function App() {
             </div>
           )}
           <button onClick={exportBook} disabled={!progress || progress.done === 0} style={{ marginTop: 10 }}>
-            Export (.txt / .fb2)
+            Export (FB2 / EPUB / TXT / ZIP)
           </button>
         </section>
 

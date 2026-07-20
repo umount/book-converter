@@ -95,6 +95,7 @@ fn leading_marker_regex() -> Regex {
 pub enum OutputFormat {
     Txt,
     Fb2,
+    Epub,
 }
 
 impl OutputFormat {
@@ -108,8 +109,23 @@ impl OutputFormat {
         {
             Some("txt") => Some(Self::Txt),
             Some("fb2") => Some(Self::Fb2),
+            Some("epub") => Some(Self::Epub),
             _ => None,
         }
+    }
+
+    /// File extension for this format.
+    pub fn ext(self) -> &'static str {
+        match self {
+            Self::Txt => "txt",
+            Self::Fb2 => "fb2",
+            Self::Epub => "epub",
+        }
+    }
+
+    /// EPUB is itself a zip container, so it is never re-zipped.
+    pub fn is_container(self) -> bool {
+        matches!(self, Self::Epub)
     }
 }
 
@@ -142,6 +158,9 @@ pub fn render(
     match format {
         OutputFormat::Txt => txt::render(chapters),
         OutputFormat::Fb2 => fb2::render(chapters, meta, head),
+        // EPUB is a binary container — written directly by `export`, not rendered
+        // to a string; callers must not route it through render()/export_zip().
+        OutputFormat::Epub => String::new(),
     }
 }
 
@@ -157,6 +176,7 @@ pub fn export(
     match format {
         OutputFormat::Txt => txt::export(chapters, out_path),
         OutputFormat::Fb2 => fb2::export(chapters, meta, head, out_path),
+        OutputFormat::Epub => epub::export(chapters, meta, out_path),
     }
 }
 
