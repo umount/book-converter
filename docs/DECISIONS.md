@@ -157,11 +157,26 @@ with no benefit for a reading use case.
 
 ---
 
-## Output formats: TXT + EPUB
+## Output formats: TXT, FB2, EPUB, PDF
 
-**Decision:** produce both a plain `.txt` and an `.epub` with a per-chapter table of
-contents.
+**Decision:** export to plain `.txt`, `.fb2`, `.epub` (per-chapter table of contents),
+and `.pdf` (cover page, contents with page numbers, clickable bookmarks). PDF is
+rendered with `genpdf` for layout/pagination and patched with `lopdf` for the outline
+and a Unicode document title.
 
-**Why:** `.txt` is the simplest artifact and a safe fallback; `.epub` is the
-comfortable reading format with navigation. Both are cheap to generate from the same
-translated chapters.
+**Why:** `.txt` is the simplest artifact and a safe fallback; `.fb2`/`.epub` are the
+comfortable reading formats with navigation; `.pdf` is the print/share format. All are
+cheap to generate from the same translated chapters.
+
+---
+
+## Output localization lives in data, not code
+
+**Decision:** output-facing strings (the "Contents" heading, the "Chapter" label,
+fallback title/author) are looked up through the `i18n` module from
+`assets/locales.json` (`ru`/`en`/`zh`), keyed by a normalized language code. Code calls
+`i18n::label(lang, key)`; it never embeds a translated string or a per-language branch.
+
+**Why:** the converter is language-pair agnostic and will grow more output languages
+(English, Chinese). Adding one should be a JSON entry with an English fallback, not a
+hunt for hardcoded literals across `pdf.rs`/`commands.rs`.

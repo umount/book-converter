@@ -96,7 +96,8 @@ thing the frontend knows about.
 | **translator::prompt** | Build system/user prompts: base instructions + mandatory term glossary + optional previous-chapter summary |
 | **translator::deepseek** | DeepSeek HTTP client (`/chat/completions`), retry + backoff, handling 429/5xx |
 | **state** | Persist progress and glossary in SQLite. Run resumption |
-| **export::txt** / **export::fb2** / **export::epub** | Assemble the result into the chosen output format: `.txt`, `.fb2` (per-chapter sections), or `.epub` with a table of contents (EPUB planned) |
+| **export::txt** / **export::fb2** / **export::epub** / **export::pdf** | Assemble the result into the chosen output format: `.txt`, `.fb2` (per-chapter sections), `.epub` with a table of contents, or `.pdf` (cover page, contents with page numbers, clickable bookmarks) |
+| **i18n** | Output-facing localization (the "Contents" heading, the "Chapter" label, fallback title/author). Strings live in `assets/locales.json` (`ru`/`en`/`zh`); a new output language is a JSON entry, not a code change |
 | **commands** | Tauri commands — the Rust ↔ React bridge. Progress is pushed via events (`emit`) |
 
 ## Translation Pipeline
