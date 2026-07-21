@@ -44,8 +44,9 @@ base64 = "0.22"        # cover image ↔ base64 (FB2 <binary>, data URLs, EPUB)
 epub-builder = "0.7"
 genpdf = { version = "0.2", features = ["images"] }  # PDF output (with cover image)
 image = { version = "0.25", default-features = false, features = ["jpeg", "png", "gif", "webp"] }  # normalize cover → JPEG for PDF
-pdf-extract = "0.12"   # PDF input (text extraction)
-lopdf = "0.42"         # patch PDF Info metadata (Unicode title) post-render
+pdf-extract = "0.12"   # PDF input (pure-Rust text extraction fallback)
+lopdf = "0.42"         # PDF outline (TOC), cover image, and Info-metadata patching
+pdfium-render = "0.8"  # cross-platform PDF text via a bundled pdfium (preferred)
 
 # --- Config ---
 dotenvy = "0.15"       # load DEEPSEEK_API_KEY from a local .env at startup

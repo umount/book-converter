@@ -180,3 +180,19 @@ fallback title/author) are looked up through the `i18n` module from
 **Why:** the converter is language-pair agnostic and will grow more output languages
 (English, Chinese). Adding one should be a JSON entry with an English fallback, not a
 hunt for hardcoded literals across `pdf.rs`/`commands.rs`.
+
+---
+
+## PDF text via bundled pdfium (not pure-Rust only)
+
+**Decision:** extract PDF text with Google's **pdfium** via `pdfium-render`, shipping
+a prebuilt pdfium dynamic library per platform (fetched by `make fetch-pdfium` from
+bblanchon/pdfium-binaries, bundled as a Tauri resource). Poppler `pdftotext` and the
+pure-Rust `pdf-extract`/`lopdf` remain fallbacks.
+
+**Why:** many real PDFs subset fonts with custom encodings and no ToUnicode map. The
+pure-Rust extractors then return empty or shifted, space-less garbage (the sample
+"The Design of Web APIs" is one such file); pdfium and Poppler decode them correctly.
+Poppler alone is not portable (absent on stock macOS/Windows), so a bundled pdfium
+gives correct extraction everywhere while the fallbacks cover the case where the
+library is missing.

@@ -10,12 +10,64 @@
 use std::collections::HashMap;
 use std::path::Path;
 use std::process::Command;
+use std::sync::{Mutex, OnceLock};
 
 use lopdf::{Dictionary, Document, Object, ObjectId};
+use pdfium_render::prelude::*;
 
-/// Extract a PDF's full text: Poppler (`pdftotext`) first, then the pure-Rust
-/// `pdf-extract` as a fallback. May be empty if the PDF has no extractable text.
+/// Path to a bundled pdfium dynamic library, set once at startup from the app's
+/// resource directory. `None` means "not configured; try env / system".
+static PDFIUM_LIB: OnceLock<Option<String>> = OnceLock::new();
+/// pdfium is single-threaded, so serialize all use of it.
+static PDFIUM_LOCK: Mutex<()> = Mutex::new(());
+
+/// Configure where to find the pdfium library (called once at startup).
+pub fn set_pdfium_lib_path(path: Option<String>) {
+    let _ = PDFIUM_LIB.set(path);
+}
+
+/// Bind to a pdfium library: an explicit env override, then the configured bundled
+/// path, then a system-installed library. `None` if none is available.
+fn bind_pdfium() -> Option<Pdfium> {
+    let candidates = [
+        std::env::var("PDFIUM_DYNAMIC_LIB_PATH").ok(),
+        PDFIUM_LIB.get().cloned().flatten(),
+    ];
+    for c in candidates.into_iter().flatten() {
+        if let Ok(b) = Pdfium::bind_to_library(&c) {
+            return Some(Pdfium::new(b));
+        }
+    }
+    Pdfium::bind_to_system_library().ok().map(Pdfium::new)
+}
+
+/// Full text of a page range (1-based inclusive) via pdfium, if available.
+fn pdfium_text(path: &Path, first: Option<u32>, last: Option<u32>) -> Option<String> {
+    let _guard = PDFIUM_LOCK.lock().ok()?;
+    let pdfium = bind_pdfium()?;
+    let doc = pdfium.load_pdf_from_file(path.to_str()?, None).ok()?;
+    let count = doc.pages().len();
+    let start = first.unwrap_or(1).max(1);
+    let end = last.map(|l| l.min(count as u32)).unwrap_or(count as u32);
+    let mut out = String::new();
+    for idx in (start - 1)..end {
+        if let Ok(page) = doc.pages().get(idx as u16) {
+            if let Ok(txt) = page.text() {
+                out.push_str(&txt.all());
+                out.push('\n');
+            }
+        }
+    }
+    (!out.trim().is_empty()).then_some(out)
+}
+
+/// Extract a PDF's full text. Preference order: bundled pdfium (correct across
+/// platforms), Poppler's `pdftotext`, then the pure-Rust `pdf-extract`. May be empty
+/// if the PDF genuinely has no extractable text.
 pub fn text(path: &Path) -> String {
+    if let Some(t) = pdfium_text(path, None, None) {
+        return t;
+    }
     if let Some(t) = pdftotext(path, None, None) {
         return t;
     }
@@ -106,9 +158,10 @@ pub fn toc_chapters(path: &Path) -> Option<Vec<(String, String)>> {
     for (i, (title, start)) in items.iter().enumerate() {
         let end = items.get(i + 1).map(|(_, p)| *p).unwrap_or(total_pages + 1);
         let last = (end.saturating_sub(1)).max(*start);
-        // Prefer Poppler; fall back to lopdf with cipher recovery.
-        let body = pdftotext(path, Some(*start), Some(last))
+        // Prefer pdfium, then Poppler, then lopdf with cipher recovery.
+        let body = pdfium_text(path, Some(*start), Some(last))
             .filter(|t| looks_like_text(t))
+            .or_else(|| pdftotext(path, Some(*start), Some(last)).filter(|t| looks_like_text(t)))
             .or_else(|| {
                 let range: Vec<u32> = (*start..end.max(*start + 1)).collect();
                 recover_text(&doc.extract_text(&range).unwrap_or_default())

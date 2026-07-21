@@ -34,6 +34,26 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
+        .setup(|app| {
+            // Locate the bundled pdfium library (for cross-platform PDF text): the
+            // app's resource dir (packaged builds) or next to the executable (raw
+            // `cargo`/`target/release` runs). Falls back to env / system pdfium.
+            use tauri::Manager;
+            let name = pdfium_render::prelude::Pdfium::pdfium_platform_library_name_at_path;
+            let mut dirs: Vec<std::path::PathBuf> = Vec::new();
+            if let Ok(d) = app.path().resource_dir() {
+                dirs.push(d.join("pdfium"));
+            }
+            if let Ok(exe) = std::env::current_exe() {
+                if let Some(d) = exe.parent() {
+                    dirs.push(d.join("pdfium"));
+                }
+            }
+            if let Some(lib) = dirs.into_iter().map(|d| name(&d)).find(|p| p.exists()) {
+                book::set_pdfium_lib_path(Some(lib.to_string_lossy().into_owned()));
+            }
+            Ok(())
+        })
         .manage(commands::AppState::new())
         .invoke_handler(tauri::generate_handler![
             commands::load_source,

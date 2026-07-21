@@ -15,6 +15,7 @@ pub use parser::{
     parse_chapters_with, parse_inferred_pattern, validate, BookMeta, Chapter, ParseReport,
 };
 pub use pdf::{
-    cover as extract_pdf_cover, looks_like_text, toc_chapters as extract_pdf_toc_chapters,
+    cover as extract_pdf_cover, looks_like_text, set_pdfium_lib_path,
+    toc_chapters as extract_pdf_toc_chapters,
 };
 pub use source::{decode_book_bytes, read_book_file, DecodedText};
