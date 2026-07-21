@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { open, save } from "@tauri-apps/plugin-dialog";
+import { LANGS, LS_LANG, normalizeLang, translate, type Lang } from "./i18n";
 
 // --- DTOs (mirror src-tauri/src/commands.rs) ---
 type BookInfo = {
@@ -11,6 +12,7 @@ type BookInfo = {
 type RefInfo = { title: string; chapters: number; max_covered: number | null };
 type Progress = { done: number; total: number; failed: number; pending: number; running: boolean };
 type Term = { source: string; target: string; kind: string; frequency: number; pinned: boolean };
+const TERM_KINDS = ["person", "location", "organization", "term"] as const;
 type BookDetails = { title: string; author: string; title_translated: string | null; author_translated: string | null; summary: string | null; cover: string | null };
 type ChapterRow = { idx: number; number: number | null; title: string; status: string };
 type ChapterView = {
@@ -42,6 +44,9 @@ export default function App() {
   });
   const [active, setActive] = useState<number>(() => Number(localStorage.getItem(LS_ACTIVE) ?? -1));
   const [view, setView] = useState<ViewId>("overview");
+  const [lang, setLang] = useState<Lang>(() => normalizeLang(localStorage.getItem(LS_LANG)));
+  const [showSettings, setShowSettings] = useState(false);
+  const t = (key: string, vars?: Record<string, string | number>) => translate(lang, key, vars);
 
   const [book, setBook] = useState<BookInfo | null>(null);
   const [ref, setRef] = useState<RefInfo | null>(null);
@@ -49,9 +54,16 @@ export default function App() {
   const [progress, setProgress] = useState<Progress | null>(null);
   const [glossary, setGlossary] = useState<Term[]>([]);
   const [glossaryQuery, setGlossaryQuery] = useState("");
+  const [newTerm, setNewTerm] = useState<{ source: string; target: string; kind: string }>({ source: "", target: "", kind: "person" });
+  // Renames whose new rendering has been saved to the glossary but not yet
+  // propagated into the existing translation. Keyed by source; `old` is the
+  // rendering still present in the translated text. Drives the global button.
+  const [pending, setPending] = useState<Record<string, { old: string; new: string; kind: string }>>({});
+  const pendingCount = Object.keys(pending).length;
 
   const [chapters, setChapters] = useState<ChapterRow[]>([]);
   const [chapterIdx, setChapterIdx] = useState<number | null>(null);
+  const chapterIdxRef = useRef<number | null>(null);
   const [chapter, setChapter] = useState<ChapterView | null>(null);
   const [chapterLoading, setChapterLoading] = useState(false);
   const [panes, setPanes] = useState({ orig: true, transl: true });
@@ -76,13 +88,37 @@ export default function App() {
 
   useEffect(() => localStorage.setItem(LS_PROJECTS, JSON.stringify(projects)), [projects]);
   useEffect(() => localStorage.setItem(LS_ACTIVE, String(active)), [active]);
+  // Language: localStorage is an instant cache to avoid a flash on load; the DB
+  // is the durable source of truth (survives restarts). Load DB once on mount,
+  // then persist every change to both.
+  const langLoaded = useRef(false);
+  useEffect(() => {
+    (async () => {
+      const v = await call<string | null>("get_setting", { key: "lang" });
+      if (v) setLang(normalizeLang(v));
+      langLoaded.current = true;
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  useEffect(() => {
+    localStorage.setItem(LS_LANG, lang);
+    document.documentElement.lang = lang;
+    if (langLoaded.current) void call("set_setting", { key: "lang", value: lang });
+  }, [lang]);
   useEffect(() => logRef.current?.scrollTo(0, logRef.current.scrollHeight), [log]);
 
+  // Keep a live ref to `t` so once-registered event listeners localize correctly.
+  const tRef = useRef(t);
+  tRef.current = t;
   useEffect(() => {
+    const tr = (key: string, vars?: Record<string, string | number>) => tRef.current(key, vars);
     const unsubs = [
       listen<Progress>("progress", (e) => setProgress(e.payload)),
-      listen("done", () => { addLog("✓ run finished"); refreshProgress(); refreshGlossary(); }),
-      listen<string>("job_error", (e) => setError(String(e.payload))),
+      listen("done", () => { addLog(tr("log.runFinished")); refreshProgress(); refreshGlossary(); }),
+      listen<string>("job_error", (e) => { setBusy(null); setError(String(e.payload)); }),
+      listen<{ done: number; total: number }>("retarget_progress", (e) =>
+        setBusy(tr("busy.updatingTranslationN", { done: e.payload.done, total: e.payload.total }))),
+      listen<number>("retarget_done", (e) => { setBusy(null); addLog(tr("log.renamed", { n: e.payload })); setPending({}); refreshProgress(); const i = chapterIdxRef.current; if (i != null) openChapter(i); }),
     ];
     return () => unsubs.forEach((u) => u.then((f) => f()));
   }, []);
@@ -100,6 +136,7 @@ export default function App() {
   }, [view]);
 
   useEffect(() => {
+    chapterIdxRef.current = chapterIdx;
     if (chapterIdx != null) void openChapter(chapterIdx);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [chapterIdx]);
@@ -111,11 +148,11 @@ export default function App() {
 
   function clearWorkspace() {
     setBook(null); setRef(null); setDetails(null); setProgress(null);
-    setGlossary([]); setChapters([]); setChapterIdx(null); setChapter(null);
+    setGlossary([]); setChapters([]); setChapterIdx(null); setChapter(null); setPending({});
   }
 
   async function activateProject(p: Project) {
-    setBusy(`Opening ${p.name}…`);
+    setBusy(t("busy.opening", { name: p.name }));
     clearWorkspace();
     const info = await call<BookInfo>("load_source", { path: p.path });
     if (info) {
@@ -135,7 +172,7 @@ export default function App() {
     if (existing >= 0) { setActive(existing); return; }
     const next = [...projects, { path, name: baseName(path) }];
     setProjects(next); setActive(next.length - 1);
-    addLog(`Opened project: ${baseName(path)}`);
+    addLog(t("log.opened", { name: baseName(path) }));
   }
 
   function removeProject(idx: number) {
@@ -148,36 +185,36 @@ export default function App() {
     if (!activeProject) return;
     const path = await open({ filters: [{ name: "Reference", extensions: ["fb2", "txt", "pdf", "zip"] }] });
     if (typeof path !== "string") return;
-    setBusy("Loading reference…");
+    setBusy(t("busy.loadingReference"));
     const info = await call<RefInfo>("load_reference", { path });
     setBusy(null);
     if (info) {
       setRef(info);
       setProjects((ps) => ps.map((p, i) => (i === active ? { ...p, refPath: path } : p)));
-      addLog(`Reference: covers up to #${info.max_covered ?? "?"}`);
+      addLog(t("log.reference", { n: info.max_covered ?? "?" }));
       refreshDetails();
     }
   }
 
   async function bootstrap() {
-    setBusy(`Bootstrapping from ${sample} chapters…`);
+    setBusy(t("busy.bootstrapping", { n: sample }));
     const n = await call<number>("bootstrap_glossary", { sample });
     setBusy(null);
-    if (n !== undefined) { addLog(`Bootstrapped ${n} terms`); refreshGlossary(); }
+    if (n !== undefined) { addLog(t("log.bootstrapped", { n })); refreshGlossary(); }
   }
 
   async function start() {
     if (continueMode && ref) {
-      setBusy("Importing reference chapters…");
+      setBusy(t("busy.importing"));
       const n = await call<number>("use_reference_as_base", {});
       setBusy(null);
-      if (n !== undefined) addLog(`Imported ${n} reference chapters`);
+      if (n !== undefined) addLog(t("log.imported", { n }));
     }
     const lim = limit === "" ? null : Number(limit);
     await call("start_translation", { limit: lim });
-    addLog(`Started translation${lim ? ` (next ${lim})` : ""}`);
+    addLog(t("log.started", { suffix: lim ? t("log.startedNext", { n: lim }) : "" }));
   }
-  async function pause() { await call("pause_translation", {}); addLog("Pause requested"); }
+  async function pause() { await call("pause_translation", {}); addLog(t("log.pauseRequested")); }
 
   async function refreshProgress() { const p = await call<Progress>("get_progress", {}); if (p) setProgress(p); }
   async function refreshGlossary() { const g = await call<Term[]>("get_glossary", {}); if (g) setGlossary(g); }
@@ -203,16 +240,69 @@ export default function App() {
     await call("set_cover", { path }); refreshDetails();
   }
   async function saveSummary(text: string) { await call("set_summary", { summary: text }); }
-  async function pinTerm(t: Term, target: string) { await call("update_term", { term: { ...t, target, pinned: true } }); refreshGlossary(); }
+  // Term edits auto-save. Changing the rendering also records a pending rename so
+  // the global "Update translation" button can later propagate it into the text.
+  async function saveTermField(term: Term, patch: Partial<Term>) {
+    await call("update_term", { term: { ...term, ...patch, pinned: true } });
+    refreshGlossary();
+  }
+  function editTarget(term: Term, value: string) {
+    const nt = value.trim();
+    if (!nt || nt === term.target) return;
+    void saveTermField(term, { target: nt });
+    setPending((p) => {
+      const prev = p[term.source];
+      const old = prev ? prev.old : term.target; // rendering still in the translated text
+      if (old === nt) { const n = { ...p }; delete n[term.source]; return n; }
+      return { ...p, [term.source]: { old, new: nt, kind: prev?.kind ?? term.kind } };
+    });
+  }
+  function editKind(term: Term, kind: string) {
+    void saveTermField(term, { kind });
+    setPending((p) => (p[term.source] ? { ...p, [term.source]: { ...p[term.source], kind } } : p));
+  }
+  // Propagate all pending renames into the already-translated text (background job).
+  async function updateTranslation() {
+    const list = Object.values(pending);
+    if (!list.length) return;
+    const summary = list.map((c) => `«${c.old}» → «${c.new}»`).join("\n");
+    if (!confirm(t("glossary.updateConfirm", { n: list.length, list: summary }))) return;
+    setBusy(t("busy.updatingTranslation"));
+    setError(null);
+    // Progress/finish are driven by retarget_progress / retarget_done events;
+    // only a synchronous rejection needs to clear the busy state here.
+    try {
+      await invoke("retarget_terms", {
+        changes: list.map((c) => ({ old_target: c.old, new_target: c.new, kind: c.kind })),
+      });
+    } catch (e) { setBusy(null); setError(String(e)); }
+  }
+  async function deleteTerm(t: Term) {
+    await call("delete_term", { source: t.source });
+    setPending((p) => { const n = { ...p }; delete n[t.source]; return n; });
+    refreshGlossary();
+  }
+  async function renameTerm(t: Term, source: string) {
+    await call("update_term", { term: { ...t, source, pinned: true } });
+    await call("delete_term", { source: t.source });
+    refreshGlossary();
+  }
+  async function addTerm() {
+    const source = newTerm.source.trim(), target = newTerm.target.trim();
+    if (!source || !target) return;
+    await call("update_term", { term: { source, target, kind: newTerm.kind, frequency: 1, pinned: true } });
+    setNewTerm({ source: "", target: "", kind: "person" });
+    refreshGlossary();
+  }
   async function exportAs(fmt: "fb2" | "epub" | "pdf" | "txt") {
     setMenu(null);
     const outPath = await save({ defaultPath: `book.${fmt}`, filters: [{ name: fmt.toUpperCase(), extensions: [fmt] }] });
     if (typeof outPath !== "string") return;
     const path = outPath.toLowerCase().endsWith(`.${fmt}`) ? outPath : `${outPath}.${fmt}`;
-    setBusy(`Exporting ${fmt.toUpperCase()}…`);
+    setBusy(t("busy.exporting", { fmt: fmt.toUpperCase() }));
     const p = await call<string>("export_book", { outPath: path });
     setBusy(null);
-    if (p) addLog(`Exported → ${p}`);
+    if (p) addLog(t("log.exported", { path: p }));
   }
   const canExport = !!progress && progress.done > 0;
 
@@ -241,13 +331,13 @@ export default function App() {
       <header className="menubar">
         <span className="brand">book-converter</span>
         <div className="menuitem" onClick={() => setMenu(menu === "file" ? null : "file")}>
-          File
+          {t("menu.file")}
           {menu === "file" && (
             <div className="dropdown" onClick={(e) => e.stopPropagation()}>
-              <div className="mi" onClick={openBook}>Open book…</div>
-              <div className={`mi ${!activeProject ? "disabled" : ""}`} onClick={() => activeProject && openReference()}>Open reference…</div>
+              <div className="mi" onClick={openBook}>{t("file.openBook")}</div>
+              <div className={`mi ${!activeProject ? "disabled" : ""}`} onClick={() => activeProject && openReference()}>{t("file.openReference")}</div>
               <div className="sep" />
-              <div className="mi-label">Export as</div>
+              <div className="mi-label">{t("file.exportAs")}</div>
               <div className={`mi ${!canExport ? "disabled" : ""}`} onClick={() => canExport && exportAs("fb2")}>FB2</div>
               <div className={`mi ${!canExport ? "disabled" : ""}`} onClick={() => canExport && exportAs("epub")}>EPUB</div>
               <div className={`mi ${!canExport ? "disabled" : ""}`} onClick={() => canExport && exportAs("pdf")}>PDF</div>
@@ -256,15 +346,16 @@ export default function App() {
           )}
         </div>
         <div className="menuitem" onClick={() => setMenu(menu === "view" ? null : "view")}>
-          View
+          {t("menu.view")}
           {menu === "view" && (
             <div className="dropdown" onClick={(e) => e.stopPropagation()}>
-              <div className="mi" onClick={() => { setSidebar((s) => !s); setMenu(null); }}>Toggle sidebar</div>
-              <div className="mi" onClick={() => { setPanes({ orig: true, transl: true }); setMenu(null); }}>Show both panes</div>
-              <div className="mi" onClick={() => { setHl((h) => !h); setMenu(null); }}>Toggle glossary highlight</div>
+              <div className="mi" onClick={() => { setSidebar((s) => !s); setMenu(null); }}>{t("view.toggleSidebar")}</div>
+              <div className="mi" onClick={() => { setPanes({ orig: true, transl: true }); setMenu(null); }}>{t("view.showBothPanes")}</div>
+              <div className="mi" onClick={() => { setHl((h) => !h); setMenu(null); }}>{t("view.toggleHighlight")}</div>
             </div>
           )}
         </div>
+        <div className="menuitem" onClick={() => { setShowSettings(true); setMenu(null); }}>{t("menu.settings")}</div>
         <div className="menu-spacer" />
         {busy && <span className="busy-inline">{busy}</span>}
       </header>
@@ -274,7 +365,7 @@ export default function App() {
       <div className="body">
         {/* Sidebar: projects tree */}
         <aside className={`sidebar ${sidebar ? "" : "collapsed"}`}>
-          <div className="sidebar-head"><span>Projects</span>
+          <div className="sidebar-head"><span>{t("sidebar.projects")}</span>
             <button className="icon" onClick={() => setSidebar(false)}>⟨</button>
           </div>
           <ul className="tree">
@@ -286,77 +377,93 @@ export default function App() {
                 </div>
                 {i === active && (
                   <ul className="children">
-                    <li className={`leaf ${view === "overview" ? "sel" : ""}`} onClick={() => setView("overview")}>Overview</li>
-                    <li className={`leaf ${view === "reader" ? "sel" : ""}`} onClick={() => setView("reader")}>Translation</li>
-                    <li className={`leaf ${view === "glossary" ? "sel" : ""}`} onClick={() => setView("glossary")}>Glossary <span className="badge">{glossary.length}</span></li>
+                    <li className={`leaf ${view === "overview" ? "sel" : ""}`} onClick={() => setView("overview")}>{t("nav.overview")}</li>
+                    <li className={`leaf ${view === "reader" ? "sel" : ""}`} onClick={() => setView("reader")}>{t("nav.translation")}</li>
+                    <li className={`leaf ${view === "glossary" ? "sel" : ""}`} onClick={() => setView("glossary")}>{t("nav.glossary")} <span className="badge">{glossary.length}</span></li>
                   </ul>
                 )}
               </li>
             ))}
-            {projects.length === 0 && <li className="empty">No projects</li>}
+            {projects.length === 0 && <li className="empty">{t("sidebar.noProjects")}</li>}
           </ul>
-          <button className="add" onClick={openBook}>+ Open book</button>
+          <button className="add" onClick={openBook}>{t("sidebar.openBook")}</button>
         </aside>
         {!sidebar && <button className="sidebar-show" onClick={() => setSidebar(true)}>⟩</button>}
 
         {/* Work area */}
         <main className="workarea">
+          {showSettings ? (
+            <div className="settings-page">
+              <div className="workhead settings-head">
+                <div className="worktitle">{t("settings.title")}</div>
+                <button className="ghost" onClick={() => setShowSettings(false)}>{t("settings.close")}</button>
+              </div>
+              <Panel id="settings-lang" title={t("settings.language")}>
+                <div className="row">
+                  <select value={lang} onChange={(e) => setLang(normalizeLang(e.target.value))} style={{ minWidth: 160 }}>
+                    {LANGS.map((l) => <option key={l.code} value={l.code}>{l.label}</option>)}
+                  </select>
+                </div>
+                <div className="muted" style={{ marginTop: 6 }}>{t("settings.languageHint")}</div>
+              </Panel>
+            </div>
+          ) : (<>
           {error && <div className="error" onClick={() => setError(null)}>{error}</div>}
 
           {!activeProject ? (
-            <div className="welcome"><h1>book-converter</h1><p>Open a book to start a project.</p><button onClick={openBook}>Open book</button></div>
+            <div className="welcome"><h1>book-converter</h1><p>{t("welcome.subtitle")}</p><button onClick={openBook}>{t("welcome.openBook")}</button></div>
           ) : (
             <>
               <div className="workhead">
                 <div className="worktitle">{details?.title_translated || details?.title || activeProject.name}</div>
                 <div className="worksub">
-                  {book && `${book.total_chapters} ch · ${book.format} · ${book.encoding}`}
-                  {ref && ` · ref #${ref.max_covered ?? "?"}`}
-                  {progress && ` · ${progress.done}/${progress.total} done`}
+                  {book && `${t("overview.chapters", { n: book.total_chapters })} · ${book.format} · ${book.encoding}`}
+                  {ref && ` · ${t("overview.ref", { n: ref.max_covered ?? "?" })}`}
+                  {progress && ` · ${t("overview.done", { done: progress.done, total: progress.total })}`}
                 </div>
               </div>
 
               {view === "overview" && (
                 <>
-                  <Panel id="book" title="Book">
+                  <Panel id="book" title={t("panel.book")}>
                     <div className="book-details">
-                      {details?.cover ? <img className="cover" src={details.cover} alt="cover" /> : <div className="cover cover-empty">no cover</div>}
+                      {details?.cover ? <img className="cover" src={details.cover} alt="cover" /> : <div className="cover cover-empty">{t("book.noCover")}</div>}
                       <div className="book-meta">
                         <div className="row">
-                          <strong className="book-title">{details?.title_translated || details?.title || "(untitled)"}</strong>
-                          {details && !details.title_translated && <button onClick={translateTitle}>Translate title</button>}
-                          <button onClick={replaceCover}>Replace cover</button>
+                          <strong className="book-title">{details?.title_translated || details?.title || t("book.untitled")}</strong>
+                          {details && !details.title_translated && <button onClick={translateTitle}>{t("book.translateTitle")}</button>}
+                          <button onClick={replaceCover}>{t("book.replaceCover")}</button>
                         </div>
-                        {details?.title_translated && details?.title && <div className="muted">original: {details.title}</div>}
+                        {details?.title_translated && details?.title && <div className="muted">{t("book.original", { title: details.title })}</div>}
                         <div className="muted">{details?.author_translated || details?.author}</div>
-                        <textarea className="summary" placeholder="Summary / annotation…"
+                        <textarea className="summary" placeholder={t("book.summaryPlaceholder")}
                           key={active + (details?.summary ?? "")} defaultValue={details?.summary || ""}
                           onBlur={(e) => saveSummary(e.target.value)} />
                       </div>
                     </div>
                   </Panel>
 
-                  <Panel id="translate" title="Translate" extra={
+                  <Panel id="translate" title={t("panel.translate")} extra={
                     <>
-                      <button onClick={openReference}>Reference</button>
+                      <button onClick={openReference}>{t("translate.reference")}</button>
                       {ref && <>
-                        <input type="number" min={1} value={sample} onChange={(e) => setSample(Number(e.target.value))} style={{ width: 56 }} title="sample" />
-                        <button onClick={bootstrap}>Bootstrap</button>
+                        <input type="number" min={1} value={sample} onChange={(e) => setSample(Number(e.target.value))} style={{ width: 56 }} title={t("translate.sample")} />
+                        <button onClick={bootstrap}>{t("translate.bootstrap")}</button>
                       </>}
                     </>
                   }>
-                    {ref && <label className="check"><input type="checkbox" checked={continueMode} onChange={(e) => setContinueMode(e.target.checked)} /> Continue mode</label>}
+                    {ref && <label className="check"><input type="checkbox" checked={continueMode} onChange={(e) => setContinueMode(e.target.checked)} /> {t("translate.continueMode")}</label>}
                     <div className="row" style={{ marginTop: 8 }}>
-                      <label>chapters</label>
-                      <input type="number" min={1} placeholder="all" value={limit} onChange={(e) => setLimit(e.target.value === "" ? "" : Number(e.target.value))} style={{ width: 80 }} />
-                      <button onClick={start} disabled={progress?.running}>Start</button>
-                      <button onClick={pause} disabled={!progress?.running}>Pause</button>
+                      <label>{t("translate.chapters")}</label>
+                      <input type="number" min={1} placeholder={t("translate.all")} value={limit} onChange={(e) => setLimit(e.target.value === "" ? "" : Number(e.target.value))} style={{ width: 80 }} />
+                      <button onClick={start} disabled={progress?.running}>{t("translate.start")}</button>
+                      <button onClick={pause} disabled={!progress?.running}>{t("translate.pause")}</button>
                       <button className="ghost" onClick={refreshProgress}>↻</button>
                     </div>
                     {progress && (
                       <div className="progress">
                         <div className="bar"><div className="bar-fill" style={{ width: `${pct}%` }} /></div>
-                        <div className="progress-text">{progress.done}/{progress.total} ({pct}%){progress.failed > 0 && ` · failed ${progress.failed}`}{progress.running ? " · running" : ""}</div>
+                        <div className="progress-text">{progress.done}/{progress.total} ({pct}%){progress.failed > 0 && ` · ${t("progress.failed", { n: progress.failed })}`}{progress.running ? ` · ${t("progress.running")}` : ""}</div>
                       </div>
                     )}
                   </Panel>
@@ -364,24 +471,47 @@ export default function App() {
               )}
 
               {view === "glossary" && (
-                <Panel id="glossary" title={`Glossary (${glossary.length})`} extra={
+                <Panel id="glossary" title={t("glossary.title", { n: glossary.length })} extra={
                   <>
-                    <input placeholder="filter…" value={glossaryQuery} onChange={(e) => setGlossaryQuery(e.target.value)} style={{ width: 140 }} />
+                    <button className="primary" disabled={!pendingCount || !(progress && progress.done > 0)}
+                      title={t("glossary.updateTranslationTip")} onClick={updateTranslation}>
+                      {t("glossary.updateTranslation")}{pendingCount ? ` (${pendingCount})` : ""}
+                    </button>
+                    <input placeholder={t("glossary.filter")} value={glossaryQuery} onChange={(e) => setGlossaryQuery(e.target.value)} style={{ width: 140 }} />
                     <button onClick={refreshGlossary}>↻</button>
                   </>
                 }>
                   <div className="table-wrap">
                     <table>
-                      <thead><tr><th>Source</th><th>Translation</th><th>Kind</th><th>×</th><th>📌</th></tr></thead>
+                      <thead><tr><th>{t("glossary.colSource")}</th><th>{t("glossary.colTranslation")}</th><th>{t("glossary.colKind")}</th><th>{t("glossary.colCount")}</th><th>{t("glossary.colActions")}</th></tr></thead>
                       <tbody>
-                        {filteredGlossary.map((t) => (
-                          <tr key={t.source}>
-                            <td>{t.source}</td>
-                            <td><input defaultValue={t.target} onBlur={(e) => e.target.value !== t.target && pinTerm(t, e.target.value)} /></td>
-                            <td>{t.kind}</td><td>{t.frequency}</td><td>{t.pinned ? "📌" : ""}</td>
+                        <tr className="add-row">
+                          <td><input placeholder={t("glossary.addSource")} value={newTerm.source} onChange={(e) => setNewTerm({ ...newTerm, source: e.target.value })} /></td>
+                          <td><input placeholder={t("glossary.addTranslation")} value={newTerm.target} onChange={(e) => setNewTerm({ ...newTerm, target: e.target.value })}
+                            onKeyDown={(e) => e.key === "Enter" && addTerm()} /></td>
+                          <td>
+                            <select value={newTerm.kind} onChange={(e) => setNewTerm({ ...newTerm, kind: e.target.value })}>
+                              {TERM_KINDS.map((k) => <option key={k} value={k}>{t(`kind.${k}`)}</option>)}
+                            </select>
+                          </td>
+                          <td colSpan={2}><button onClick={addTerm} disabled={!newTerm.source.trim() || !newTerm.target.trim()}>{t("glossary.add")}</button></td>
+                        </tr>
+                        {filteredGlossary.map((term) => {
+                          const dirty = !!pending[term.source];
+                          return (
+                          <tr key={term.source} className={dirty ? "dirty" : ""}>
+                            <td><input defaultValue={term.source} onBlur={(ev) => { const v = ev.target.value.trim(); if (v && v !== term.source) renameTerm(term, v); }} /></td>
+                            <td><input key={term.target} defaultValue={term.target} onBlur={(ev) => editTarget(term, ev.target.value)} /></td>
+                            <td>
+                              <select value={term.kind} onChange={(ev) => editKind(term, ev.target.value)}>
+                                {TERM_KINDS.map((k) => <option key={k} value={k}>{t(`kind.${k}`)}</option>)}
+                              </select>
+                            </td>
+                            <td>{term.frequency}{term.pinned ? " 📌" : ""}</td>
+                            <td><button className="ghost del" title={t("glossary.delete")} onClick={() => deleteTerm(term)}>✕</button></td>
                           </tr>
-                        ))}
-                        {filteredGlossary.length === 0 && <tr><td colSpan={5} className="empty">empty</td></tr>}
+                        );})}
+                        {filteredGlossary.length === 0 && <tr><td colSpan={5} className="empty">{t("glossary.empty")}</td></tr>}
                       </tbody>
                     </table>
                   </div>
@@ -405,20 +535,20 @@ export default function App() {
                       const i = chapters.findIndex((c) => c.idx === chapterIdx); if (i >= 0 && i < chapters.length - 1) setChapterIdx(chapters[i + 1].idx);
                     }}>›</button>
                     <div className="menu-spacer" />
-                    <label className="check"><input type="checkbox" checked={hl} onChange={(e) => setHl(e.target.checked)} /> highlight</label>
-                    <button className={`chip ${panes.orig ? "on" : ""}`} onClick={() => setPanes((p) => ({ ...p, orig: !p.orig }))}>Original</button>
-                    <button className={`chip ${panes.transl ? "on" : ""}`} onClick={() => setPanes((p) => ({ ...p, transl: !p.transl }))}>Translation</button>
+                    <label className="check"><input type="checkbox" checked={hl} onChange={(e) => setHl(e.target.checked)} /> {t("reader.highlight")}</label>
+                    <button className={`chip ${panes.orig ? "on" : ""}`} onClick={() => setPanes((p) => ({ ...p, orig: !p.orig }))}>{t("reader.original")}</button>
+                    <button className={`chip ${panes.transl ? "on" : ""}`} onClick={() => setPanes((p) => ({ ...p, transl: !p.transl }))}>{t("reader.translation")}</button>
                   </div>
 
                   <div className="panes">
                     {panes.orig && (
                       <div className="pane">
                         <div className="pane-head">
-                          <span>Original {chapter?.number != null && `· #${chapter.number}`}</span>
+                          <span>{t("reader.original")} {chapter?.number != null && `· #${chapter.number}`}</span>
                           <button className="icon" onClick={() => setPanes((p) => ({ ...p, orig: false }))}>×</button>
                         </div>
                         <div className="pane-body">
-                          {chapterLoading ? <div className="loading"><span className="spinner" /> loading…</div> : <>
+                          {chapterLoading ? <div className="loading"><span className="spinner" /> {t("reader.loading")}</div> : <>
                             <div className="chtitle">{chapter?.source_title}</div>
                             <div className="chtext">{chapter ? (hl ? highlight(chapter.source, sourceTerms) : chapter.source) : ""}</div>
                           </>}
@@ -428,25 +558,26 @@ export default function App() {
                     {panes.transl && (
                       <div className="pane">
                         <div className="pane-head">
-                          <span>Translation {chapter?.status !== "done" && "· not translated"}</span>
+                          <span>{t("reader.translation")} {chapter?.status !== "done" && `· ${t("reader.notTranslated")}`}</span>
                           <button className="icon" onClick={() => setPanes((p) => ({ ...p, transl: false }))}>×</button>
                         </div>
                         <div className="pane-body">
-                          {chapterLoading ? <div className="loading"><span className="spinner" /> loading…</div> : <>
+                          {chapterLoading ? <div className="loading"><span className="spinner" /> {t("reader.loading")}</div> : <>
                             <div className="chtitle">{chapter?.translated_title}</div>
                             <div className="chtext">
-                              {chapter?.translated ? (hl ? highlight(chapter.translated, targetTerms) : chapter.translated) : <span className="muted">— not translated yet —</span>}
+                              {chapter?.translated ? (hl ? highlight(chapter.translated, targetTerms) : chapter.translated) : <span className="muted">{t("reader.notTranslatedYet")}</span>}
                             </div>
                           </>}
                         </div>
                       </div>
                     )}
-                    {!panes.orig && !panes.transl && <div className="muted" style={{ padding: 20 }}>Both panes closed. Use the toggles above.</div>}
+                    {!panes.orig && !panes.transl && <div className="muted" style={{ padding: 20 }}>{t("reader.bothClosed")}</div>}
                   </div>
                 </div>
               )}
             </>
           )}
+          </>)}
         </main>
       </div>
     </div>

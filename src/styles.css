@@ -129,8 +129,18 @@ label { color: var(--muted); }
 table { width: 100%; border-collapse: collapse; }
 th, td { text-align: left; padding: 5px 8px; border-bottom: 1px solid var(--line); }
 th { color: var(--muted); font-weight: 600; position: sticky; top: 0; background: var(--panel); }
-td input { width: 100%; }
+td input, td select { width: 100%; }
 .empty { color: var(--muted); text-align: center; padding: 14px; }
+tr.add-row td { background: var(--bg-3); border-bottom: 2px solid var(--line); }
+tr.dirty td { background: color-mix(in srgb, var(--accent, #4a90d9) 12%, transparent); }
+td button.ghost { white-space: nowrap; }
+tr.add-row input::placeholder { color: var(--muted); }
+button.ghost.del { color: var(--muted); padding: 2px 6px; }
+button.ghost.del:hover { color: #e5534b; background: transparent; }
+button.primary { background: var(--accent, #4a90d9); color: #fff; border-color: transparent; }
+button.primary:disabled { opacity: .45; }
+.settings-page { max-width: 640px; }
+.settings-head { display: flex; align-items: center; justify-content: space-between; }
 
 /* --- Reader --- */
 .reader { display: flex; flex-direction: column; flex: 1; min-height: 0; }
