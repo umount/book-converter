@@ -469,23 +469,46 @@ export default function App() {
                     </div>
                   </Panel>
 
-                  <Panel id="translate" title={t("panel.translate")} extra={
-                    <>
-                      <button onClick={openReference}>{t("translate.reference")}</button>
-                      {ref && <>
-                        <input type="number" min={1} value={sample} onChange={(e) => setSample(Number(e.target.value))} style={{ width: 56 }} title={t("translate.sample")} />
-                        <button onClick={bootstrap}>{t("translate.bootstrap")}</button>
-                      </>}
-                    </>
-                  }>
-                    {ref && <label className="check"><input type="checkbox" checked={continueMode} onChange={(e) => setContinueMode(e.target.checked)} /> {t("translate.continueMode")}</label>}
-                    <div className="row" style={{ marginTop: 8 }}>
-                      <label>{t("translate.chapters")}</label>
-                      <input type="number" min={1} placeholder={t("translate.all")} value={limit} onChange={(e) => setLimit(e.target.value === "" ? "" : Number(e.target.value))} style={{ width: 80 }} />
+                  <Panel id="reference" title={t("panel.reference")}>
+                    {!ref ? (
+                      <div className="ref-empty">
+                        <p className="muted ref-desc">{t("reference.description")}</p>
+                        <button onClick={openReference}>{t("reference.add")}</button>
+                      </div>
+                    ) : (
+                      <>
+                        <div className="row">
+                          <strong>{ref.title || t("book.untitled")}</strong>
+                          <span className="muted">{t("reference.covers", { n: ref.max_covered ?? "?", chapters: ref.chapters })}</span>
+                          <div className="menu-spacer" />
+                          <button className="ghost" onClick={openReference}>{t("reference.replace")}</button>
+                        </div>
+                        <div className="row" style={{ marginTop: 10 }}>
+                          <label>{t("reference.bootstrapLabel")}</label>
+                          <input type="number" min={1} value={sample} onChange={(e) => setSample(Number(e.target.value))} style={{ width: 64 }} title={t("translate.sample")} />
+                          <button onClick={bootstrap}>{t("translate.bootstrap")}</button>
+                        </div>
+                        <label className="check" style={{ marginTop: 10 }}><input type="checkbox" checked={continueMode} onChange={(e) => setContinueMode(e.target.checked)} /> {t("translate.continueMode")}</label>
+                      </>
+                    )}
+                  </Panel>
+
+                  <Panel id="translate" title={t("panel.translate")}>
+                    <div className="row">
+                      <label>{t("translate.next")}</label>
+                      <input type="number" min={1} placeholder={t("translate.allRemaining")} value={limit} onChange={(e) => setLimit(e.target.value === "" ? "" : Number(e.target.value))} style={{ width: 120 }} />
+                      <span className="muted">{t("translate.chapters")}</span>
                       <button onClick={start} disabled={progress?.running}>{t("translate.start")}</button>
                       <button onClick={pause} disabled={!progress?.running}>{t("translate.pause")}</button>
                       <button className="ghost" onClick={refreshProgress}>↻</button>
                     </div>
+                    {progress && (
+                      <div className="muted resume-hint">
+                        {progress.pending > 0
+                          ? t("translate.resumeHint", { from: progress.done + 1, remaining: progress.pending })
+                          : t("translate.resumeHintAllDone")}
+                      </div>
+                    )}
                     {progress && (
                       <div className="progress">
                         <div className="bar"><div className="bar-fill" style={{ width: `${pct}%` }} /></div>
