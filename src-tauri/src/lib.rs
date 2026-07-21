@@ -12,6 +12,8 @@ mod glossary;
 mod i18n;
 mod orchestrator;
 mod reference;
+mod retarget;
+mod settings;
 mod state;
 mod translator;
 
@@ -40,6 +42,8 @@ pub fn run() {
             commands::get_progress,
             commands::get_glossary,
             commands::update_term,
+            commands::delete_term,
+            commands::retarget_terms,
             commands::export_book,
             commands::get_book_details,
             commands::translate_title,
@@ -47,6 +51,8 @@ pub fn run() {
             commands::set_cover,
             commands::list_chapters,
             commands::get_chapter,
+            commands::get_setting,
+            commands::set_setting,
         ])
         .run(tauri::generate_context!())
         .expect("failed to start the Tauri application");

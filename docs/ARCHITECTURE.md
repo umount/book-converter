@@ -93,9 +93,11 @@ thing the frontend knows about.
 | **book::chunker** | Fallback splitting of an over-long chapter into chunks on paragraph boundaries (never mid-sentence) |
 | **reference** *(planned)* | Optional reference-translation subsystem: parse a professional translation (any format), align it to the source, and bootstrap a pinned glossary (names/lore) + a style exemplar via DeepSeek |
 | **glossary** | Consistency subsystem: store terms, inject relevant ones into the prompt, auto-extract new ones, merge with conflict resolution |
+| **retarget** | Propagate a glossary rename into already-translated text. Picks only the paragraphs that mention the old rendering (inflection-aware candidate match) and rewrites them via the model so declensions and gender/number agreement follow the new term |
 | **translator::prompt** | Build system/user prompts: base instructions + mandatory term glossary + optional previous-chapter summary |
 | **translator::deepseek** | DeepSeek HTTP client (`/chat/completions`), retry + backoff, handling 429/5xx |
 | **state** | Persist progress and glossary in SQLite. Run resumption |
+| **settings** | App-wide key-value settings (e.g. UI language) in a small SQLite DB in the app data dir, so preferences survive restarts |
 | **export::txt** / **export::fb2** / **export::epub** / **export::pdf** | Assemble the result into the chosen output format: `.txt`, `.fb2` (per-chapter sections), `.epub` with a table of contents, or `.pdf` (cover page, contents with page numbers, clickable bookmarks) |
 | **i18n** | Output-facing localization (the "Contents" heading, the "Chapter" label, fallback title/author). Strings live in `assets/locales.json` (`ru`/`en`/`zh`); a new output language is a JSON entry, not a code change |
 | **commands** | Tauri commands — the Rust ↔ React bridge. Progress is pushed via events (`emit`) |
@@ -229,8 +231,11 @@ Resumption: on start, take `chapters WHERE status IN ('pending','failed')`. Any
 | `pause_translation()` | Pause after current chapters finish |
 | `get_progress()` | Current progress (also pushed via the `progress` event) |
 | `get_glossary()` | The whole glossary for the UI table |
-| `update_term(term)` | Manually edit/pin a term (`pinned=true`) |
+| `update_term(term)` | Add or edit/pin a term (`pinned=true`) |
+| `delete_term(source)` | Remove a term from the glossary |
+| `retarget_terms(changes)` | Propagate one or more renames into the existing translation (background job; `retarget_progress`/`retarget_done` events) |
 | `export_book(out_dir, formats)` | Export to TXT/EPUB, return file paths |
+| `get_setting(key)` / `set_setting(key, value)` | Read/write a durable app-wide setting (e.g. UI language) |
 
 ## Deliberately Out of Scope for v1
 

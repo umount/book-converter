@@ -324,6 +324,13 @@ impl Store {
         Ok(())
     }
 
+    /// Remove a single glossary entry by its source term.
+    pub fn delete_term(&self, source: &str) -> Result<()> {
+        self.conn
+            .execute("DELETE FROM glossary WHERE source = ?1", params![source])?;
+        Ok(())
+    }
+
     /// Read a `meta` value.
     pub fn get_meta(&self, key: &str) -> Result<Option<String>> {
         let v = self

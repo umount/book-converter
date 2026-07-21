@@ -113,6 +113,23 @@ fn app_data_dir() -> std::path::PathBuf {
     base.join("book-converter")
 }
 
+/// Global settings DB (app-wide, survives restarts).
+fn settings_db() -> std::path::PathBuf {
+    app_data_dir().join("settings.db")
+}
+
+/// Read a persisted app setting (e.g. the UI language).
+#[tauri::command]
+pub async fn get_setting(key: String) -> Result<Option<String>, String> {
+    crate::settings::get(&settings_db(), &key).map_err(err)
+}
+
+/// Persist an app setting.
+#[tauri::command]
+pub async fn set_setting(key: String, value: String) -> Result<(), String> {
+    crate::settings::set(&settings_db(), &key, &value).map_err(err)
+}
+
 /// Where the resumable progress DB lives for a given source file.
 ///
 /// Kept in the app data directory (not next to the book) so the source can live
@@ -432,6 +449,175 @@ pub async fn update_term(term: TermDto, state: State<'_, AppState>) -> Result<()
     }
     store.save_glossary(&glossary).map_err(err)?;
     Ok(())
+}
+
+/// Remove a term from the glossary by its source form.
+#[tauri::command]
+pub async fn delete_term(source: String, state: State<'_, AppState>) -> Result<(), String> {
+    let db = state
+        .0
+        .lock()
+        .unwrap()
+        .db_path
+        .clone()
+        .ok_or("no source loaded")?;
+    let store = Store::open(&db).map_err(err)?;
+    store.delete_term(source.trim()).map_err(err)?;
+    Ok(())
+}
+
+/// One rename to propagate into the existing translation.
+#[derive(Deserialize)]
+pub struct RenameChange {
+    pub old_target: String,
+    pub new_target: String,
+    pub kind: String,
+}
+
+/// Propagate one or more renames into the already-translated text: rewrite (via
+/// the model) only the paragraphs that mention an old rendering, replacing every
+/// inflected form with the new one and fixing gender/case agreement. Runs on a
+/// background thread; emits `retarget_progress` and finally `retarget_done`
+/// (chapters changed).
+#[tauri::command]
+pub fn retarget_terms(
+    changes: Vec<RenameChange>,
+    app: AppHandle,
+    state: State<'_, AppState>,
+) -> Result<(), String> {
+    let changes: Vec<RenameChange> = changes
+        .into_iter()
+        .filter(|c| !c.old_target.trim().is_empty() && c.new_target.trim() != c.old_target.trim())
+        .collect();
+    if changes.is_empty() {
+        return Err("nothing to update".into());
+    }
+    let (db, cancel) = {
+        let mut s = state.0.lock().unwrap();
+        if s.running {
+            return Err("a job is already running".into());
+        }
+        let db = s.db_path.clone().ok_or("no source loaded")?;
+        let cancel = Arc::new(AtomicBool::new(false));
+        s.cancel = Some(cancel.clone());
+        s.running = true;
+        (db, cancel)
+    };
+
+    let app2 = app.clone();
+    std::thread::spawn(move || {
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .expect("current-thread runtime");
+        let result = rt.block_on(run_retarget(&db, &changes, &cancel, &app2));
+
+        if let Some(st) = app2.try_state::<AppState>() {
+            st.0.lock().unwrap().running = false;
+        }
+        match result {
+            Ok(n) => {
+                let _ = app2.emit("retarget_done", n);
+            }
+            Err(e) => {
+                let _ = app2.emit("job_error", e.to_string());
+            }
+        }
+    });
+    Ok(())
+}
+
+async fn run_retarget(
+    db: &str,
+    changes: &[RenameChange],
+    cancel: &AtomicBool,
+    app: &AppHandle,
+) -> anyhow::Result<usize> {
+    use crate::retarget::paragraph_mentions;
+
+    let config = Config::load();
+    let cl = DeepSeekClient::new(config.clone())?;
+    let store = Store::open(db)?;
+    let lang = &config.target_lang;
+
+    let mentions_any = |text: &str| changes.iter().any(|c| paragraph_mentions(text, &c.old_target));
+
+    // Only chapters whose title or a body line mentions one of the old renderings.
+    let chapters = store.translated_chapters()?;
+    let jobs: Vec<(usize, String, String)> = chapters
+        .into_iter()
+        .filter(|(_, title, body)| mentions_any(title) || body.lines().any(mentions_any))
+        .collect();
+    let total = jobs.len();
+
+    let mut changed = 0usize;
+    for (i, (idx, title, body)) in jobs.into_iter().enumerate() {
+        if cancel.load(Ordering::Relaxed) {
+            break;
+        }
+
+        let new_title = apply_changes(&cl, lang, changes, &title).await;
+        let mut out_lines: Vec<String> = Vec::with_capacity(body.lines().count());
+        for line in body.lines() {
+            out_lines.push(apply_changes(&cl, lang, changes, line).await);
+        }
+        let new_body = out_lines.join("\n");
+
+        if new_title != title || new_body != body {
+            store.save_translation(idx, &new_title, &new_body)?;
+            changed += 1;
+        }
+        let _ = app.emit(
+            "retarget_progress",
+            serde_json::json!({ "done": i + 1, "total": total }),
+        );
+    }
+    Ok(changed)
+}
+
+/// Apply every relevant rename to one paragraph, in sequence (a paragraph that
+/// mentions two renamed terms is rewritten once per term, each on the prior result).
+async fn apply_changes(
+    cl: &DeepSeekClient,
+    lang: &str,
+    changes: &[RenameChange],
+    text: &str,
+) -> String {
+    use crate::retarget::paragraph_mentions;
+    let mut cur = text.to_string();
+    for c in changes {
+        if paragraph_mentions(&cur, &c.old_target) {
+            if let Some(r) =
+                rewrite_paragraph(cl, lang, &c.kind, &c.old_target, &c.new_target, &cur).await
+            {
+                cur = r;
+            }
+        }
+    }
+    cur
+}
+
+/// Rewrite one paragraph via the model, applying the rename. Returns `None` on a
+/// failed/empty response so the caller can keep the original text (best-effort).
+async fn rewrite_paragraph(
+    cl: &DeepSeekClient,
+    lang: &str,
+    kind: &str,
+    old_target: &str,
+    new_target: &str,
+    text: &str,
+) -> Option<String> {
+    let (sys, user) = crate::retarget::rewrite_prompt(lang, kind, old_target, new_target, text);
+    match cl.translate(&sys, &user).await {
+        Ok(out) => {
+            let t = out.trim().trim_matches('"').trim().to_string();
+            (!t.is_empty()).then_some(t)
+        }
+        Err(e) => {
+            tracing::warn!("retarget rewrite failed: {e:#}");
+            None
+        }
+    }
 }
 
 /// Export the translated chapters to `out_path` (format inferred from extension).
