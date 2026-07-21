@@ -10,7 +10,7 @@ type BookInfo = {
   format: string; encoding: string; needs_delimiter: boolean; missing: number; duplicates: number;
 };
 type RefInfo = { title: string; chapters: number; max_covered: number | null; imported: number };
-type Progress = { done: number; total: number; failed: number; pending: number; running: boolean };
+type Progress = { project: string; done: number; total: number; failed: number; pending: number; running: boolean };
 type Term = { source: string; target: string; kind: string; frequency: number; pinned: boolean };
 const TERM_KINDS = ["person", "location", "organization", "term"] as const;
 type BookDetails = { title: string; author: string; title_translated: string | null; author_translated: string | null; summary: string | null; cover: string | null };
@@ -20,12 +20,13 @@ type ChapterView = {
   translated_title: string | null; translated: string | null; status: string; origin: string | null;
 };
 
-type Project = { path: string; name: string; refPath?: string };
+type Project = { id: string; path: string; name: string; refPath?: string };
 type ViewId = "overview" | "reader" | "glossary";
 
-const LS_PROJECTS = "bc.projects";
-const LS_ACTIVE = "bc.active";
+const LS_PROJECTS = "bc.projects.v2";
+const LS_ACTIVE = "bc.active.v2";
 const baseName = (p: string) => p.split(/[\\/]/).pop() || p;
+const newId = () => (crypto.randomUUID ? crypto.randomUUID() : `p-${Date.now()}-${Math.random().toString(36).slice(2)}`);
 const escapeRe = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
 // Wrap glossary terms present in `text` with <mark>.
@@ -51,7 +52,9 @@ export default function App() {
   const [book, setBook] = useState<BookInfo | null>(null);
   const [ref, setRef] = useState<RefInfo | null>(null);
   const [details, setDetails] = useState<BookDetails | null>(null);
-  const [progress, setProgress] = useState<Progress | null>(null);
+  // Progress and console log are per project (keyed by id) so background/parallel
+  // runs keep updating even while another project is in the foreground.
+  const [progressById, setProgressById] = useState<Record<string, Progress>>({});
   const [glossary, setGlossary] = useState<Term[]>([]);
   const [glossaryQuery, setGlossaryQuery] = useState("");
   const [newTerm, setNewTerm] = useState<{ source: string; target: string; kind: string }>({ source: "", target: "", kind: "person" });
@@ -82,11 +85,20 @@ export default function App() {
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
   const toggle = (k: string) => setCollapsed((c) => ({ ...c, [k]: !c[k] }));
 
-  const [log, setLog] = useState<string[]>([]);
+  const [logsById, setLogsById] = useState<Record<string, string[]>>({});
   const logRef = useRef<HTMLDivElement>(null);
-  const addLog = (m: string) => setLog((l) => [...l.slice(-300), m]);
 
   const activeProject = active >= 0 ? projects[active] : undefined;
+  const activeId = activeProject?.id ?? "";
+  const progress = activeId ? progressById[activeId] ?? null : null;
+  const log = activeId ? logsById[activeId] ?? [] : [];
+
+  // Append a log line to a project's console (defaults to the active project).
+  const addLogTo = (id: string, m: string) =>
+    setLogsById((all) => ({ ...all, [id]: [...(all[id] ?? []).slice(-300), m] }));
+  const addLog = (m: string) => { if (activeId) addLogTo(activeId, m); };
+  const setProgressFor = (id: string, p: Progress) =>
+    setProgressById((all) => ({ ...all, [id]: p }));
 
   useEffect(() => localStorage.setItem(LS_PROJECTS, JSON.stringify(projects)), [projects]);
   useEffect(() => localStorage.setItem(LS_ACTIVE, String(active)), [active]);
@@ -109,22 +121,40 @@ export default function App() {
   }, [lang]);
   useEffect(() => logRef.current?.scrollTo(0, logRef.current.scrollHeight), [log]);
 
-  // Keep a live ref to `t` so once-registered event listeners localize correctly.
+  // Keep live refs so once-registered event listeners see current values.
   const tRef = useRef(t);
   tRef.current = t;
+  const activeIdRef = useRef(activeId);
+  activeIdRef.current = activeId;
   useEffect(() => {
     const tr = (key: string, vars?: Record<string, string | number>) => tRef.current(key, vars);
+    const isActive = (id: string) => id === activeIdRef.current;
     const unsubs = [
-      listen<Progress>("progress", (e) => setProgress(e.payload)),
-      listen("done", () => { addLog(tr("log.runFinished")); refreshProgress(); refreshGlossary(); }),
-      listen<string>("job_error", (e) => { setBusy(null); reportCritical(String(e.payload)); }),
-      listen<{ done: number; total: number; title: string; changed: boolean }>("retarget_progress", (e) => {
-        const { done, total, title, changed } = e.payload;
-        setBusy(tr("busy.updatingTranslationN", { done, total }));
-        addLog(tr("log.retargetItem", { done, total, mark: changed ? "✓" : "·", title }));
+      listen<Progress>("progress", (e) => setProgressFor(e.payload.project, e.payload)),
+      listen<{ project: string }>("done", (e) => {
+        const id = e.payload.project;
+        addLogTo(id, tr("log.runFinished"));
+        refreshProgressFor(id);
+        if (isActive(id)) refreshGlossary();
       }),
-      listen<string>("retarget_warn", (e) => addLog(tr("log.retargetWarn", { msg: String(e.payload) }))),
-      listen<number>("retarget_done", (e) => { setBusy(null); addLog(tr("log.renamed", { n: e.payload })); setPending({}); refreshProgress(); const i = chapterIdxRef.current; if (i != null) openChapter(i); }),
+      listen<{ project: string; message: string }>("job_error", (e) => {
+        const { project, message } = e.payload;
+        addLogTo(project, tr("log.error", { msg: message }));
+        if (isActive(project)) { setBusy(null); setError(message); }
+      }),
+      listen<{ project: string; done: number; total: number; title: string; changed: boolean }>("retarget_progress", (e) => {
+        const { project, done, total, title, changed } = e.payload;
+        addLogTo(project, tr("log.retargetItem", { done, total, mark: changed ? "✓" : "·", title }));
+        if (isActive(project)) setBusy(tr("busy.updatingTranslationN", { done, total }));
+      }),
+      listen<{ project: string; message: string }>("retarget_warn", (e) =>
+        addLogTo(e.payload.project, tr("log.retargetWarn", { msg: e.payload.message }))),
+      listen<{ project: string; changed: number }>("retarget_done", (e) => {
+        const { project, changed } = e.payload;
+        addLogTo(project, tr("log.renamed", { n: changed }));
+        refreshProgressFor(project);
+        if (isActive(project)) { setBusy(null); setPending({}); const i = chapterIdxRef.current; if (i != null) openChapter(i); }
+      }),
     ];
     return () => unsubs.forEach((u) => u.then((f) => f()));
   }, []);
@@ -151,7 +181,6 @@ export default function App() {
   // reserved for critical failures (DeepSeek being unreachable, a project failing
   // to open), so it isn't raised for every minor command hiccup.
   function logError(msg: string) { addLog(tRef.current("log.error", { msg })); }
-  function reportCritical(msg: string) { logError(msg); setError(msg); }
 
   async function call<T>(name: string, args?: Record<string, unknown>, opts?: { critical?: boolean }): Promise<T | undefined> {
     try { return await invoke<T>(name, args); }
@@ -159,41 +188,47 @@ export default function App() {
   }
 
   function clearWorkspace() {
-    setBook(null); setRef(null); setDetails(null); setProgress(null);
+    setBook(null); setRef(null); setDetails(null);
     setGlossary([]); setChapters([]); setChapterIdx(null); setChapter(null); setPending({});
   }
 
   async function activateProject(p: Project) {
     // Guard against the double invocation of the `[active]` effect (React
     // StrictMode in dev double-fires effects), which would open the book twice.
-    if (activatingRef.current === p.path) return;
-    activatingRef.current = p.path;
+    if (activatingRef.current === p.id) return;
+    activatingRef.current = p.id;
     setBusy(t("busy.opening", { name: p.name }));
-    addLog(t("log.opening", { name: p.name }));
+    addLogTo(p.id, t("log.opening", { name: p.name }));
     setError(null);
     clearWorkspace();
-    const info = await call<BookInfo>("load_source", { path: p.path }, { critical: true });
+    const info = await call<BookInfo>("load_source", { projectId: p.id, path: p.path }, { critical: true });
     if (info) {
       setBook(info);
-      addLog(t("log.loaded", { name: p.name, n: info.total_chapters, format: info.format, encoding: info.encoding }));
-      if (p.refPath) { const r = await call<RefInfo>("load_reference", { path: p.refPath }); if (r) { setRef(r); addLog(t("log.reference", { n: r.max_covered ?? "?" })); if (r.imported > 0) addLog(t("log.refImported", { n: r.imported })); } }
-      await refreshDetails(); await refreshProgress(); await refreshGlossary();
+      addLogTo(p.id, t("log.loaded", { name: p.name, n: info.total_chapters, format: info.format, encoding: info.encoding }));
+      if (p.refPath) { const r = await call<RefInfo>("load_reference", { projectId: p.id, path: p.refPath }); if (r) { setRef(r); addLogTo(p.id, t("log.reference", { n: r.max_covered ?? "?" })); if (r.imported > 0) addLogTo(p.id, t("log.refImported", { n: r.imported })); } }
+      await refreshDetails(); await refreshProgressFor(p.id); await refreshGlossary();
       void translateTitle();
     }
     setBusy(null);
   }
 
+  // Each open (even the same file) is a distinct, isolated project.
   async function openBook() {
     setMenu(null);
     const path = await open({ filters: [{ name: "Book", extensions: ["txt", "fb2", "pdf", "zip"] }] });
     if (typeof path !== "string") return;
-    const existing = projects.findIndex((p) => p.path === path);
-    if (existing >= 0) { setActive(existing); return; }
-    const next = [...projects, { path, name: baseName(path) }];
+    const next = [...projects, { id: newId(), path, name: baseName(path) }];
     setProjects(next); setActive(next.length - 1);
   }
 
-  function removeProject(idx: number) {
+  async function removeProject(idx: number) {
+    const p = projects[idx];
+    if (p && !confirm(t("project.deleteConfirm", { name: p.name }))) return;
+    if (p) {
+      await call("delete_project", { projectId: p.id });
+      setLogsById((all) => { const n = { ...all }; delete n[p.id]; return n; });
+      setProgressById((all) => { const n = { ...all }; delete n[p.id]; return n; });
+    }
     setProjects(projects.filter((_, i) => i !== idx));
     setActive(idx === active ? -1 : active > idx ? active - 1 : active);
   }
@@ -204,11 +239,11 @@ export default function App() {
     const path = await open({ filters: [{ name: "Reference", extensions: ["fb2", "txt", "pdf", "zip"] }] });
     if (typeof path !== "string") return;
     setBusy(t("busy.loadingReference"));
-    const info = await call<RefInfo>("load_reference", { path });
+    const info = await call<RefInfo>("load_reference", { projectId: activeId, path });
     setBusy(null);
     if (info) {
       setRef(info);
-      setProjects((ps) => ps.map((p, i) => (i === active ? { ...p, refPath: path } : p)));
+      setProjects((ps) => ps.map((p) => (p.id === activeId ? { ...p, refPath: path } : p)));
       addLog(t("log.reference", { n: info.max_covered ?? "?" }));
       if (info.imported > 0) addLog(t("log.refImported", { n: info.imported }));
       refreshDetails(); refreshProgress(); loadChapters();
@@ -216,19 +251,47 @@ export default function App() {
     }
   }
 
+  // Save the active project to a portable .bcproj archive.
+  async function saveProject() {
+    setMenu(null);
+    if (!activeProject) return;
+    const out = await save({ defaultPath: `${activeProject.name}.bcproj`, filters: [{ name: "book-converter project", extensions: ["bcproj"] }] });
+    if (typeof out !== "string") return;
+    const path = out.toLowerCase().endsWith(".bcproj") ? out : `${out}.bcproj`;
+    setBusy(t("busy.savingProject"));
+    try { await invoke("export_project", { projectId: activeId, outPath: path }); addLog(t("log.projectSaved", { path })); }
+    catch (e) { logError(String(e)); }
+    finally { setBusy(null); }
+  }
+
+  // Open a .bcproj archive as a new isolated project.
+  async function openProjectArchive() {
+    setMenu(null);
+    const arch = await open({ filters: [{ name: "book-converter project", extensions: ["bcproj"] }] });
+    if (typeof arch !== "string") return;
+    const id = newId();
+    setBusy(t("busy.openingProject"));
+    try {
+      const res = await invoke<{ name: string; source_path: string }>("import_project", { projectId: id, archivePath: arch });
+      const next = [...projects, { id, path: res.source_path, name: res.name }];
+      setProjects(next); setActive(next.length - 1);
+    } catch (e) { logError(String(e)); }
+    finally { setBusy(null); }
+  }
+
   async function bootstrap() {
     setBusy(t("busy.bootstrapping", { n: sample }));
-    const n = await call<number>("bootstrap_glossary", { sample }, { critical: true });
+    const n = await call<number>("bootstrap_glossary", { projectId: activeId, sample }, { critical: true });
     setBusy(null);
     if (n !== undefined) { addLog(t("log.bootstrapped", { n })); refreshGlossary(); }
   }
 
   async function start() {
     const lim = limit === "" ? null : Number(limit);
-    await call("start_translation", { limit: lim });
+    await call("start_translation", { projectId: activeId, limit: lim });
     addLog(t("log.started", { suffix: lim ? t("log.startedNext", { n: lim }) : "" }));
   }
-  async function pause() { await call("pause_translation", {}); addLog(t("log.pauseRequested")); }
+  async function pause() { await call("pause_translation", { projectId: activeId }); addLog(t("log.pauseRequested")); }
   // Reset chapters to pending for a fresh run with the current glossary. `pos` is a
   // 1-based reading-order position; null means the whole book.
   async function reTranslate(pos: number | null) {
@@ -239,16 +302,21 @@ export default function App() {
       : t("translate.retranslateFromConfirm", { from: pos });
     if (!confirm(msg)) return;
     const fromIndex = pos == null ? null : Math.max(1, pos) - 1;
-    const n = await call<number>("reset_translation", { fromIndex });
+    const n = await call<number>("reset_translation", { projectId: activeId, fromIndex });
     if (n !== undefined) { addLog(t("log.reset", { n })); refreshProgress(); }
   }
 
-  async function refreshProgress() { const p = await call<Progress>("get_progress", {}); if (p) setProgress(p); }
-  async function refreshGlossary() { const g = await call<Term[]>("get_glossary", {}); if (g) setGlossary(g); }
-  async function refreshDetails() { const d = await call<BookDetails>("get_book_details", {}); if (d) setDetails(d); }
-  async function translateTitle() { const t = await call<string>("translate_title", {}); if (t) refreshDetails(); }
+  async function refreshProgressFor(id: string) {
+    if (!id) return;
+    const p = await call<Progress>("get_progress", { projectId: id });
+    if (p) setProgressFor(id, p);
+  }
+  async function refreshProgress() { await refreshProgressFor(activeId); }
+  async function refreshGlossary() { const g = await call<Term[]>("get_glossary", { projectId: activeId }); if (g) setGlossary(g); }
+  async function refreshDetails() { const d = await call<BookDetails>("get_book_details", { projectId: activeId }); if (d) setDetails(d); }
+  async function translateTitle() { const r = await call<string>("translate_title", { projectId: activeId }); if (r) refreshDetails(); }
   async function loadChapters() {
-    const cs = await call<ChapterRow[]>("list_chapters", {});
+    const cs = await call<ChapterRow[]>("list_chapters", { projectId: activeId });
     if (cs) {
       setChapters(cs);
       if (chapterIdx == null && cs.length) setChapterIdx((cs.find((c) => c.status === "done") || cs[0]).idx);
@@ -256,7 +324,7 @@ export default function App() {
   }
   async function openChapter(idx: number) {
     setChapterLoading(true);
-    const c = await call<ChapterView>("get_chapter", { index: idx });
+    const c = await call<ChapterView>("get_chapter", { projectId: activeId, index: idx });
     if (c) setChapter(c);
     setChapterLoading(false);
   }
@@ -264,13 +332,13 @@ export default function App() {
   async function replaceCover() {
     const path = await open({ filters: [{ name: "Image", extensions: ["jpg", "jpeg", "png", "gif", "webp"] }] });
     if (typeof path !== "string") return;
-    await call("set_cover", { path }); refreshDetails();
+    await call("set_cover", { projectId: activeId, path }); refreshDetails();
   }
-  async function saveSummary(text: string) { await call("set_summary", { summary: text }); }
+  async function saveSummary(text: string) { await call("set_summary", { projectId: activeId, summary: text }); }
   async function generateSummary() {
     setBusy(t("busy.generatingSummary"));
     try {
-      await invoke<string>("generate_summary", {});
+      await invoke<string>("generate_summary", { projectId: activeId });
       addLog(t("log.summaryGenerated"));
       refreshDetails();
     } catch (e) {
@@ -284,7 +352,7 @@ export default function App() {
   // Term edits auto-save. Changing the rendering also records a pending rename so
   // the global "Update translation" button can later propagate it into the text.
   async function saveTermField(term: Term, patch: Partial<Term>) {
-    await call("update_term", { term: { ...term, ...patch, pinned: true } });
+    await call("update_term", { projectId: activeId, term: { ...term, ...patch, pinned: true } });
     refreshGlossary();
   }
   function editTarget(term: Term, value: string) {
@@ -315,24 +383,25 @@ export default function App() {
     // only a synchronous rejection needs to clear the busy state here.
     try {
       await invoke("retarget_terms", {
+        projectId: activeId,
         changes: list.map((c) => ({ old_target: c.old, new_target: c.new, kind: c.kind })),
       });
     } catch (e) { setBusy(null); logError(String(e)); }
   }
   async function deleteTerm(t: Term) {
-    await call("delete_term", { source: t.source });
+    await call("delete_term", { projectId: activeId, source: t.source });
     setPending((p) => { const n = { ...p }; delete n[t.source]; return n; });
     refreshGlossary();
   }
   async function renameTerm(t: Term, source: string) {
-    await call("update_term", { term: { ...t, source, pinned: true } });
-    await call("delete_term", { source: t.source });
+    await call("update_term", { projectId: activeId, term: { ...t, source, pinned: true } });
+    await call("delete_term", { projectId: activeId, source: t.source });
     refreshGlossary();
   }
   async function addTerm() {
     const source = newTerm.source.trim(), target = newTerm.target.trim();
     if (!source || !target) return;
-    await call("update_term", { term: { source, target, kind: newTerm.kind, frequency: 1, pinned: true } });
+    await call("update_term", { projectId: activeId, term: { source, target, kind: newTerm.kind, frequency: 1, pinned: true } });
     setNewTerm({ source: "", target: "", kind: "person" });
     refreshGlossary();
   }
@@ -342,7 +411,7 @@ export default function App() {
     if (typeof outPath !== "string") return;
     const path = outPath.toLowerCase().endsWith(`.${fmt}`) ? outPath : `${outPath}.${fmt}`;
     setBusy(t("busy.exporting", { fmt: fmt.toUpperCase() }));
-    const p = await call<string>("export_book", { outPath: path });
+    const p = await call<string>("export_book", { projectId: activeId, outPath: path });
     setBusy(null);
     if (p) addLog(t("log.exported", { path: p }));
   }
@@ -379,6 +448,9 @@ export default function App() {
               <div className="mi" onClick={openBook}>{t("file.openBook")}</div>
               <div className={`mi ${!activeProject ? "disabled" : ""}`} onClick={() => activeProject && openReference()}>{t("file.openReference")}</div>
               <div className="sep" />
+              <div className="mi" onClick={openProjectArchive}>{t("file.openProject")}</div>
+              <div className={`mi ${!activeProject ? "disabled" : ""}`} onClick={() => activeProject && saveProject()}>{t("file.saveProject")}</div>
+              <div className="sep" />
               <div className="mi-label">{t("file.exportAs")}</div>
               <div className={`mi ${!canExport ? "disabled" : ""}`} onClick={() => canExport && exportAs("fb2")}>FB2</div>
               <div className={`mi ${!canExport ? "disabled" : ""}`} onClick={() => canExport && exportAs("epub")}>EPUB</div>
@@ -413,9 +485,10 @@ export default function App() {
           </div>
           <ul className="tree">
             {projects.map((p, i) => (
-              <li key={p.path}>
+              <li key={p.id}>
                 <div className={`node ${i === active ? "active" : ""}`} onClick={() => setActive(i)} title={p.path}>
-                  <span className="dot" /><span className="pname">{p.name}</span>
+                  <span className={`dot ${progressById[p.id]?.running ? "running" : ""}`} /><span className="pname">{p.name}</span>
+                  {progressById[p.id]?.running && <span className="spinner tiny" />}
                   <button className="icon remove" onClick={(e) => { e.stopPropagation(); removeProject(i); }}>×</button>
                 </div>
                 {i === active && (
@@ -675,7 +748,7 @@ export default function App() {
             <div className="console-head">
               <span className="console-title">{t("console.title")}</span>
               <div className="menu-spacer" />
-              <button className="icon" title={t("console.clear")} onClick={() => setLog([])}>⌫</button>
+              <button className="icon" title={t("console.clear")} onClick={() => activeId && setLogsById((all) => ({ ...all, [activeId]: [] }))}>⌫</button>
               <button className="icon" onClick={() => setShowConsole(false)}>×</button>
             </div>
             <div className="log" ref={logRef}>

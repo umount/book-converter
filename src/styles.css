@@ -74,6 +74,8 @@ body { background: var(--bg); color: var(--fg); overflow: hidden; }
 .node:hover { background: var(--bg-3); }
 .node.active { background: var(--sel); }
 .node .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--accent-2); flex: 0 0 auto; }
+.node .dot.running { background: #3fb950; box-shadow: 0 0 0 3px color-mix(in srgb, #3fb950 30%, transparent); }
+.spinner.tiny { width: 10px; height: 10px; border-width: 2px; flex: 0 0 auto; }
 .pname { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .children { list-style: none; margin: 0; padding: 0; }
 .leaf { padding: 5px 12px 5px 32px; cursor: pointer; color: var(--muted); display: flex; align-items: center; gap: 6px; }

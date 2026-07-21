@@ -236,6 +236,13 @@ Resumption: on start, take `chapters WHERE status IN ('pending','failed')`. Any
 | `retarget_terms(changes)` | Propagate one or more renames into the existing translation (background job; `retarget_progress`/`retarget_done` events) |
 | `export_book(out_dir, formats)` | Export to TXT/EPUB, return file paths |
 | `get_setting(key)` / `set_setting(key, value)` | Read/write a durable app-wide setting (e.g. UI language) |
+| `delete_project(project_id)` | Delete a project and all its data |
+| `export_project(project_id, out_path)` / `import_project(project_id, archive_path)` | Save/open a project as a portable `.bcproj` archive |
+
+Projects are isolated: `AppState` holds one `Session` per `project_id`, each with its
+own data directory (`projects/<id>/`), progress DB, cancel/running flag and console
+log, so several books can translate in parallel. Every project-scoped command takes a
+`project_id`, and progress/job events carry it. See `docs/PROJECT_ISOLATION.md`.
 
 ## Deliberately Out of Scope for v1
 

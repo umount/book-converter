@@ -48,12 +48,19 @@ pub struct Session {
     cover: Option<Cover>,
 }
 
-/// Managed app state.
-pub struct AppState(pub Mutex<Session>);
+/// Managed app state: one `Session` per open project, keyed by project id, so
+/// projects are isolated and can translate in parallel.
+pub struct AppState(pub Mutex<HashMap<String, Session>>);
 
 impl AppState {
     pub fn new() -> Self {
-        AppState(Mutex::new(Session::default()))
+        AppState(Mutex::new(HashMap::new()))
+    }
+
+    /// Run `f` with the session for `id`, creating an empty one if absent.
+    fn with<R>(&self, id: &str, f: impl FnOnce(&mut Session) -> R) -> R {
+        let mut map = self.0.lock().unwrap();
+        f(map.entry(id.to_string()).or_default())
     }
 }
 
@@ -82,6 +89,7 @@ pub struct RefInfo {
 
 #[derive(Serialize, Clone)]
 pub struct Progress {
+    pub project: String,
     pub done: usize,
     pub total: usize,
     pub failed: usize,
@@ -132,40 +140,69 @@ pub async fn set_setting(key: String, value: String) -> Result<(), String> {
     crate::settings::set(&settings_db(), &key, &value).map_err(err)
 }
 
-/// Where the resumable progress DB lives for a given source file.
-///
-/// Kept in the app data directory (not next to the book) so the source can live
-/// on a read-only or permission-restricted mount (USB, /media/…) without breaking.
-fn db_path_for(source: &str) -> String {
-    use std::hash::{Hash, Hasher};
-
-    let dir = app_data_dir();
-    let _ = std::fs::create_dir_all(&dir);
-
-    let mut hasher = std::collections::hash_map::DefaultHasher::new();
-    source.hash(&mut hasher);
-    let stem = std::path::Path::new(source)
-        .file_stem()
-        .and_then(|s| s.to_str())
-        .unwrap_or("book");
-    let safe: String = stem
-        .chars()
-        .take(40)
-        .map(|c| if c.is_alphanumeric() { c } else { '_' })
-        .collect();
-
-    dir.join(format!("{safe}-{:016x}.progress.db", hasher.finish()))
-        .to_string_lossy()
-        .into_owned()
+/// A project's own data directory (`<app_data>/projects/<id>/`).
+fn project_dir(id: &str) -> std::path::PathBuf {
+    app_data_dir().join("projects").join(id)
 }
 
-/// Load a source book (TXT/FB2), open/create its progress DB, and register chapters.
+/// The resumable progress DB for a project. Kept in the app data directory (not
+/// next to the book) so the source can live on a read-only mount without breaking.
+fn db_path_for_project(id: &str) -> String {
+    let dir = project_dir(id);
+    let _ = std::fs::create_dir_all(&dir);
+    dir.join("progress.db").to_string_lossy().into_owned()
+}
+
+/// Remove legacy flat `*.progress.db` files from before the per-project layout.
+pub fn cleanup_legacy_data() {
+    if let Ok(entries) = std::fs::read_dir(app_data_dir()) {
+        for e in entries.flatten() {
+            if e.file_name().to_string_lossy().ends_with(".progress.db") {
+                let _ = std::fs::remove_file(e.path());
+            }
+        }
+    }
+}
+
+/// Project manifest, stored as `project.json` and bundled into an archive so a
+/// project is self-describing.
+#[derive(Serialize, Deserialize, Default)]
+struct Manifest {
+    name: String,
+    source_path: String,
+    ref_path: Option<String>,
+}
+
+fn write_manifest(id: &str, source_path: &str, ref_path: Option<&str>) {
+    let _ = std::fs::create_dir_all(project_dir(id));
+    let name = Path::new(source_path)
+        .file_name()
+        .and_then(|s| s.to_str())
+        .unwrap_or("book")
+        .to_string();
+    let m = Manifest {
+        name,
+        source_path: source_path.to_string(),
+        ref_path: ref_path.map(|s| s.to_string()),
+    };
+    if let Ok(bytes) = serde_json::to_vec_pretty(&m) {
+        let _ = std::fs::write(project_dir(id).join("project.json"), bytes);
+    }
+}
+
+/// Load a source book (TXT/FB2) into a project, open/create its progress DB, and
+/// register chapters. Each project has its own id and data directory.
 #[tauri::command]
-pub async fn load_source(path: String, state: State<'_, AppState>) -> Result<BookInfo, String> {
+pub async fn load_source(
+    project_id: String,
+    path: String,
+    state: State<'_, AppState>,
+) -> Result<BookInfo, String> {
     let book = load_book(Path::new(&path)).map_err(err)?;
-    let db = db_path_for(&path);
+    let db = db_path_for_project(&project_id);
     let store = Store::open(&db).map_err(err)?;
     store.init_chapters(&book.chapters).map_err(err)?;
+    write_manifest(&project_id, &path, None);
 
     let title = book.meta.title.clone().unwrap_or_default();
     let author = book.meta.author.clone().unwrap_or_default();
@@ -191,9 +228,7 @@ pub async fn load_source(path: String, state: State<'_, AppState>) -> Result<Boo
         _ => None,
     };
 
-    {
-        // Switching projects: reset session, then load this project's state.
-        let mut s = state.0.lock().unwrap();
+    state.with(&project_id, |s| {
         s.reference = None;
         s.style = None;
         s.cancel = None;
@@ -207,7 +242,7 @@ pub async fn load_source(path: String, state: State<'_, AppState>) -> Result<Boo
         s.author_translated = saved_author;
         s.summary = saved_summary.or_else(|| head.as_ref().and_then(|h| h.annotation.clone()));
         s.cover = saved_cover.or_else(|| head.as_ref().and_then(|h| h.cover.clone()));
-    }
+    });
 
     Ok(BookInfo {
         title,
@@ -250,18 +285,23 @@ fn import_reference_pending(
 /// Load a reference translation: seed pending chapters from it (so they appear in
 /// the reader, labeled as coming from the reference) and adopt it for canon/style.
 #[tauri::command]
-pub async fn load_reference(path: String, state: State<'_, AppState>) -> Result<RefInfo, String> {
+pub async fn load_reference(
+    project_id: String,
+    path: String,
+    state: State<'_, AppState>,
+) -> Result<RefInfo, String> {
     let reference = reference::load_reference(Path::new(&path)).map_err(err)?;
 
     // Seed pending chapters from the reference, if a source book is open.
-    let (db, source_path) = {
-        let s = state.0.lock().unwrap();
-        (s.db_path.clone(), s.source_path.clone())
-    };
+    let (db, source_path) =
+        state.with(&project_id, |s| (s.db_path.clone(), s.source_path.clone()));
     let imported = match (&db, &source_path) {
         (Some(db), Some(sp)) => import_reference_pending(db, sp, &reference).map_err(err)?,
         _ => 0,
     };
+    if let Some(sp) = &source_path {
+        write_manifest(&project_id, sp, Some(&path));
+    }
 
     let info = RefInfo {
         title: reference.meta.title.clone().unwrap_or_default(),
@@ -275,37 +315,38 @@ pub async fn load_reference(path: String, state: State<'_, AppState>) -> Result<
     let ref_title = reference.meta.title.clone();
     let ref_author = reference.meta.author.clone();
 
-    let mut s = state.0.lock().unwrap();
-    s.zipped_input |= crate::book::source::is_zip(Path::new(&path));
-    // A reference is a translation, so its title/summary/cover are already in the
-    // target language — adopt them unless the user has set their own.
-    if s.summary.is_none() {
-        s.summary = annotation;
-    }
-    if s.cover.is_none() {
-        s.cover = cover;
-    }
-    if s.title_translated.is_none() {
-        s.title_translated = ref_title;
-    }
-    if s.author_translated.is_none() {
-        s.author_translated = ref_author.filter(|a| !a.trim().is_empty());
-    }
-    s.reference = Some(reference);
-    s.style = style;
+    state.with(&project_id, |s| {
+        s.zipped_input |= crate::book::source::is_zip(Path::new(&path));
+        // A reference is a translation, so its title/summary/cover are already in the
+        // target language: adopt them unless the user has set their own.
+        if s.summary.is_none() {
+            s.summary = annotation;
+        }
+        if s.cover.is_none() {
+            s.cover = cover;
+        }
+        if s.title_translated.is_none() {
+            s.title_translated = ref_title;
+        }
+        if s.author_translated.is_none() {
+            s.author_translated = ref_author.filter(|a| !a.trim().is_empty());
+        }
+        s.reference = Some(reference);
+        s.style = style;
+    });
     Ok(info)
 }
 
 /// Bootstrap a pinned glossary from `sample` aligned reference chapters.
 #[tauri::command]
 pub async fn bootstrap_glossary(
+    project_id: String,
     sample: usize,
     state: State<'_, AppState>,
 ) -> Result<usize, String> {
-    let (db, source_path, reference) = {
-        let s = state.0.lock().unwrap();
+    let (db, source_path, reference) = state.with(&project_id, |s| {
         (s.db_path.clone(), s.source_path.clone(), s.reference.clone())
-    };
+    });
     let db = db.ok_or("no source loaded")?;
     let source_path = source_path.ok_or("no source loaded")?;
     let reference = reference.ok_or("no reference loaded")?;
@@ -324,11 +365,13 @@ pub async fn bootstrap_glossary(
 /// from the professional text, so only the remaining chapters get machine-translated.
 /// Loading a reference already does this; kept for an explicit re-seed.
 #[tauri::command]
-pub async fn use_reference_as_base(state: State<'_, AppState>) -> Result<usize, String> {
-    let (db, source_path, reference) = {
-        let s = state.0.lock().unwrap();
+pub async fn use_reference_as_base(
+    project_id: String,
+    state: State<'_, AppState>,
+) -> Result<usize, String> {
+    let (db, source_path, reference) = state.with(&project_id, |s| {
         (s.db_path.clone(), s.source_path.clone(), s.reference.clone())
-    };
+    });
     let db = db.ok_or("no source loaded")?;
     let source_path = source_path.ok_or("no source loaded")?;
     let reference = reference.ok_or("no reference loaded")?;
@@ -338,39 +381,41 @@ pub async fn use_reference_as_base(state: State<'_, AppState>) -> Result<usize, 
 /// Start translating pending chapters (up to `limit`) on a background thread.
 #[tauri::command]
 pub fn start_translation(
+    project_id: String,
     limit: Option<usize>,
     app: AppHandle,
     state: State<'_, AppState>,
 ) -> Result<(), String> {
-    let (db, style, cancel) = {
-        let mut s = state.0.lock().unwrap();
+    let res: Result<_, String> = state.with(&project_id, |s| {
         if s.running {
-            return Err("a translation is already running".into());
+            return Err("a translation is already running".to_string());
         }
         let db = s.db_path.clone().ok_or("no source loaded")?;
         let cancel = Arc::new(AtomicBool::new(false));
         s.cancel = Some(cancel.clone());
         s.running = true;
-        (db, s.style.clone(), cancel)
-    };
+        Ok((db, s.style.clone(), cancel))
+    });
+    let (db, style, cancel) = res?;
 
     let app2 = app.clone();
+    let pid = project_id.clone();
     std::thread::spawn(move || {
         let rt = tokio::runtime::Builder::new_current_thread()
             .enable_all()
             .build()
             .expect("current-thread runtime");
-        let result = rt.block_on(run_job(&db, style, limit, &cancel, &app2));
+        let result = rt.block_on(run_job(&pid, &db, style, limit, &cancel, &app2));
 
         if let Some(st) = app2.try_state::<AppState>() {
-            st.0.lock().unwrap().running = false;
+            st.with(&pid, |s| s.running = false);
         }
         match result {
             Ok(()) => {
-                let _ = app2.emit("done", ());
+                let _ = app2.emit("done", serde_json::json!({ "project": pid }));
             }
             Err(e) => {
-                let _ = app2.emit("job_error", e.to_string());
+                let _ = app2.emit("job_error", serde_json::json!({ "project": pid, "message": e.to_string() }));
             }
         }
     });
@@ -379,6 +424,7 @@ pub fn start_translation(
 }
 
 async fn run_job(
+    project_id: &str,
     db: &str,
     style: Option<String>,
     limit: Option<usize>,
@@ -393,6 +439,7 @@ async fn run_job(
         let _ = app.emit(
             "progress",
             Progress {
+                project: project_id.to_string(),
                 done: st.done,
                 total: st.total,
                 failed: st.failed,
@@ -406,25 +453,27 @@ async fn run_job(
 
 /// Request a pause: the run stops after the current chapter.
 #[tauri::command]
-pub fn pause_translation(state: State<'_, AppState>) -> Result<(), String> {
-    let s = state.0.lock().unwrap();
-    if let Some(c) = &s.cancel {
-        c.store(true, Ordering::Relaxed);
-    }
+pub fn pause_translation(project_id: String, state: State<'_, AppState>) -> Result<(), String> {
+    state.with(&project_id, |s| {
+        if let Some(c) = &s.cancel {
+            c.store(true, Ordering::Relaxed);
+        }
+    });
     Ok(())
 }
 
 /// Current progress.
 #[tauri::command]
-pub async fn get_progress(state: State<'_, AppState>) -> Result<Progress, String> {
-    let (db, running) = {
-        let s = state.0.lock().unwrap();
-        (s.db_path.clone(), s.running)
-    };
+pub async fn get_progress(
+    project_id: String,
+    state: State<'_, AppState>,
+) -> Result<Progress, String> {
+    let (db, running) = state.with(&project_id, |s| (s.db_path.clone(), s.running));
     let db = db.ok_or("no source loaded")?;
     let store = Store::open(&db).map_err(err)?;
     let st = store.stats().map_err(err)?;
     Ok(Progress {
+        project: project_id,
         done: st.done,
         total: st.total,
         failed: st.failed,
@@ -439,13 +488,11 @@ pub async fn get_progress(state: State<'_, AppState>) -> Result<Progress, String
 /// chapters were reset. The caller then calls `start_translation` to re-run them.
 #[tauri::command]
 pub async fn reset_translation(
+    project_id: String,
     from_index: Option<usize>,
     state: State<'_, AppState>,
 ) -> Result<usize, String> {
-    let (db, running) = {
-        let s = state.0.lock().unwrap();
-        (s.db_path.clone(), s.running)
-    };
+    let (db, running) = state.with(&project_id, |s| (s.db_path.clone(), s.running));
     if running {
         return Err("a job is already running".into());
     }
@@ -461,13 +508,12 @@ pub async fn reset_translation(
 
 /// The whole glossary (most frequent first).
 #[tauri::command]
-pub async fn get_glossary(state: State<'_, AppState>) -> Result<Vec<TermDto>, String> {
+pub async fn get_glossary(
+    project_id: String,
+    state: State<'_, AppState>,
+) -> Result<Vec<TermDto>, String> {
     let db = state
-        .0
-        .lock()
-        .unwrap()
-        .db_path
-        .clone()
+        .with(&project_id, |s| s.db_path.clone())
         .ok_or("no source loaded")?;
     let store = Store::open(&db).map_err(err)?;
     let mut terms = store.load_glossary().map_err(err)?;
@@ -477,13 +523,13 @@ pub async fn get_glossary(state: State<'_, AppState>) -> Result<Vec<TermDto>, St
 
 /// Manually edit / pin a term.
 #[tauri::command]
-pub async fn update_term(term: TermDto, state: State<'_, AppState>) -> Result<(), String> {
+pub async fn update_term(
+    project_id: String,
+    term: TermDto,
+    state: State<'_, AppState>,
+) -> Result<(), String> {
     let db = state
-        .0
-        .lock()
-        .unwrap()
-        .db_path
-        .clone()
+        .with(&project_id, |s| s.db_path.clone())
         .ok_or("no source loaded")?;
     let store = Store::open(&db).map_err(err)?;
     let mut glossary = store.load_glossary().map_err(err)?;
@@ -504,13 +550,13 @@ pub async fn update_term(term: TermDto, state: State<'_, AppState>) -> Result<()
 
 /// Remove a term from the glossary by its source form.
 #[tauri::command]
-pub async fn delete_term(source: String, state: State<'_, AppState>) -> Result<(), String> {
+pub async fn delete_term(
+    project_id: String,
+    source: String,
+    state: State<'_, AppState>,
+) -> Result<(), String> {
     let db = state
-        .0
-        .lock()
-        .unwrap()
-        .db_path
-        .clone()
+        .with(&project_id, |s| s.db_path.clone())
         .ok_or("no source loaded")?;
     let store = Store::open(&db).map_err(err)?;
     store.delete_term(source.trim()).map_err(err)?;
@@ -532,6 +578,7 @@ pub struct RenameChange {
 /// (chapters changed).
 #[tauri::command]
 pub fn retarget_terms(
+    project_id: String,
     changes: Vec<RenameChange>,
     app: AppHandle,
     state: State<'_, AppState>,
@@ -543,35 +590,36 @@ pub fn retarget_terms(
     if changes.is_empty() {
         return Err("nothing to update".into());
     }
-    let (db, cancel) = {
-        let mut s = state.0.lock().unwrap();
+    let res: Result<_, String> = state.with(&project_id, |s| {
         if s.running {
-            return Err("a job is already running".into());
+            return Err("a job is already running".to_string());
         }
         let db = s.db_path.clone().ok_or("no source loaded")?;
         let cancel = Arc::new(AtomicBool::new(false));
         s.cancel = Some(cancel.clone());
         s.running = true;
-        (db, cancel)
-    };
+        Ok((db, cancel))
+    });
+    let (db, cancel) = res?;
 
     let app2 = app.clone();
+    let pid = project_id.clone();
     std::thread::spawn(move || {
         let rt = tokio::runtime::Builder::new_current_thread()
             .enable_all()
             .build()
             .expect("current-thread runtime");
-        let result = rt.block_on(run_retarget(&db, &changes, &cancel, &app2));
+        let result = rt.block_on(run_retarget(&pid, &db, &changes, &cancel, &app2));
 
         if let Some(st) = app2.try_state::<AppState>() {
-            st.0.lock().unwrap().running = false;
+            st.with(&pid, |s| s.running = false);
         }
         match result {
             Ok(n) => {
-                let _ = app2.emit("retarget_done", n);
+                let _ = app2.emit("retarget_done", serde_json::json!({ "project": pid, "changed": n }));
             }
             Err(e) => {
-                let _ = app2.emit("job_error", e.to_string());
+                let _ = app2.emit("job_error", serde_json::json!({ "project": pid, "message": e.to_string() }));
             }
         }
     });
@@ -579,6 +627,7 @@ pub fn retarget_terms(
 }
 
 async fn run_retarget(
+    project_id: &str,
     db: &str,
     changes: &[RenameChange],
     cancel: &AtomicBool,
@@ -607,10 +656,10 @@ async fn run_retarget(
             break;
         }
 
-        let new_title = apply_changes(&cl, lang, changes, &title, app).await;
+        let new_title = apply_changes(project_id, &cl, lang, changes, &title, app).await;
         let mut out_lines: Vec<String> = Vec::with_capacity(body.lines().count());
         for line in body.lines() {
-            out_lines.push(apply_changes(&cl, lang, changes, line, app).await);
+            out_lines.push(apply_changes(project_id, &cl, lang, changes, line, app).await);
         }
         let new_body = out_lines.join("\n");
 
@@ -622,6 +671,7 @@ async fn run_retarget(
         let _ = app.emit(
             "retarget_progress",
             serde_json::json!({
+                "project": project_id,
                 "done": i + 1,
                 "total": total,
                 "title": new_title,
@@ -637,6 +687,7 @@ async fn run_retarget(
 /// A model failure on one paragraph is surfaced (a `retarget_warn` event) and the
 /// original text is kept, so one bad paragraph never aborts the whole job.
 async fn apply_changes(
+    project_id: &str,
     cl: &DeepSeekClient,
     lang: &str,
     changes: &[RenameChange],
@@ -654,7 +705,10 @@ async fn apply_changes(
                     tracing::warn!("retarget rewrite failed: {e:#}");
                     let _ = app.emit(
                         "retarget_warn",
-                        format!("{} → {}: {e}", c.old_target, c.new_target),
+                        serde_json::json!({
+                            "project": project_id,
+                            "message": format!("{} -> {}: {e}", c.old_target, c.new_target),
+                        }),
                     );
                 }
             }
@@ -681,21 +735,25 @@ async fn rewrite_paragraph(
 
 /// Export the translated chapters to `out_path` (format inferred from extension).
 #[tauri::command]
-pub async fn export_book(out_path: String, state: State<'_, AppState>) -> Result<String, String> {
-    let (db, source_path, title, title_translated, author, author_translated, summary, cover, zipped_input) = {
-        let s = state.0.lock().unwrap();
-        (
-            s.db_path.clone(),
-            s.source_path.clone(),
-            s.title.clone(),
-            s.title_translated.clone(),
-            s.author.clone(),
-            s.author_translated.clone(),
-            s.summary.clone(),
-            s.cover.clone(),
-            s.zipped_input,
-        )
-    };
+pub async fn export_book(
+    project_id: String,
+    out_path: String,
+    state: State<'_, AppState>,
+) -> Result<String, String> {
+    let (db, source_path, title, title_translated, author, author_translated, summary, cover, zipped_input) =
+        state.with(&project_id, |s| {
+            (
+                s.db_path.clone(),
+                s.source_path.clone(),
+                s.title.clone(),
+                s.title_translated.clone(),
+                s.author.clone(),
+                s.author_translated.clone(),
+                s.summary.clone(),
+                s.cover.clone(),
+                s.zipped_input,
+            )
+        });
     let db = db.ok_or("no source loaded")?;
     let source_path = source_path.ok_or("no source loaded")?;
 
@@ -823,8 +881,13 @@ pub struct ChapterView {
 
 /// List chapters of the active project (for the reader).
 #[tauri::command]
-pub async fn list_chapters(state: State<'_, AppState>) -> Result<Vec<ChapterRow>, String> {
-    let db = state.0.lock().unwrap().db_path.clone().ok_or("no source loaded")?;
+pub async fn list_chapters(
+    project_id: String,
+    state: State<'_, AppState>,
+) -> Result<Vec<ChapterRow>, String> {
+    let db = state
+        .with(&project_id, |s| s.db_path.clone())
+        .ok_or("no source loaded")?;
     let store = Store::open(&db).map_err(err)?;
     let rows = store.list_chapters().map_err(err)?;
     Ok(rows
@@ -835,8 +898,14 @@ pub async fn list_chapters(state: State<'_, AppState>) -> Result<Vec<ChapterRow>
 
 /// Original + translation for one chapter.
 #[tauri::command]
-pub async fn get_chapter(index: usize, state: State<'_, AppState>) -> Result<ChapterView, String> {
-    let db = state.0.lock().unwrap().db_path.clone().ok_or("no source loaded")?;
+pub async fn get_chapter(
+    project_id: String,
+    index: usize,
+    state: State<'_, AppState>,
+) -> Result<ChapterView, String> {
+    let db = state
+        .with(&project_id, |s| s.db_path.clone())
+        .ok_or("no source loaded")?;
     let store = Store::open(&db).map_err(err)?;
     let (number, source_title, source, status, translated_title, translated, origin) = store
         .chapter_full(index)
@@ -868,32 +937,36 @@ pub struct BookDetails {
 
 /// Current book details for display (cover, summary, translated title).
 #[tauri::command]
-pub async fn get_book_details(state: State<'_, AppState>) -> Result<BookDetails, String> {
-    let s = state.0.lock().unwrap();
-    Ok(BookDetails {
+pub async fn get_book_details(
+    project_id: String,
+    state: State<'_, AppState>,
+) -> Result<BookDetails, String> {
+    Ok(state.with(&project_id, |s| BookDetails {
         title: s.title.clone().unwrap_or_default(),
         author: s.author.clone().unwrap_or_default(),
         title_translated: s.title_translated.clone(),
         author_translated: s.author_translated.clone(),
         summary: s.summary.clone(),
         cover: s.cover.as_ref().map(|c| c.data_url()),
-    })
+    }))
 }
 
 /// Translate the source book title and author (auto). Keeps reference-provided
 /// values. Translating the author matters for PDF, whose Latin/Cyrillic-only font
 /// renders an untranslated CJK name as boxes.
 #[tauri::command]
-pub async fn translate_title(state: State<'_, AppState>) -> Result<String, String> {
-    let (title, author, existing_title, existing_author) = {
-        let s = state.0.lock().unwrap();
+pub async fn translate_title(
+    project_id: String,
+    state: State<'_, AppState>,
+) -> Result<String, String> {
+    let (title, author, existing_title, existing_author) = state.with(&project_id, |s| {
         (
             s.title.clone(),
             s.author.clone(),
             s.title_translated.clone(),
             s.author_translated.clone(),
         )
-    };
+    });
     let cfg = Config::load();
 
     // --- title ---
@@ -908,11 +981,10 @@ pub async fn translate_title(state: State<'_, AppState>) -> Result<String, Strin
             );
             let out = client()?.translate(&system, &title).await.map_err(err)?;
             let out = out.trim().trim_matches('"').trim().to_string();
-            let db = {
-                let mut s = state.0.lock().unwrap();
+            let db = state.with(&project_id, |s| {
                 s.title_translated = Some(out.clone());
                 s.db_path.clone()
-            };
+            });
             persist_meta(&db, "title_translated", &out);
             out
         }
@@ -928,11 +1000,10 @@ pub async fn translate_title(state: State<'_, AppState>) -> Result<String, Strin
             if let Ok(out) = client()?.translate(&system, &author).await {
                 let out = out.trim().trim_matches('"').trim().to_string();
                 if !out.is_empty() {
-                    let db = {
-                        let mut s = state.0.lock().unwrap();
+                    let db = state.with(&project_id, |s| {
                         s.author_translated = Some(out.clone());
                         s.db_path.clone()
-                    };
+                    });
                     persist_meta(&db, "author_translated", &out);
                 }
             }
@@ -944,12 +1015,15 @@ pub async fn translate_title(state: State<'_, AppState>) -> Result<String, Strin
 
 /// Set / replace the annotation (summary).
 #[tauri::command]
-pub async fn set_summary(summary: String, state: State<'_, AppState>) -> Result<(), String> {
-    let db = {
-        let mut s = state.0.lock().unwrap();
+pub async fn set_summary(
+    project_id: String,
+    summary: String,
+    state: State<'_, AppState>,
+) -> Result<(), String> {
+    let db = state.with(&project_id, |s| {
         s.summary = if summary.trim().is_empty() { None } else { Some(summary.clone()) };
         s.db_path.clone()
-    };
+    });
     persist_meta(&db, "summary", &summary);
     Ok(())
 }
@@ -957,11 +1031,13 @@ pub async fn set_summary(summary: String, state: State<'_, AppState>) -> Result<
 /// Generate a book annotation (summary) from the title + author via the model,
 /// then persist it. Useful when the source file carries no annotation.
 #[tauri::command]
-pub async fn generate_summary(state: State<'_, AppState>) -> Result<String, String> {
-    let (title, title_tr, author) = {
-        let s = state.0.lock().unwrap();
+pub async fn generate_summary(
+    project_id: String,
+    state: State<'_, AppState>,
+) -> Result<String, String> {
+    let (title, title_tr, author) = state.with(&project_id, |s| {
         (s.title.clone(), s.title_translated.clone(), s.author.clone())
-    };
+    });
     let title = title.filter(|t| !t.trim().is_empty()).ok_or("no book title")?;
     let cfg = Config::load();
 
@@ -991,18 +1067,21 @@ pub async fn generate_summary(state: State<'_, AppState>) -> Result<String, Stri
     if out.is_empty() || out.trim_start().to_uppercase().starts_with("NOT_FOUND") {
         return Err("book_not_found".into());
     }
-    let db = {
-        let mut s = state.0.lock().unwrap();
+    let db = state.with(&project_id, |s| {
         s.summary = Some(out.clone());
         s.db_path.clone()
-    };
+    });
     persist_meta(&db, "summary", &out);
     Ok(out)
 }
 
 /// Replace the cover image from a file; returns its `data:` URL for preview.
 #[tauri::command]
-pub async fn set_cover(path: String, state: State<'_, AppState>) -> Result<String, String> {
+pub async fn set_cover(
+    project_id: String,
+    path: String,
+    state: State<'_, AppState>,
+) -> Result<String, String> {
     use base64::Engine as _;
     let bytes = std::fs::read(&path).map_err(err)?;
     let cover = Cover {
@@ -1010,11 +1089,10 @@ pub async fn set_cover(path: String, state: State<'_, AppState>) -> Result<Strin
         base64: base64::engine::general_purpose::STANDARD.encode(&bytes),
     };
     let url = cover.data_url();
-    let db = {
-        let mut s = state.0.lock().unwrap();
+    let db = state.with(&project_id, |s| {
         s.cover = Some(cover.clone());
         s.db_path.clone()
-    };
+    });
     if let Some(db) = db {
         if let Ok(store) = Store::open(&db) {
             let _ = store.set_meta("cover_ct", &cover.content_type);
@@ -1022,6 +1100,111 @@ pub async fn set_cover(path: String, state: State<'_, AppState>) -> Result<Strin
         }
     }
     Ok(url)
+}
+
+/// Lowercase file extension of a path, or `"bin"`.
+fn ext_of(path: &str) -> String {
+    std::path::Path::new(path)
+        .extension()
+        .and_then(|e| e.to_str())
+        .unwrap_or("bin")
+        .to_lowercase()
+}
+
+/// Delete a project and all of its data (progress DB, manifest, extracted files).
+#[tauri::command]
+pub async fn delete_project(project_id: String, state: State<'_, AppState>) -> Result<(), String> {
+    state.0.lock().unwrap().remove(&project_id);
+    let dir = project_dir(&project_id);
+    if dir.exists() {
+        std::fs::remove_dir_all(&dir).map_err(err)?;
+    }
+    Ok(())
+}
+
+/// Save a project to a self-contained `.bcproj` archive (manifest + progress DB +
+/// a copy of the source book), so it is portable and can be re-opened elsewhere.
+#[tauri::command]
+pub async fn export_project(
+    project_id: String,
+    out_path: String,
+    state: State<'_, AppState>,
+) -> Result<(), String> {
+    use std::io::Write as _;
+
+    let dir = project_dir(&project_id);
+    let manifest_bytes = std::fs::read(dir.join("project.json")).map_err(err)?;
+    let db_bytes = std::fs::read(dir.join("progress.db")).map_err(err)?;
+    let source_path = state
+        .with(&project_id, |s| s.source_path.clone())
+        .or_else(|| serde_json::from_slice::<Manifest>(&manifest_bytes).ok().map(|m| m.source_path))
+        .ok_or("no source loaded")?;
+    let book_bytes =
+        std::fs::read(&source_path).map_err(|e| format!("reading book {source_path}: {e}"))?;
+    let book_name = format!("book.{}", ext_of(&source_path));
+
+    let file = std::fs::File::create(&out_path).map_err(err)?;
+    let mut zip = zip::ZipWriter::new(file);
+    let opts = zip::write::SimpleFileOptions::default()
+        .compression_method(zip::CompressionMethod::Deflated);
+    let entries: [(&str, &Vec<u8>); 3] = [
+        ("project.json", &manifest_bytes),
+        ("progress.db", &db_bytes),
+        (book_name.as_str(), &book_bytes),
+    ];
+    for (name, bytes) in entries {
+        zip.start_file(name, opts).map_err(err)?;
+        zip.write_all(bytes).map_err(err)?;
+    }
+    zip.finish().map_err(err)?;
+    Ok(())
+}
+
+/// Result of importing a `.bcproj` archive: enough for the frontend to register a
+/// project row and open it.
+#[derive(Serialize)]
+pub struct ImportedProject {
+    pub name: String,
+    pub source_path: String,
+}
+
+/// Import a `.bcproj` archive into a new project directory and report its name and
+/// the extracted book path (the frontend then loads it like any other project).
+#[tauri::command]
+pub async fn import_project(
+    project_id: String,
+    archive_path: String,
+) -> Result<ImportedProject, String> {
+    use std::io::Read as _;
+
+    let dir = project_dir(&project_id);
+    std::fs::create_dir_all(&dir).map_err(err)?;
+    let file = std::fs::File::open(&archive_path).map_err(err)?;
+    let mut zip = zip::ZipArchive::new(file).map_err(err)?;
+
+    let mut name = "Imported project".to_string();
+    let mut source_path: Option<String> = None;
+    for i in 0..zip.len() {
+        let mut entry = zip.by_index(i).map_err(err)?;
+        let ename = entry.name().to_string();
+        let mut buf = Vec::new();
+        entry.read_to_end(&mut buf).map_err(err)?;
+        if ename == "project.json" {
+            if let Ok(m) = serde_json::from_slice::<Manifest>(&buf) {
+                name = m.name;
+            }
+            std::fs::write(dir.join("project.json"), &buf).map_err(err)?;
+        } else if ename == "progress.db" {
+            std::fs::write(dir.join("progress.db"), &buf).map_err(err)?;
+        } else if ename.starts_with("book.") {
+            let p = dir.join(&ename);
+            std::fs::write(&p, &buf).map_err(err)?;
+            source_path = Some(p.to_string_lossy().into_owned());
+        }
+    }
+    let source_path = source_path.ok_or("archive has no book file")?;
+    write_manifest(&project_id, &source_path, None);
+    Ok(ImportedProject { name, source_path })
 }
 
 /// Persist a single meta value to the current project's DB (best-effort).

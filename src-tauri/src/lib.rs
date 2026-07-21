@@ -28,6 +28,9 @@ pub fn run() {
 
     tracing::info!("book-converter starting");
 
+    // Drop legacy flat progress DBs from before the per-project layout.
+    commands::cleanup_legacy_data();
+
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
@@ -55,6 +58,9 @@ pub fn run() {
             commands::get_chapter,
             commands::get_setting,
             commands::set_setting,
+            commands::delete_project,
+            commands::export_project,
+            commands::import_project,
         ])
         .run(tauri::generate_context!())
         .expect("failed to start the Tauri application");
