@@ -49,6 +49,7 @@ pub fn run() {
             commands::get_book_details,
             commands::translate_title,
             commands::set_summary,
+            commands::generate_summary,
             commands::set_cover,
             commands::list_chapters,
             commands::get_chapter,

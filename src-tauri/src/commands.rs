@@ -954,6 +954,48 @@ pub async fn set_summary(summary: String, state: State<'_, AppState>) -> Result<
     Ok(())
 }
 
+/// Generate a book annotation (summary) from the title + author via the model,
+/// then persist it. Useful when the source file carries no annotation.
+#[tauri::command]
+pub async fn generate_summary(state: State<'_, AppState>) -> Result<String, String> {
+    let (title, title_tr, author) = {
+        let s = state.0.lock().unwrap();
+        (s.title.clone(), s.title_translated.clone(), s.author.clone())
+    };
+    let title = title.filter(|t| !t.trim().is_empty()).ok_or("no book title")?;
+    let cfg = Config::load();
+
+    let hint = title_tr
+        .filter(|t| !t.trim().is_empty())
+        .map(|t| format!(" (also known as \"{t}\")"))
+        .unwrap_or_default();
+    let author_line = author
+        .filter(|a| !a.trim().is_empty())
+        .map(|a| format!("\nAuthor: {a}"))
+        .unwrap_or_default();
+
+    let system = format!(
+        "You are a librarian who writes concise book annotations in {}. \
+         Given a title and author, write a 3 to 6 sentence annotation covering the premise, genre and tone. \
+         If you do not know the exact book, infer a plausible annotation from the meaning of the title. \
+         Output only the annotation text: no heading, no quotes, no preamble.",
+        cfg.target_lang
+    );
+    let user = format!("Title: {title}{hint}{author_line}");
+    let out = client()?.translate(&system, &user).await.map_err(err)?;
+    let out = out.trim().to_string();
+    if out.is_empty() {
+        return Err("the model returned an empty summary".into());
+    }
+    let db = {
+        let mut s = state.0.lock().unwrap();
+        s.summary = Some(out.clone());
+        s.db_path.clone()
+    };
+    persist_meta(&db, "summary", &out);
+    Ok(out)
+}
+
 /// Replace the cover image from a file; returns its `data:` URL for preview.
 #[tauri::command]
 pub async fn set_cover(path: String, state: State<'_, AppState>) -> Result<String, String> {

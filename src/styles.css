@@ -151,6 +151,7 @@ button.primary:disabled { opacity: .45; }
 .retranslate { margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--line); }
 button.ghost.danger { color: #e5834b; }
 button.ghost.danger:hover:not(:disabled) { color: #fff; background: color-mix(in srgb, #e5534b 70%, transparent); }
+.summary-head { display: flex; margin: 8px 0 4px; }
 .ref-empty { display: flex; flex-direction: column; align-items: flex-start; gap: 10px; }
 .ref-desc { margin: 0; line-height: 1.55; max-width: 68ch; }
 .resume-hint { margin-top: 6px; line-height: 1.5; max-width: 68ch; }
