@@ -977,7 +977,7 @@ pub async fn generate_summary(state: State<'_, AppState>) -> Result<String, Stri
     let system = format!(
         "You are a librarian who writes concise book annotations in {}. \
          Write a 3 to 6 sentence annotation covering the premise, genre and tone, based on your knowledge of the \
-         book and on what its title and author clearly convey (many web-novel titles state the genre and premise directly). \
+         book and on what its title and author clearly convey. \
          Do not fabricate specific named characters or plot twists you have no basis for, but you may describe the evident premise and genre. \
          Only if the title is genuinely uninformative (for example just a personal name from which nothing can be said), \
          reply with exactly NOT_FOUND and nothing else. \
