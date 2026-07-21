@@ -63,22 +63,29 @@ log/progress even while several run at once:
   project; a project still translating in the background keeps updating its own log
   and shows a running indicator in the sidebar.
 
+## The database is the source of truth
+
+The source file is parsed **once**, when a book is added (`load_source`): chapter
+source text, translations, glossary, cover, and metadata (title/author/format/
+encoding) all go into `progress.db`. From then on the frontend works only with the
+DB — a project is opened with `open_project(project_id)`, which reads everything from
+`progress.db` and needs no source file. Exporting the translation (`export_book`)
+also reads chapter numbers from the DB, so a project stays fully usable even without
+the original book present.
+
 ## Save / open a project archive (`.bcproj`)
 
-A project archive is a zip bundle so a project is portable:
+Because the DB is self-contained, the archive is just the manifest + the database
+(no copy of the original book, so it stays small):
 
 ```
-project.json          # { name, book_file, ref_file? }
+project.json          # { name, source_path, ref_path? }
 progress.db           # the full per-project database
-book.<ext>            # a copy of the source book (self-contained)
-reference.<ext>       # optional copy of the reference
 ```
 
-- `export_project(project_id, out_path)` — reads the source book bytes + the
-  project's `progress.db`, writes the zip.
-- `import_project(archive_path, new_id)` — extracts into `projects/<new_id>/`, sets
-  the project's `source_path` to the extracted book, returns manifest info; the
-  frontend registers a new project row.
+- `export_project(project_id, out_path)` — zips the manifest + `progress.db`.
+- `import_project(archive_path, new_id)` — extracts into `projects/<new_id>/`; the
+  frontend registers a project row and opens it with `open_project`.
 
 ## Delete a project
 

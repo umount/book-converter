@@ -149,8 +149,8 @@ export default function App() {
       }),
       listen<{ project: string; message: string }>("job_error", (e) => {
         const { project, message } = e.payload;
-        addLogTo(project, tr("log.error", { msg: message }));
-        if (isActive(project)) { setBusy(null); setError(message); }
+        addLogTo(project, tr("log.error", { msg: errText(message) }));
+        if (isActive(project)) { setBusy(null); setError(errText(message)); }
       }),
       listen<{ project: string; done: number; total: number; title: string; changed: boolean }>("retarget_progress", (e) => {
         const { project, done, total, title, changed } = e.payload;
@@ -190,11 +190,18 @@ export default function App() {
   // Errors always go to the console. The banner (an IDE-style notification) is
   // reserved for critical failures (DeepSeek being unreachable, a project failing
   // to open), so it isn't raised for every minor command hiccup.
-  function logError(msg: string) { addLog(tRef.current("log.error", { msg })); }
+  // Map a stable backend error code (e.g. "no_source") to a localized message;
+  // pass anything else through unchanged.
+  function errText(raw: string): string {
+    const key = `err.${raw.trim()}`;
+    const s = tRef.current(key);
+    return s === key ? raw : s;
+  }
+  function logError(msg: string) { addLog(tRef.current("log.error", { msg: errText(msg) })); }
 
   async function call<T>(name: string, args?: Record<string, unknown>, opts?: { critical?: boolean }): Promise<T | undefined> {
     try { return await invoke<T>(name, args); }
-    catch (e) { const msg = String(e); logError(msg); if (opts?.critical) setError(msg); return undefined; }
+    catch (e) { const msg = String(e); logError(msg); if (opts?.critical) setError(errText(msg)); return undefined; }
   }
 
   function clearWorkspace() {
@@ -211,23 +218,34 @@ export default function App() {
     addLogTo(p.id, t("log.opening", { name: p.name }));
     setError(null);
     clearWorkspace();
-    const info = await call<BookInfo>("load_source", { projectId: p.id, path: p.path }, { critical: true });
+    // The frontend works only with the database: a project is always opened from
+    // its own DB (the source file was parsed into it once, at add time).
+    const info = await call<BookInfo>("open_project", { projectId: p.id }, { critical: true });
     if (info) {
       setBook(info);
       addLogTo(p.id, t("log.loaded", { name: p.name, n: info.total_chapters, format: info.format, encoding: info.encoding }));
-      if (p.refPath) { const r = await call<RefInfo>("load_reference", { projectId: p.id, path: p.refPath }); if (r) { setRef(r); addLogTo(p.id, t("log.reference", { n: r.max_covered ?? "?" })); if (r.imported > 0) addLogTo(p.id, t("log.refImported", { n: r.imported })); } }
+      // Re-attach the reference for canon/style if its file is still available.
+      if (p.refPath) { try { const r = await invoke<RefInfo>("load_reference", { projectId: p.id, path: p.refPath }); setRef(r); addLogTo(p.id, t("log.reference", { n: r.max_covered ?? "?" })); if (r.imported > 0) addLogTo(p.id, t("log.refImported", { n: r.imported })); } catch { /* reference file gone (e.g. imported project) */ } }
       await refreshDetails(); await refreshProgressFor(p.id); await refreshGlossary();
       void translateTitle();
     }
     setBusy(null);
   }
 
-  // Each open (even the same file) is a distinct, isolated project.
+  // Adding a book is a one-time import: the file is parsed into the project's DB
+  // here, and from then on everything works from the DB. Each add (even the same
+  // file) is a distinct, isolated project.
   async function openBook() {
     setMenu(null);
     const path = await open({ filters: [{ name: "Book", extensions: ["txt", "fb2", "pdf", "zip"] }] });
     if (typeof path !== "string") return;
-    const next = [...projects, { id: newId(), path, name: baseName(path) }];
+    const id = newId();
+    setBusy(t("busy.opening", { name: baseName(path) }));
+    setError(null);
+    const info = await call<BookInfo>("load_source", { projectId: id, path }, { critical: true });
+    setBusy(null);
+    if (!info) return; // parse failed (e.g. unreadable PDF): don't create a broken project
+    const next = [...projects, { id, path, name: baseName(path) }];
     setProjects(next); setActive(next.length - 1);
   }
 
@@ -354,7 +372,7 @@ export default function App() {
     } catch (e) {
       // Not finding the book is an expected outcome, not a critical error: log it.
       const msg = String(e);
-      addLog(msg.includes("book_not_found") ? t("log.summaryNotFound") : t("log.error", { msg }));
+      addLog(msg.includes("book_not_found") ? t("log.summaryNotFound") : t("log.error", { msg: errText(msg) }));
     } finally {
       setBusy(null);
     }

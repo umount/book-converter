@@ -142,6 +142,14 @@ const en: Dict = {
   "log.retargetItem": "  {done}/{total} · {mark} {title}",
   "log.retargetWarn": "⚠ rewrite failed: {msg}",
   "log.error": "✗ {msg}",
+  "err.no_source": "No book is loaded.",
+  "err.no_title": "There is no book title to translate.",
+  "err.translation_running": "A translation is already running for this project.",
+  "err.job_running": "A job is already running for this project.",
+  "err.nothing_translated": "Nothing has been translated yet.",
+  "err.nothing_to_update": "Nothing to update.",
+  "err.no_text_extracted": "Could not extract readable text from this file. A PDF may be scanned or use a non-standard font encoding; installing Poppler (pdftotext) or using a text-based version usually helps.",
+  "err.archive_no_book": "The archive has no book file.",
 };
 
 const ru: Dict = {
@@ -274,6 +282,14 @@ const ru: Dict = {
   "log.retargetItem": "  {done}/{total} · {mark} {title}",
   "log.retargetWarn": "⚠ не удалось переписать: {msg}",
   "log.error": "✗ {msg}",
+  "err.no_source": "Книга не загружена.",
+  "err.no_title": "Нет названия книги для перевода.",
+  "err.translation_running": "Для этого проекта уже идёт перевод.",
+  "err.job_running": "Для этого проекта уже выполняется задание.",
+  "err.nothing_translated": "Пока ничего не переведено.",
+  "err.nothing_to_update": "Нечего обновлять.",
+  "err.no_text_extracted": "Не удалось извлечь читаемый текст из файла. PDF может быть сканом или использовать нестандартную кодировку шрифта; обычно помогает установка Poppler (pdftotext) или текстовая версия файла.",
+  "err.archive_no_book": "В архиве нет файла книги.",
 };
 
 const zh: Dict = {
@@ -406,6 +422,14 @@ const zh: Dict = {
   "log.retargetItem": "  {done}/{total} · {mark} {title}",
   "log.retargetWarn": "⚠ 重写失败：{msg}",
   "log.error": "✗ {msg}",
+  "err.no_source": "未加载书籍。",
+  "err.no_title": "没有可翻译的书名。",
+  "err.translation_running": "该项目已有翻译正在进行。",
+  "err.job_running": "该项目已有任务正在运行。",
+  "err.nothing_translated": "尚未翻译任何内容。",
+  "err.nothing_to_update": "没有需要更新的内容。",
+  "err.no_text_extracted": "无法从该文件提取可读文本。PDF 可能是扫描件或使用了非标准字体编码；安装 Poppler（pdftotext）或使用文本版通常有帮助。",
+  "err.archive_no_book": "归档中没有书籍文件。",
 };
 
 const messages: Record<Lang, Dict> = { en, ru, zh };

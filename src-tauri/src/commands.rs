@@ -205,6 +205,9 @@ pub async fn load_source(
     if book.chapters.is_empty() {
         ensure_chapters(&path, &mut book).await;
     }
+    if book.chapters.is_empty() {
+        return Err("no_text_extracted".into());
+    }
     let db = db_path_for_project(&project_id);
     let store = Store::open(&db).map_err(err)?;
     store.init_chapters(&book.chapters).map_err(err)?;
@@ -247,6 +250,25 @@ pub async fn load_source(
         (Some(content_type), Some(base64)) => Some(Cover { content_type, base64 }),
         _ => None,
     };
+    let summary = saved_summary.or_else(|| head.as_ref().and_then(|h| h.annotation.clone()));
+    let cover = saved_cover
+        .or_else(|| head.as_ref().and_then(|h| h.cover.clone()))
+        .or(pdf_cover);
+
+    // Persist the source metadata + resolved cover to the DB so a project is fully
+    // self-contained (openable from its DB alone, and portable in an archive).
+    let format = format!("{:?}", book.format);
+    let _ = store.set_meta("title", &title);
+    let _ = store.set_meta("author", &author);
+    let _ = store.set_meta("format", &format);
+    let _ = store.set_meta("encoding", &book.encoding);
+    if let Some(s) = &summary {
+        let _ = store.set_meta("summary", s);
+    }
+    if let Some(c) = &cover {
+        let _ = store.set_meta("cover_ct", &c.content_type);
+        let _ = store.set_meta("cover_b64", &c.base64);
+    }
 
     state.with(&project_id, |s| {
         s.reference = None;
@@ -260,21 +282,81 @@ pub async fn load_source(
         s.author = book.meta.author.clone();
         s.title_translated = saved_title;
         s.author_translated = saved_author;
-        s.summary = saved_summary.or_else(|| head.as_ref().and_then(|h| h.annotation.clone()));
-        s.cover = saved_cover
-            .or_else(|| head.as_ref().and_then(|h| h.cover.clone()))
-            .or(pdf_cover);
+        s.summary = summary;
+        s.cover = cover;
     });
 
     Ok(BookInfo {
         title,
         author,
         total_chapters: book.chapters.len(),
-        format: format!("{:?}", book.format),
+        format,
         encoding: book.encoding,
         needs_delimiter: book.needs_delimiter,
         missing: book.report.missing_numbers.len(),
         duplicates: book.report.duplicate_numbers.len(),
+    })
+}
+
+/// Open an already-loaded project from its database alone (no source file needed):
+/// chapters, glossary and translations already live in `progress.db`. Used when
+/// switching back to a project, restoring after restart, or opening an archive.
+#[tauri::command]
+pub async fn open_project(
+    project_id: String,
+    state: State<'_, AppState>,
+) -> Result<BookInfo, String> {
+    let db = db_path_for_project(&project_id);
+    if !Path::new(&db).exists() {
+        return Err("no_source".into());
+    }
+    let store = Store::open(&db).map_err(err)?;
+    let stats = store.stats().map_err(err)?;
+    if stats.total == 0 {
+        return Err("no_source".into());
+    }
+    let g = |k: &str| store.get_meta(k).ok().flatten();
+    let title = g("title").unwrap_or_default();
+    let author = g("author").unwrap_or_default();
+    let format = g("format").unwrap_or_else(|| "-".into());
+    let encoding = g("encoding").unwrap_or_else(|| "-".into());
+    let cover = match (g("cover_ct"), g("cover_b64")) {
+        (Some(content_type), Some(base64)) => Some(Cover { content_type, base64 }),
+        _ => None,
+    };
+    let source_path = std::fs::read(project_dir(&project_id).join("project.json"))
+        .ok()
+        .and_then(|b| serde_json::from_slice::<Manifest>(&b).ok())
+        .map(|m| m.source_path);
+
+    state.with(&project_id, |s| {
+        s.reference = None;
+        s.style = None;
+        s.cancel = None;
+        s.running = false;
+        s.zipped_input = source_path
+            .as_deref()
+            .map(|p| p.to_lowercase().ends_with(".zip"))
+            .unwrap_or(false);
+        s.db_path = Some(db.clone());
+        s.source_path = source_path;
+        s.title = (!title.is_empty()).then(|| title.clone());
+        s.author = (!author.is_empty()).then(|| author.clone());
+        s.title_translated = g("title_translated");
+        s.author_translated = g("author_translated");
+        s.summary = g("summary");
+        s.cover = cover;
+    });
+
+    Ok(BookInfo {
+        title,
+        author,
+        total_chapters: stats.total,
+        format,
+        encoding,
+        needs_delimiter: false,
+        missing: 0,
+        duplicates: 0,
     })
 }
 
@@ -284,23 +366,21 @@ pub async fn load_source(
 async fn ensure_chapters(path: &str, book: &mut crate::book::LoadedBook) {
     // 0. PDF with a table of contents (bookmarks): the most accurate split.
     if path.to_lowercase().ends_with(".pdf") {
-        if let Ok(bytes) = std::fs::read(path) {
-            if let Some(toc) = crate::book::extract_pdf_toc_chapters(&bytes) {
-                if toc.len() >= 2 {
-                    book.chapters = toc
-                        .into_iter()
-                        .enumerate()
-                        .map(|(i, (title, body))| crate::book::Chapter {
-                            index: i + 1,
-                            number: None,
-                            title: title.replace('_', " "),
-                            body,
-                        })
-                        .collect();
-                    book.report = crate::book::validate(&book.chapters, &book.meta);
-                    book.needs_delimiter = false;
-                    return;
-                }
+        if let Some(toc) = crate::book::extract_pdf_toc_chapters(Path::new(path)) {
+            if toc.len() >= 2 {
+                book.chapters = toc
+                    .into_iter()
+                    .enumerate()
+                    .map(|(i, (title, body))| crate::book::Chapter {
+                        index: i + 1,
+                        number: None,
+                        title: title.replace('_', " "),
+                        body,
+                    })
+                    .collect();
+                book.report = crate::book::validate(&book.chapters, &book.meta);
+                book.needs_delimiter = false;
+                return;
             }
         }
     }
@@ -309,6 +389,11 @@ async fn ensure_chapters(path: &str, book: &mut crate::book::LoadedBook) {
         Ok(d) => d.text,
         Err(_) => return,
     };
+    // Don't build chapters from mis-decoded / empty text (a broken PDF): let the
+    // caller report that instead of producing garbage.
+    if !crate::book::looks_like_text(&text) {
+        return;
+    }
 
     // 1. Ask the model to infer a chapter-heading regex for this layout.
     if let Ok(cl) = DeepSeekClient::new(Config::load()) {
@@ -427,8 +512,8 @@ pub async fn bootstrap_glossary(
     let (db, source_path, reference) = state.with(&project_id, |s| {
         (s.db_path.clone(), s.source_path.clone(), s.reference.clone())
     });
-    let db = db.ok_or("no source loaded")?;
-    let source_path = source_path.ok_or("no source loaded")?;
+    let db = db.ok_or("no_source")?;
+    let source_path = source_path.ok_or("no_source")?;
     let reference = reference.ok_or("no reference loaded")?;
 
     let source = load_book(Path::new(&source_path)).map_err(err)?;
@@ -452,8 +537,8 @@ pub async fn use_reference_as_base(
     let (db, source_path, reference) = state.with(&project_id, |s| {
         (s.db_path.clone(), s.source_path.clone(), s.reference.clone())
     });
-    let db = db.ok_or("no source loaded")?;
-    let source_path = source_path.ok_or("no source loaded")?;
+    let db = db.ok_or("no_source")?;
+    let source_path = source_path.ok_or("no_source")?;
     let reference = reference.ok_or("no reference loaded")?;
     import_reference_pending(&db, &source_path, &reference).map_err(err)
 }
@@ -468,9 +553,9 @@ pub fn start_translation(
 ) -> Result<(), String> {
     let res: Result<_, String> = state.with(&project_id, |s| {
         if s.running {
-            return Err("a translation is already running".to_string());
+            return Err("translation_running".to_string());
         }
-        let db = s.db_path.clone().ok_or("no source loaded")?;
+        let db = s.db_path.clone().ok_or("no_source")?;
         let cancel = Arc::new(AtomicBool::new(false));
         s.cancel = Some(cancel.clone());
         s.running = true;
@@ -549,7 +634,7 @@ pub async fn get_progress(
     state: State<'_, AppState>,
 ) -> Result<Progress, String> {
     let (db, running) = state.with(&project_id, |s| (s.db_path.clone(), s.running));
-    let db = db.ok_or("no source loaded")?;
+    let db = db.ok_or("no_source")?;
     let store = Store::open(&db).map_err(err)?;
     let st = store.stats().map_err(err)?;
     Ok(Progress {
@@ -574,9 +659,9 @@ pub async fn reset_translation(
 ) -> Result<usize, String> {
     let (db, running) = state.with(&project_id, |s| (s.db_path.clone(), s.running));
     if running {
-        return Err("a job is already running".into());
+        return Err("job_running".into());
     }
-    let db = db.ok_or("no source loaded")?;
+    let db = db.ok_or("no_source")?;
     let store = Store::open(&db).map_err(err)?;
     let n = store.reset_from(from_index).map_err(err)?;
     // A full reset rebuilds context from scratch, so drop the rolling summary.
@@ -594,7 +679,7 @@ pub async fn get_glossary(
 ) -> Result<Vec<TermDto>, String> {
     let db = state
         .with(&project_id, |s| s.db_path.clone())
-        .ok_or("no source loaded")?;
+        .ok_or("no_source")?;
     let store = Store::open(&db).map_err(err)?;
     let mut terms = store.load_glossary().map_err(err)?;
     terms.sort_by(|a, b| b.frequency.cmp(&a.frequency));
@@ -610,7 +695,7 @@ pub async fn update_term(
 ) -> Result<(), String> {
     let db = state
         .with(&project_id, |s| s.db_path.clone())
-        .ok_or("no source loaded")?;
+        .ok_or("no_source")?;
     let store = Store::open(&db).map_err(err)?;
     let mut glossary = store.load_glossary().map_err(err)?;
     let updated = Term {
@@ -637,7 +722,7 @@ pub async fn delete_term(
 ) -> Result<(), String> {
     let db = state
         .with(&project_id, |s| s.db_path.clone())
-        .ok_or("no source loaded")?;
+        .ok_or("no_source")?;
     let store = Store::open(&db).map_err(err)?;
     store.delete_term(source.trim()).map_err(err)?;
     Ok(())
@@ -668,13 +753,13 @@ pub fn retarget_terms(
         .filter(|c| !c.old_target.trim().is_empty() && c.new_target.trim() != c.old_target.trim())
         .collect();
     if changes.is_empty() {
-        return Err("nothing to update".into());
+        return Err("nothing_to_update".into());
     }
     let res: Result<_, String> = state.with(&project_id, |s| {
         if s.running {
-            return Err("a job is already running".to_string());
+            return Err("job_running".to_string());
         }
-        let db = s.db_path.clone().ok_or("no source loaded")?;
+        let db = s.db_path.clone().ok_or("no_source")?;
         let cancel = Arc::new(AtomicBool::new(false));
         s.cancel = Some(cancel.clone());
         s.running = true;
@@ -820,11 +905,10 @@ pub async fn export_book(
     out_path: String,
     state: State<'_, AppState>,
 ) -> Result<String, String> {
-    let (db, source_path, title, title_translated, author, author_translated, summary, cover, zipped_input) =
+    let (db, title, title_translated, author, author_translated, summary, cover, zipped_input) =
         state.with(&project_id, |s| {
             (
                 s.db_path.clone(),
-                s.source_path.clone(),
                 s.title.clone(),
                 s.title_translated.clone(),
                 s.author.clone(),
@@ -834,8 +918,7 @@ pub async fn export_book(
                 s.zipped_input,
             )
         });
-    let db = db.ok_or("no source loaded")?;
-    let source_path = source_path.ok_or("no source loaded")?;
+    let db = db.ok_or("no_source")?;
 
     // Decide zip vs plain, and the inner format. Zip when the path ends in .zip
     // or the input was itself zipped ("zip in → zip out").
@@ -844,13 +927,17 @@ pub async fn export_book(
     let store = Store::open(&db).map_err(err)?;
     let rows = store.translated_chapters().map_err(err)?;
     if rows.is_empty() {
-        return Err("nothing translated yet".into());
+        return Err("nothing_translated".into());
     }
 
-    // Attach chapter numbers (for correct ordering / continuation).
-    let source = load_book(Path::new(&source_path)).map_err(err)?;
-    let num_by_idx: HashMap<usize, Option<usize>> =
-        source.chapters.iter().map(|c| (c.index, c.number)).collect();
+    // Chapter numbers come from the DB (no need to re-read the source file, so a
+    // project exported from an archive works without the original book present).
+    let num_by_idx: HashMap<usize, Option<usize>> = store
+        .list_chapters()
+        .map_err(err)?
+        .into_iter()
+        .map(|(idx, number, ..)| (idx, number))
+        .collect();
     let mut chapters: Vec<TranslatedChapter> = rows
         .into_iter()
         .map(|(idx, title, body)| TranslatedChapter {
@@ -967,7 +1054,7 @@ pub async fn list_chapters(
 ) -> Result<Vec<ChapterRow>, String> {
     let db = state
         .with(&project_id, |s| s.db_path.clone())
-        .ok_or("no source loaded")?;
+        .ok_or("no_source")?;
     let store = Store::open(&db).map_err(err)?;
     let rows = store.list_chapters().map_err(err)?;
     Ok(rows
@@ -985,7 +1072,7 @@ pub async fn get_chapter(
 ) -> Result<ChapterView, String> {
     let db = state
         .with(&project_id, |s| s.db_path.clone())
-        .ok_or("no source loaded")?;
+        .ok_or("no_source")?;
     let store = Store::open(&db).map_err(err)?;
     let (number, source_title, source, status, translated_title, translated, origin) = store
         .chapter_full(index)
@@ -1054,7 +1141,7 @@ pub async fn translate_title(
         Some(t) => t,
         None => {
             let title =
-                title.filter(|t| !t.trim().is_empty()).ok_or("no book title to translate")?;
+                title.filter(|t| !t.trim().is_empty()).ok_or("no_title")?;
             let system = format!(
                 "Translate this book title from {} to {}. Output only the translated title, nothing else.",
                 cfg.source_lang, cfg.target_lang
@@ -1118,7 +1205,7 @@ pub async fn generate_summary(
     let (title, title_tr, author) = state.with(&project_id, |s| {
         (s.title.clone(), s.title_translated.clone(), s.author.clone())
     });
-    let title = title.filter(|t| !t.trim().is_empty()).ok_or("no book title")?;
+    let title = title.filter(|t| !t.trim().is_empty()).ok_or("no_title")?;
     let cfg = Config::load();
 
     let hint = title_tr
@@ -1182,15 +1269,6 @@ pub async fn set_cover(
     Ok(url)
 }
 
-/// Lowercase file extension of a path, or `"bin"`.
-fn ext_of(path: &str) -> String {
-    std::path::Path::new(path)
-        .extension()
-        .and_then(|e| e.to_str())
-        .unwrap_or("bin")
-        .to_lowercase()
-}
-
 /// Delete a project and all of its data (progress DB, manifest, extracted files).
 #[tauri::command]
 pub async fn delete_project(project_id: String, state: State<'_, AppState>) -> Result<(), String> {
@@ -1208,31 +1286,22 @@ pub async fn delete_project(project_id: String, state: State<'_, AppState>) -> R
 pub async fn export_project(
     project_id: String,
     out_path: String,
-    state: State<'_, AppState>,
+    _state: State<'_, AppState>,
 ) -> Result<(), String> {
     use std::io::Write as _;
 
+    // The database is self-contained (chapter source text, translations, glossary,
+    // cover, metadata all live in it), so the archive needs only the manifest and the
+    // DB — not a copy of the original book.
     let dir = project_dir(&project_id);
     let manifest_bytes = std::fs::read(dir.join("project.json")).map_err(err)?;
     let db_bytes = std::fs::read(dir.join("progress.db")).map_err(err)?;
-    let source_path = state
-        .with(&project_id, |s| s.source_path.clone())
-        .or_else(|| serde_json::from_slice::<Manifest>(&manifest_bytes).ok().map(|m| m.source_path))
-        .ok_or("no source loaded")?;
-    let book_bytes =
-        std::fs::read(&source_path).map_err(|e| format!("reading book {source_path}: {e}"))?;
-    let book_name = format!("book.{}", ext_of(&source_path));
 
     let file = std::fs::File::create(&out_path).map_err(err)?;
     let mut zip = zip::ZipWriter::new(file);
     let opts = zip::write::SimpleFileOptions::default()
         .compression_method(zip::CompressionMethod::Deflated);
-    let entries: [(&str, &Vec<u8>); 3] = [
-        ("project.json", &manifest_bytes),
-        ("progress.db", &db_bytes),
-        (book_name.as_str(), &book_bytes),
-    ];
-    for (name, bytes) in entries {
+    for (name, bytes) in [("project.json", &manifest_bytes), ("progress.db", &db_bytes)] {
         zip.start_file(name, opts).map_err(err)?;
         zip.write_all(bytes).map_err(err)?;
     }
@@ -1241,15 +1310,15 @@ pub async fn export_project(
 }
 
 /// Result of importing a `.bcproj` archive: enough for the frontend to register a
-/// project row and open it.
+/// project row and open it (from its DB).
 #[derive(Serialize)]
 pub struct ImportedProject {
     pub name: String,
     pub source_path: String,
 }
 
-/// Import a `.bcproj` archive into a new project directory and report its name and
-/// the extracted book path (the frontend then loads it like any other project).
+/// Import a `.bcproj` archive into a new project directory (manifest + database).
+/// The frontend then opens it from its DB with `open_project`.
 #[tauri::command]
 pub async fn import_project(
     project_id: String,
@@ -1263,7 +1332,8 @@ pub async fn import_project(
     let mut zip = zip::ZipArchive::new(file).map_err(err)?;
 
     let mut name = "Imported project".to_string();
-    let mut source_path: Option<String> = None;
+    let mut source_path = String::new();
+    let mut has_db = false;
     for i in 0..zip.len() {
         let mut entry = zip.by_index(i).map_err(err)?;
         let ename = entry.name().to_string();
@@ -1272,18 +1342,17 @@ pub async fn import_project(
         if ename == "project.json" {
             if let Ok(m) = serde_json::from_slice::<Manifest>(&buf) {
                 name = m.name;
+                source_path = m.source_path;
             }
             std::fs::write(dir.join("project.json"), &buf).map_err(err)?;
         } else if ename == "progress.db" {
             std::fs::write(dir.join("progress.db"), &buf).map_err(err)?;
-        } else if ename.starts_with("book.") {
-            let p = dir.join(&ename);
-            std::fs::write(&p, &buf).map_err(err)?;
-            source_path = Some(p.to_string_lossy().into_owned());
+            has_db = true;
         }
     }
-    let source_path = source_path.ok_or("archive has no book file")?;
-    write_manifest(&project_id, &source_path, None);
+    if !has_db {
+        return Err("archive_no_book".into());
+    }
     Ok(ImportedProject { name, source_path })
 }
 

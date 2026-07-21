@@ -37,6 +37,7 @@ pub fn run() {
         .manage(commands::AppState::new())
         .invoke_handler(tauri::generate_handler![
             commands::load_source,
+            commands::open_project,
             commands::load_reference,
             commands::bootstrap_glossary,
             commands::use_reference_as_base,
