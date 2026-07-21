@@ -177,6 +177,25 @@ impl Store {
         Ok(())
     }
 
+    /// Reset chapters back to `pending` so a later run re-translates them (with the
+    /// current glossary). `from_index` limits it to chapters at/after that index;
+    /// `None` resets the whole book. Existing translated text is left in place until
+    /// a re-run overwrites it. Returns the number of chapters reset.
+    pub fn reset_from(&self, from_index: Option<usize>) -> Result<usize> {
+        let n = match from_index {
+            Some(idx) => self.conn.execute(
+                "UPDATE chapters SET status = 'pending', updated_at = datetime('now')
+                 WHERE idx >= ?1",
+                params![idx as i64],
+            )?,
+            None => self.conn.execute(
+                "UPDATE chapters SET status = 'pending', updated_at = datetime('now')",
+                [],
+            )?,
+        };
+        Ok(n)
+    }
+
     /// Update a chapter's status.
     pub fn set_status(&self, index: usize, status: Status) -> Result<()> {
         self.conn.execute(

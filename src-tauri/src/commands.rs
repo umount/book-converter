@@ -408,6 +408,32 @@ pub async fn get_progress(state: State<'_, AppState>) -> Result<Progress, String
     })
 }
 
+/// Reset translated chapters back to `pending` for a fresh run with the current
+/// glossary. `from_index` (0-based) limits it to that chapter onward; `None` resets
+/// the whole book and also clears the rolling context summary. Returns how many
+/// chapters were reset. The caller then calls `start_translation` to re-run them.
+#[tauri::command]
+pub async fn reset_translation(
+    from_index: Option<usize>,
+    state: State<'_, AppState>,
+) -> Result<usize, String> {
+    let (db, running) = {
+        let s = state.0.lock().unwrap();
+        (s.db_path.clone(), s.running)
+    };
+    if running {
+        return Err("a job is already running".into());
+    }
+    let db = db.ok_or("no source loaded")?;
+    let store = Store::open(&db).map_err(err)?;
+    let n = store.reset_from(from_index).map_err(err)?;
+    // A full reset rebuilds context from scratch, so drop the rolling summary.
+    if from_index.is_none() || from_index == Some(0) {
+        let _ = store.set_meta("running_summary", "");
+    }
+    Ok(n)
+}
+
 /// The whole glossary (most frequent first).
 #[tauri::command]
 pub async fn get_glossary(state: State<'_, AppState>) -> Result<Vec<TermDto>, String> {

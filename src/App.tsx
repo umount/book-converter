@@ -76,6 +76,7 @@ export default function App() {
 
   const [sample, setSample] = useState(30);
   const [limit, setLimit] = useState<number | "">("");
+  const [reFrom, setReFrom] = useState<number>(1);
   const [continueMode, setContinueMode] = useState(false);
   const [sidebar, setSidebar] = useState(true);
   const [showConsole, setShowConsole] = useState(true);
@@ -148,8 +149,8 @@ export default function App() {
   }, [chapterIdx]);
 
   // Errors always go to the console. The banner (an IDE-style notification) is
-  // reserved for critical failures — DeepSeek being unreachable, a project failing
-  // to open — so it isn't raised for every minor command hiccup.
+  // reserved for critical failures (DeepSeek being unreachable, a project failing
+  // to open), so it isn't raised for every minor command hiccup.
   function logError(msg: string) { addLog(tRef.current("log.error", { msg })); }
   function reportCritical(msg: string) { logError(msg); setError(msg); }
 
@@ -233,6 +234,19 @@ export default function App() {
     addLog(t("log.started", { suffix: lim ? t("log.startedNext", { n: lim }) : "" }));
   }
   async function pause() { await call("pause_translation", {}); addLog(t("log.pauseRequested")); }
+  // Reset chapters to pending for a fresh run with the current glossary. `pos` is a
+  // 1-based reading-order position; null means the whole book.
+  async function reTranslate(pos: number | null) {
+    if (progress?.running) return;
+    const total = progress?.total ?? book?.total_chapters ?? 0;
+    const msg = pos == null
+      ? t("translate.retranslateAllConfirm", { n: total })
+      : t("translate.retranslateFromConfirm", { from: pos });
+    if (!confirm(msg)) return;
+    const fromIndex = pos == null ? null : Math.max(1, pos) - 1;
+    const n = await call<number>("reset_translation", { fromIndex });
+    if (n !== undefined) { addLog(t("log.reset", { n })); refreshProgress(); }
+  }
 
   async function refreshProgress() { const p = await call<Progress>("get_progress", {}); if (p) setProgress(p); }
   async function refreshGlossary() { const g = await call<Term[]>("get_glossary", {}); if (g) setGlossary(g); }
@@ -513,6 +527,18 @@ export default function App() {
                       <div className="progress">
                         <div className="bar"><div className="bar-fill" style={{ width: `${pct}%` }} /></div>
                         <div className="progress-text">{progress.done}/{progress.total} ({pct}%){progress.failed > 0 && ` · ${t("progress.failed", { n: progress.failed })}`}{progress.running ? ` · ${t("progress.running")}` : ""}</div>
+                      </div>
+                    )}
+                    {progress && progress.done > 0 && (
+                      <div className="retranslate">
+                        <div className="row">
+                          <span className="muted">{t("translate.retranslate")}:</span>
+                          <button className="ghost danger" disabled={progress.running} onClick={() => reTranslate(null)}>{t("translate.retranslateAll")}</button>
+                          <button className="ghost danger" disabled={progress.running} onClick={() => reTranslate(reFrom)}>{t("translate.retranslateFrom")}</button>
+                          <input type="number" min={1} max={progress.total} value={reFrom}
+                            onChange={(e) => setReFrom(Math.max(1, Number(e.target.value) || 1))} style={{ width: 80 }} />
+                        </div>
+                        <div className="muted resume-hint">{t("translate.retranslateHint")}</div>
                       </div>
                     )}
                   </Panel>
