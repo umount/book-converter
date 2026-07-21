@@ -976,16 +976,20 @@ pub async fn generate_summary(state: State<'_, AppState>) -> Result<String, Stri
 
     let system = format!(
         "You are a librarian who writes concise book annotations in {}. \
-         Given a title and author, write a 3 to 6 sentence annotation covering the premise, genre and tone. \
-         If you do not know the exact book, infer a plausible annotation from the meaning of the title. \
-         Output only the annotation text: no heading, no quotes, no preamble.",
+         Write a 3 to 6 sentence annotation covering the premise, genre and tone, based on your knowledge of the \
+         book and on what its title and author clearly convey (many web-novel titles state the genre and premise directly). \
+         Do not fabricate specific named characters or plot twists you have no basis for, but you may describe the evident premise and genre. \
+         Only if the title is genuinely uninformative (for example just a personal name from which nothing can be said), \
+         reply with exactly NOT_FOUND and nothing else. \
+         Output only the annotation text, or NOT_FOUND: no heading, no quotes, no preamble.",
         cfg.target_lang
     );
     let user = format!("Title: {title}{hint}{author_line}");
     let out = client()?.translate(&system, &user).await.map_err(err)?;
     let out = out.trim().to_string();
-    if out.is_empty() {
-        return Err("the model returned an empty summary".into());
+    // The model signals an unknown book with NOT_FOUND (we told it not to invent one).
+    if out.is_empty() || out.trim_start().to_uppercase().starts_with("NOT_FOUND") {
+        return Err("book_not_found".into());
     }
     let db = {
         let mut s = state.0.lock().unwrap();

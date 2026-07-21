@@ -269,9 +269,17 @@ export default function App() {
   async function saveSummary(text: string) { await call("set_summary", { summary: text }); }
   async function generateSummary() {
     setBusy(t("busy.generatingSummary"));
-    const s = await call<string>("generate_summary", {});
-    setBusy(null);
-    if (s !== undefined) { addLog(t("log.summaryGenerated")); refreshDetails(); }
+    try {
+      await invoke<string>("generate_summary", {});
+      addLog(t("log.summaryGenerated"));
+      refreshDetails();
+    } catch (e) {
+      // Not finding the book is an expected outcome, not a critical error: log it.
+      const msg = String(e);
+      addLog(msg.includes("book_not_found") ? t("log.summaryNotFound") : t("log.error", { msg }));
+    } finally {
+      setBusy(null);
+    }
   }
   // Term edits auto-save. Changing the rendering also records a pending rename so
   // the global "Update translation" button can later propagate it into the text.
