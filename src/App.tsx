@@ -77,6 +77,7 @@ export default function App() {
   const [limit, setLimit] = useState<number | "">("");
   const [continueMode, setContinueMode] = useState(false);
   const [sidebar, setSidebar] = useState(true);
+  const [showConsole, setShowConsole] = useState(true);
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
   const toggle = (k: string) => setCollapsed((c) => ({ ...c, [k]: !c[k] }));
 
@@ -352,6 +353,7 @@ export default function App() {
               <div className="mi" onClick={() => { setSidebar((s) => !s); setMenu(null); }}>{t("view.toggleSidebar")}</div>
               <div className="mi" onClick={() => { setPanes({ orig: true, transl: true }); setMenu(null); }}>{t("view.showBothPanes")}</div>
               <div className="mi" onClick={() => { setHl((h) => !h); setMenu(null); }}>{t("view.toggleHighlight")}</div>
+              <div className="mi" onClick={() => { setShowConsole((s) => !s); setMenu(null); }}>{t("view.toggleConsole")}</div>
             </div>
           )}
         </div>
@@ -580,6 +582,22 @@ export default function App() {
           </>)}
         </main>
       </div>
+
+      {showConsole && (
+        <section className="console">
+          <div className="console-head">
+            <span className="console-title">{t("console.title")}</span>
+            <div className="menu-spacer" />
+            <button className="icon" title={t("console.clear")} onClick={() => setLog([])}>⌫</button>
+            <button className="icon" onClick={() => setShowConsole(false)}>×</button>
+          </div>
+          <div className="log" ref={logRef}>
+            {log.length === 0
+              ? <div className="muted">{t("console.empty")}</div>
+              : log.map((l, i) => <div key={i}>{l}</div>)}
+          </div>
+        </section>
+      )}
     </div>
   );
 }
