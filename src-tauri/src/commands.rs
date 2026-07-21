@@ -125,7 +125,7 @@ fn app_data_dir() -> std::path::PathBuf {
 
 /// Global settings DB (app-wide, survives restarts).
 fn settings_db() -> std::path::PathBuf {
-    app_data_dir().join("settings.db")
+    crate::settings::db_path()
 }
 
 /// Read a persisted app setting (e.g. the UI language).
@@ -198,7 +198,13 @@ pub async fn load_source(
     path: String,
     state: State<'_, AppState>,
 ) -> Result<BookInfo, String> {
-    let book = load_book(Path::new(&path)).map_err(err)?;
+    let mut book = load_book(Path::new(&path)).map_err(err)?;
+    // No chapter pattern matched (e.g. a technical PDF whose headings are not
+    // "Chapter N"): ask the model to infer a delimiter, else keep the whole book as
+    // a single chapter so its content still shows up.
+    if book.chapters.is_empty() {
+        ensure_chapters(&path, &mut book).await;
+    }
     let db = db_path_for_project(&project_id);
     let store = Store::open(&db).map_err(err)?;
     store.init_chapters(&book.chapters).map_err(err)?;
@@ -212,6 +218,20 @@ pub async fn load_source(
         crate::book::read_book_file(Path::new(&path))
             .ok()
             .map(|d| crate::export::fb2::extract_head(&d.text))
+    } else {
+        None
+    };
+
+    // For a PDF, use the first-page cover image as the default cover.
+    let pdf_cover = if path.to_lowercase().ends_with(".pdf") {
+        use base64::Engine as _;
+        std::fs::read(&path)
+            .ok()
+            .and_then(|b| crate::book::extract_pdf_cover(&b))
+            .map(|(content_type, bytes)| Cover {
+                content_type,
+                base64: base64::engine::general_purpose::STANDARD.encode(&bytes),
+            })
     } else {
         None
     };
@@ -241,7 +261,9 @@ pub async fn load_source(
         s.title_translated = saved_title;
         s.author_translated = saved_author;
         s.summary = saved_summary.or_else(|| head.as_ref().and_then(|h| h.annotation.clone()));
-        s.cover = saved_cover.or_else(|| head.as_ref().and_then(|h| h.cover.clone()));
+        s.cover = saved_cover
+            .or_else(|| head.as_ref().and_then(|h| h.cover.clone()))
+            .or(pdf_cover);
     });
 
     Ok(BookInfo {
@@ -254,6 +276,64 @@ pub async fn load_source(
         missing: book.report.missing_numbers.len(),
         duplicates: book.report.duplicate_numbers.len(),
     })
+}
+
+/// When no chapter pattern matched, split the book intelligently: a PDF's table of
+/// contents (outline) first, then a model-inferred delimiter, and finally the whole
+/// book as one chapter so its text is never lost. Best-effort.
+async fn ensure_chapters(path: &str, book: &mut crate::book::LoadedBook) {
+    // 0. PDF with a table of contents (bookmarks): the most accurate split.
+    if path.to_lowercase().ends_with(".pdf") {
+        if let Ok(bytes) = std::fs::read(path) {
+            if let Some(toc) = crate::book::extract_pdf_toc_chapters(&bytes) {
+                if toc.len() >= 2 {
+                    book.chapters = toc
+                        .into_iter()
+                        .enumerate()
+                        .map(|(i, (title, body))| crate::book::Chapter {
+                            index: i + 1,
+                            number: None,
+                            title: title.replace('_', " "),
+                            body,
+                        })
+                        .collect();
+                    book.report = crate::book::validate(&book.chapters, &book.meta);
+                    book.needs_delimiter = false;
+                    return;
+                }
+            }
+        }
+    }
+
+    let text = match crate::book::read_book_file(Path::new(path)) {
+        Ok(d) => d.text,
+        Err(_) => return,
+    };
+
+    // 1. Ask the model to infer a chapter-heading regex for this layout.
+    if let Ok(cl) = DeepSeekClient::new(Config::load()) {
+        let (system, user) = crate::book::build_delimiter_prompt(&text);
+        if let Ok(reply) = cl.translate(&system, &user).await {
+            if let Ok(re) = crate::book::parse_inferred_pattern(&reply) {
+                let chapters = crate::book::parse_chapters_with(&text, &re);
+                if chapters.len() >= 2 {
+                    book.report = crate::book::validate(&chapters, &book.meta);
+                    book.chapters = chapters;
+                    book.needs_delimiter = false;
+                    return;
+                }
+            }
+        }
+    }
+
+    // 2. Fallback: a single chapter with the whole text (still translatable).
+    let title = book.meta.title.clone().unwrap_or_else(|| "Book".to_string());
+    let body = text.trim().to_string();
+    if !body.is_empty() {
+        book.chapters = vec![crate::book::Chapter { index: 1, number: Some(1), title, body }];
+        book.report = crate::book::validate(&book.chapters, &book.meta);
+        book.needs_delimiter = false;
+    }
 }
 
 /// Seed still-`pending` chapters from a reference translation (aligned by chapter

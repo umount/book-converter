@@ -65,6 +65,22 @@ impl Config {
         let _ = dotenvy::dotenv();
 
         let mut cfg = Config::default();
+
+        // The translation language pair is a user setting (chosen in the UI,
+        // persisted in the settings DB), so the tool is not tied to one pair.
+        let sdb = crate::settings::db_path();
+        if let Ok(Some(v)) = crate::settings::get(&sdb, "source_lang") {
+            if !v.trim().is_empty() {
+                cfg.source_lang = v;
+            }
+        }
+        if let Ok(Some(v)) = crate::settings::get(&sdb, "target_lang") {
+            if !v.trim().is_empty() {
+                cfg.target_lang = v;
+            }
+        }
+
+        // Environment variables (for power users / CI) take precedence.
         if let Ok(key) = std::env::var("DEEPSEEK_API_KEY") {
             cfg.api_key = key;
         }
@@ -73,6 +89,12 @@ impl Config {
         }
         if let Ok(base) = std::env::var("DEEPSEEK_BASE_URL") {
             cfg.base_url = base;
+        }
+        if let Ok(v) = std::env::var("SOURCE_LANG") {
+            cfg.source_lang = v;
+        }
+        if let Ok(v) = std::env::var("TARGET_LANG") {
+            cfg.target_lang = v;
         }
         cfg
     }

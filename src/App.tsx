@@ -13,6 +13,8 @@ type RefInfo = { title: string; chapters: number; max_covered: number | null; im
 type Progress = { project: string; done: number; total: number; failed: number; pending: number; running: boolean };
 type Term = { source: string; target: string; kind: string; frequency: number; pinned: boolean };
 const TERM_KINDS = ["person", "location", "organization", "term"] as const;
+// Language names understood by the model in prompts ("translate from X to Y").
+const TRANSLATION_LANGS = ["English", "Russian", "Chinese", "Japanese", "Korean", "German", "French", "Spanish", "Italian", "Portuguese"] as const;
 type BookDetails = { title: string; author: string; title_translated: string | null; author_translated: string | null; summary: string | null; cover: string | null };
 type ChapterRow = { idx: number; number: number | null; title: string; status: string; origin: string | null };
 type ChapterView = {
@@ -46,6 +48,8 @@ export default function App() {
   const [active, setActive] = useState<number>(() => Number(localStorage.getItem(LS_ACTIVE) ?? -1));
   const [view, setView] = useState<ViewId>("overview");
   const [lang, setLang] = useState<Lang>(() => normalizeLang(localStorage.getItem(LS_LANG)));
+  const [srcLang, setSrcLang] = useState("Chinese");
+  const [tgtLang, setTgtLang] = useState("Russian");
   const [showSettings, setShowSettings] = useState(false);
   const t = (key: string, vars?: Record<string, string | number>) => translate(lang, key, vars);
 
@@ -110,10 +114,16 @@ export default function App() {
     (async () => {
       const v = await call<string | null>("get_setting", { key: "lang" });
       if (v) setLang(normalizeLang(v));
+      const s = await call<string | null>("get_setting", { key: "source_lang" });
+      if (s) setSrcLang(s);
+      const g = await call<string | null>("get_setting", { key: "target_lang" });
+      if (g) setTgtLang(g);
       langLoaded.current = true;
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+  function changeSourceLang(v: string) { setSrcLang(v); void call("set_setting", { key: "source_lang", value: v }); }
+  function changeTargetLang(v: string) { setTgtLang(v); void call("set_setting", { key: "target_lang", value: v }); }
   useEffect(() => {
     localStorage.setItem(LS_LANG, lang);
     document.documentElement.lang = lang;
@@ -529,6 +539,21 @@ export default function App() {
                   </select>
                 </div>
                 <div className="muted" style={{ marginTop: 6 }}>{t("settings.languageHint")}</div>
+              </Panel>
+              <Panel id="settings-translation" title={t("settings.translation")}>
+                <div className="row">
+                  <label style={{ minWidth: 130 }}>{t("settings.sourceLang")}</label>
+                  <select value={srcLang} onChange={(e) => changeSourceLang(e.target.value)} style={{ minWidth: 160 }}>
+                    {TRANSLATION_LANGS.map((l) => <option key={l} value={l}>{l}</option>)}
+                  </select>
+                </div>
+                <div className="row" style={{ marginTop: 8 }}>
+                  <label style={{ minWidth: 130 }}>{t("settings.targetLang")}</label>
+                  <select value={tgtLang} onChange={(e) => changeTargetLang(e.target.value)} style={{ minWidth: 160 }}>
+                    {TRANSLATION_LANGS.map((l) => <option key={l} value={l}>{l}</option>)}
+                  </select>
+                </div>
+                <div className="muted" style={{ marginTop: 6 }}>{t("settings.translationHint")}</div>
               </Panel>
             </div>
           ) : (<>

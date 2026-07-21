@@ -47,6 +47,155 @@ pub fn read_book_file(path: &Path) -> std::io::Result<DecodedText> {
     Ok(decode_book_bytes(&bytes))
 }
 
+/// Best-effort cover extraction from a PDF: the largest JPEG (DCTDecode) image on
+/// the first page, which is almost always the cover art. Returns `(content_type,
+/// jpeg_bytes)`. `None` if the first page has no embedded JPEG.
+pub fn extract_pdf_cover(bytes: &[u8]) -> Option<(String, Vec<u8>)> {
+    use lopdf::{Dictionary, Document, Object};
+
+    fn resolve<'a>(doc: &'a Document, obj: &'a Object) -> Option<&'a Dictionary> {
+        match obj {
+            Object::Dictionary(d) => Some(d),
+            Object::Reference(id) => doc.get_object(*id).ok()?.as_dict().ok(),
+            _ => None,
+        }
+    }
+    fn is_dct(d: &Dictionary) -> bool {
+        match d.get(b"Filter") {
+            Ok(Object::Name(n)) => n == b"DCTDecode",
+            Ok(Object::Array(a)) => a
+                .iter()
+                .any(|o| matches!(o.as_name(), Ok(n) if n == b"DCTDecode")),
+            _ => false,
+        }
+    }
+
+    let doc = Document::load_mem(bytes).ok()?;
+    let pages = doc.get_pages();
+    let (_, &page_id) = pages.iter().next()?; // first page
+    let page = doc.get_object(page_id).ok()?.as_dict().ok()?;
+    let resources = resolve(&doc, page.get(b"Resources").ok()?)?;
+    let xobjects = resolve(&doc, resources.get(b"XObject").ok()?)?;
+
+    let mut best: Option<(usize, Vec<u8>)> = None;
+    for (_, v) in xobjects.iter() {
+        let id = match v {
+            Object::Reference(id) => *id,
+            _ => continue,
+        };
+        if let Ok(Object::Stream(stream)) = doc.get_object(id) {
+            let d = &stream.dict;
+            let is_image = d
+                .get(b"Subtype")
+                .ok()
+                .and_then(|o| o.as_name().ok())
+                .map(|n| n == b"Image")
+                .unwrap_or(false);
+            if !is_image || !is_dct(d) {
+                continue;
+            }
+            let size = stream.content.len();
+            if best.as_ref().map_or(true, |(s, _)| size > *s) {
+                best = Some((size, stream.content.clone()));
+            }
+        }
+    }
+    best.map(|(_, jpeg)| ("image/jpeg".to_string(), jpeg))
+}
+
+/// Extract chapters from a PDF's table of contents (its outline / bookmarks): far
+/// more accurate than a regex over the flattened text when the PDF has an outline.
+/// Each top-level bookmark becomes a chapter, its body being the text of the pages
+/// from that bookmark up to the next one. Returns `None` if there is no usable
+/// outline (fewer than 2 resolvable entries).
+pub fn extract_pdf_toc_chapters(bytes: &[u8]) -> Option<Vec<(String, String)>> {
+    use std::collections::HashMap;
+
+    use lopdf::{Dictionary, Document, Object, ObjectId};
+
+    fn pdf_string(obj: &Object) -> Option<String> {
+        let raw = obj.as_str().ok()?;
+        // UTF-16BE (with BOM) or PDFDocEncoding/Latin-1-ish.
+        if raw.starts_with(&[0xFE, 0xFF]) {
+            let u16s: Vec<u16> = raw[2..]
+                .chunks_exact(2)
+                .map(|c| u16::from_be_bytes([c[0], c[1]]))
+                .collect();
+            Some(String::from_utf16_lossy(&u16s))
+        } else {
+            Some(raw.iter().map(|&b| b as char).collect())
+        }
+    }
+
+    fn resolve<'a>(doc: &'a Document, obj: &'a Object) -> Option<&'a Dictionary> {
+        match obj {
+            Object::Dictionary(d) => Some(d),
+            Object::Reference(id) => doc.get_object(*id).ok()?.as_dict().ok(),
+            _ => None,
+        }
+    }
+
+    // The page an outline item points at, as a 1-based page number.
+    fn dest_page(doc: &Document, item: &Dictionary, page_num: &HashMap<ObjectId, u32>) -> Option<u32> {
+        let dest_obj = item
+            .get(b"Dest")
+            .ok()
+            .cloned()
+            .or_else(|| resolve(doc, item.get(b"A").ok()?)?.get(b"D").ok().cloned())?;
+        let dest = match &dest_obj {
+            Object::Reference(id) => doc.get_object(*id).ok()?.clone(),
+            other => other.clone(),
+        };
+        let arr = dest.as_array().ok()?;
+        let page_ref = arr.first()?.as_reference().ok()?;
+        page_num.get(&page_ref).copied()
+    }
+
+    let doc = Document::load_mem(bytes).ok()?;
+    let pages = doc.get_pages();
+    let total_pages = pages.len() as u32;
+    let page_num: HashMap<ObjectId, u32> = pages.iter().map(|(n, id)| (*id, *n)).collect();
+
+    let root = doc.trailer.get(b"Root").ok()?.as_reference().ok()?;
+    let catalog = doc.get_object(root).ok()?.as_dict().ok()?;
+    let outlines = resolve(&doc, catalog.get(b"Outlines").ok()?)?;
+
+    // Walk the top-level bookmark siblings (First -> Next -> …).
+    let mut items: Vec<(String, u32)> = Vec::new();
+    let mut cur = outlines.get(b"First").ok().and_then(|o| o.as_reference().ok());
+    let mut guard = 0;
+    while let Some(id) = cur {
+        guard += 1;
+        if guard > 5000 {
+            break;
+        }
+        let item = match doc.get_object(id).ok().and_then(|o| o.as_dict().ok()) {
+            Some(d) => d,
+            None => break,
+        };
+        let title = item.get(b"Title").ok().and_then(pdf_string).unwrap_or_default();
+        if let Some(page) = dest_page(&doc, item, &page_num) {
+            let title = title.trim().to_string();
+            if !title.is_empty() {
+                items.push((title, page));
+            }
+        }
+        cur = item.get(b"Next").ok().and_then(|o| o.as_reference().ok());
+    }
+    if items.len() < 2 {
+        return None;
+    }
+
+    let mut chapters = Vec::new();
+    for (i, (title, start)) in items.iter().enumerate() {
+        let end = items.get(i + 1).map(|(_, p)| *p).unwrap_or(total_pages + 1);
+        let page_range: Vec<u32> = (*start..end.max(*start + 1)).collect();
+        let body = doc.extract_text(&page_range).unwrap_or_default();
+        chapters.push((title.clone(), body.trim().to_string()));
+    }
+    Some(chapters)
+}
+
 fn has_ext(path: &Path, ext: &str) -> bool {
     path.extension()
         .and_then(|e| e.to_str())

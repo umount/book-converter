@@ -1,0 +1,42 @@
+[
+  {
+    "name": "cjk",
+    "description": "Chinese/Japanese: 第1章 / 第一章 (Arabic or CJK numerals; 章/回/話/节 unit)",
+    "pattern": "(?m)^第([0-9]+|[一二三四五六七八九十百千零两〇]+)[章回話话節节][^\\n]*"
+  },
+  {
+    "name": "english-chapter",
+    "description": "English: Chapter 12",
+    "pattern": "(?im)^\\s{0,3}chapter\\s+([0-9]+)[^\\n]*"
+  },
+  {
+    "name": "russian-glava",
+    "description": "Russian: Глава 12",
+    "pattern": "(?im)^\\s{0,3}глава\\s+([0-9]+)[^\\n]*"
+  },
+  {
+    "name": "german-kapitel",
+    "description": "German: Kapitel 12",
+    "pattern": "(?im)^\\s{0,3}kapitel\\s+([0-9]+)[^\\n]*"
+  },
+  {
+    "name": "french-chapitre",
+    "description": "French: Chapitre 12",
+    "pattern": "(?im)^\\s{0,3}chapitre\\s+([0-9]+)[^\\n]*"
+  },
+  {
+    "name": "spanish-capitulo",
+    "description": "Spanish: Capítulo 12",
+    "pattern": "(?im)^\\s{0,3}cap[ií]tulo\\s+([0-9]+)[^\\n]*"
+  },
+  {
+    "name": "part-en",
+    "description": "English: Part 3",
+    "pattern": "(?im)^\\s{0,3}part\\s+([0-9]+)[^\\n]*"
+  },
+  {
+    "name": "part-ru",
+    "description": "Russian: Часть 3",
+    "pattern": "(?im)^\\s{0,3}часть\\s+([0-9]+)[^\\n]*"
+  }
+]

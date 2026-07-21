@@ -13,4 +13,6 @@ pub use parser::{
     build_delimiter_prompt, detect_chapter_pattern, parse_book_meta, parse_chapters,
     parse_chapters_with, parse_inferred_pattern, validate, BookMeta, Chapter, ParseReport,
 };
-pub use source::{decode_book_bytes, read_book_file, DecodedText};
+pub use source::{
+    decode_book_bytes, extract_pdf_cover, extract_pdf_toc_chapters, read_book_file, DecodedText,
+};

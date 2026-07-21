@@ -2,10 +2,19 @@
 //! key-value SQLite DB in the app data directory so they survive restarts. This
 //! is app-wide, unlike the per-book progress DBs.
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use anyhow::Result;
 use rusqlite::{params, Connection, OptionalExtension};
+
+/// Path to the app-wide settings DB (`<app_data>/settings.db`).
+pub fn db_path() -> PathBuf {
+    let base = std::env::var_os("XDG_DATA_HOME")
+        .map(PathBuf::from)
+        .or_else(|| std::env::var_os("HOME").map(|h| PathBuf::from(h).join(".local/share")))
+        .unwrap_or_else(std::env::temp_dir);
+    base.join("book-converter").join("settings.db")
+}
 
 fn open(db: &Path) -> Result<Connection> {
     if let Some(dir) = db.parent() {

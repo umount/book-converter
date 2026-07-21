@@ -87,7 +87,8 @@ thing the frontend knows about.
 |--------|----------------|
 | **config** | Configuration: DeepSeek API key (from env `DEEPSEEK_API_KEY`), base_url, model, languages, `concurrency`, `max_chunk_chars`, `max_retries` |
 | **book::source** | Detect the file encoding (`chardetng`) and decode to UTF-8 (`encoding_rs`). Source `.txt` files are often GBK/GB18030 or Big5, not UTF-8 |
-| **book::parser** | Split plain text into chapters by chapter-heading patterns (generic; Chinese `第N章` and Arabic today, more patterns + model-inferred delimiter planned). Normalize line endings. Parse the chapter number, produce a `ParseReport` (gaps, duplicates) |
+| **book::parser** | Chaptering service: split text into chapters by heading patterns loaded from `assets/chapter_patterns.json` (a new language is a config entry, not code). Normalize line endings, parse the chapter number, produce a `ParseReport` (gaps, duplicates). Unknown layouts fall back to a model-inferred delimiter |
+| **book::source** | Read + decode a book. Also extracts a PDF's cover (first-page JPEG) and, when there are no text headings, its chapters from the outline / table of contents (`extract_pdf_toc_chapters`) |
 | **book::fb2** | Parse FB2 (FictionBook XML) into sections → chapters (generic `<section>/<title>/<p>` walk). Language-agnostic heading-number extraction; merges split parts (1.1, 1.2 …) into whole chapters |
 | **book::load** *(planned)* | Format-agnostic input: detect TXT vs FB2, decode, parse → chapters + meta |
 | **book::chunker** | Fallback splitting of an over-long chapter into chunks on paragraph boundaries (never mid-sentence) |

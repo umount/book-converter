@@ -14,9 +14,11 @@
 //! compiled and tested without the rest of the Tauri crate.
 
 use std::collections::BTreeSet;
+use std::sync::OnceLock;
 
 use anyhow::{Context, Result};
 use regex::Regex;
+use serde::Deserialize;
 
 /// A single chapter of the book.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -73,24 +75,34 @@ fn normalize_newlines(raw: &str) -> String {
     raw.replace("\r\n", "\n").replace('\r', "\n")
 }
 
-/// Candidate chapter-heading patterns, tried generically (not tied to one book).
-///
-/// Each is anchored to line start (`^` in multiline mode) so indented spam and
-/// in-prose mentions are not mistaken for headers, and captures the chapter
-/// number in group 1. Covers the common cases across languages; unknown layouts
-/// fall back to a model-inferred delimiter (see [`build_delimiter_prompt`]).
+/// One named chapter-heading pattern from the config.
+#[derive(Debug, Clone, Deserialize)]
+struct PatternDef {
+    #[allow(dead_code)]
+    name: String,
+    pattern: String,
+}
+
+/// Chapter-heading patterns are data, not code: they live in
+/// `assets/chapter_patterns.json`, so a new language is a config entry, not a code
+/// change. Each is anchored to line start (`^` in multiline mode) so indented spam
+/// and in-prose mentions are not mistaken for headers, and captures the chapter
+/// number in group 1. Unknown layouts fall back to a model-inferred delimiter
+/// (see [`build_delimiter_prompt`]).
+fn pattern_defs() -> &'static Vec<PatternDef> {
+    static DEFS: OnceLock<Vec<PatternDef>> = OnceLock::new();
+    DEFS.get_or_init(|| {
+        serde_json::from_str(include_str!("../../assets/chapter_patterns.json"))
+            .expect("chapter_patterns.json is valid")
+    })
+}
+
+/// Compile the configured candidate patterns (skipping any that fail to compile).
 pub fn candidate_patterns() -> Vec<Regex> {
-    [
-        // Chinese: 第1章 / 第一章 (Arabic or Chinese numerals; 章 or 回/话/節 unit).
-        r"(?m)^第([0-9]+|[一二三四五六七八九十百千零两〇]+)[章回話话節节][^\n]*",
-        // English: "Chapter 12" (optional small indent).
-        r"(?im)^\s{0,3}chapter\s+([0-9]+)[^\n]*",
-        // Russian: "Глава 12".
-        r"(?im)^\s{0,3}глава\s+([0-9]+)[^\n]*",
-    ]
-    .iter()
-    .map(|p| Regex::new(p).expect("chapter pattern is valid"))
-    .collect()
+    pattern_defs()
+        .iter()
+        .filter_map(|d| Regex::new(&d.pattern).ok())
+        .collect()
 }
 
 /// Pick the chapter-heading pattern that matches the text best (most headers).
