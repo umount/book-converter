@@ -64,6 +64,7 @@ export default function App() {
   const [chapters, setChapters] = useState<ChapterRow[]>([]);
   const [chapterIdx, setChapterIdx] = useState<number | null>(null);
   const chapterIdxRef = useRef<number | null>(null);
+  const activatingRef = useRef<string | null>(null);
   const [chapter, setChapter] = useState<ChapterView | null>(null);
   const [chapterLoading, setChapterLoading] = useState(false);
   const [panes, setPanes] = useState({ orig: true, transl: true });
@@ -116,9 +117,13 @@ export default function App() {
     const unsubs = [
       listen<Progress>("progress", (e) => setProgress(e.payload)),
       listen("done", () => { addLog(tr("log.runFinished")); refreshProgress(); refreshGlossary(); }),
-      listen<string>("job_error", (e) => { setBusy(null); setError(String(e.payload)); }),
-      listen<{ done: number; total: number }>("retarget_progress", (e) =>
-        setBusy(tr("busy.updatingTranslationN", { done: e.payload.done, total: e.payload.total }))),
+      listen<string>("job_error", (e) => { setBusy(null); reportCritical(String(e.payload)); }),
+      listen<{ done: number; total: number; title: string; changed: boolean }>("retarget_progress", (e) => {
+        const { done, total, title, changed } = e.payload;
+        setBusy(tr("busy.updatingTranslationN", { done, total }));
+        addLog(tr("log.retargetItem", { done, total, mark: changed ? "✓" : "·", title }));
+      }),
+      listen<string>("retarget_warn", (e) => addLog(tr("log.retargetWarn", { msg: String(e.payload) }))),
       listen<number>("retarget_done", (e) => { setBusy(null); addLog(tr("log.renamed", { n: e.payload })); setPending({}); refreshProgress(); const i = chapterIdxRef.current; if (i != null) openChapter(i); }),
     ];
     return () => unsubs.forEach((u) => u.then((f) => f()));
@@ -126,7 +131,7 @@ export default function App() {
 
   useEffect(() => {
     if (activeProject) void activateProject(activeProject);
-    else clearWorkspace();
+    else { activatingRef.current = null; clearWorkspace(); }
     setView("overview");
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [active]);
@@ -142,9 +147,15 @@ export default function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [chapterIdx]);
 
-  async function call<T>(name: string, args?: Record<string, unknown>): Promise<T | undefined> {
-    setError(null);
-    try { return await invoke<T>(name, args); } catch (e) { setError(String(e)); return undefined; }
+  // Errors always go to the console. The banner (an IDE-style notification) is
+  // reserved for critical failures — DeepSeek being unreachable, a project failing
+  // to open — so it isn't raised for every minor command hiccup.
+  function logError(msg: string) { addLog(tRef.current("log.error", { msg })); }
+  function reportCritical(msg: string) { logError(msg); setError(msg); }
+
+  async function call<T>(name: string, args?: Record<string, unknown>, opts?: { critical?: boolean }): Promise<T | undefined> {
+    try { return await invoke<T>(name, args); }
+    catch (e) { const msg = String(e); logError(msg); if (opts?.critical) setError(msg); return undefined; }
   }
 
   function clearWorkspace() {
@@ -153,12 +164,19 @@ export default function App() {
   }
 
   async function activateProject(p: Project) {
+    // Guard against the double invocation of the `[active]` effect (React
+    // StrictMode in dev double-fires effects), which would open the book twice.
+    if (activatingRef.current === p.path) return;
+    activatingRef.current = p.path;
     setBusy(t("busy.opening", { name: p.name }));
+    addLog(t("log.opening", { name: p.name }));
+    setError(null);
     clearWorkspace();
-    const info = await call<BookInfo>("load_source", { path: p.path });
+    const info = await call<BookInfo>("load_source", { path: p.path }, { critical: true });
     if (info) {
       setBook(info);
-      if (p.refPath) { const r = await call<RefInfo>("load_reference", { path: p.refPath }); if (r) setRef(r); }
+      addLog(t("log.loaded", { name: p.name, n: info.total_chapters, format: info.format, encoding: info.encoding }));
+      if (p.refPath) { const r = await call<RefInfo>("load_reference", { path: p.refPath }); if (r) { setRef(r); addLog(t("log.reference", { n: r.max_covered ?? "?" })); } }
       await refreshDetails(); await refreshProgress(); await refreshGlossary();
       void translateTitle();
     }
@@ -173,7 +191,6 @@ export default function App() {
     if (existing >= 0) { setActive(existing); return; }
     const next = [...projects, { path, name: baseName(path) }];
     setProjects(next); setActive(next.length - 1);
-    addLog(t("log.opened", { name: baseName(path) }));
   }
 
   function removeProject(idx: number) {
@@ -199,7 +216,7 @@ export default function App() {
 
   async function bootstrap() {
     setBusy(t("busy.bootstrapping", { n: sample }));
-    const n = await call<number>("bootstrap_glossary", { sample });
+    const n = await call<number>("bootstrap_glossary", { sample }, { critical: true });
     setBusy(null);
     if (n !== undefined) { addLog(t("log.bootstrapped", { n })); refreshGlossary(); }
   }
@@ -266,17 +283,18 @@ export default function App() {
   async function updateTranslation() {
     const list = Object.values(pending);
     if (!list.length) return;
-    const summary = list.map((c) => `«${c.old}» → «${c.new}»`).join("\n");
-    if (!confirm(t("glossary.updateConfirm", { n: list.length, list: summary }))) return;
+    const summary = list.map((c) => `«${c.old}» → «${c.new}»`).join(", ");
+    if (!confirm(t("glossary.updateConfirm", { n: list.length, list: list.map((c) => `«${c.old}» → «${c.new}»`).join("\n") }))) return;
     setBusy(t("busy.updatingTranslation"));
     setError(null);
+    addLog(t("log.retargetStart", { n: list.length, list: summary }));
     // Progress/finish are driven by retarget_progress / retarget_done events;
     // only a synchronous rejection needs to clear the busy state here.
     try {
       await invoke("retarget_terms", {
         changes: list.map((c) => ({ old_target: c.old, new_target: c.new, kind: c.kind })),
       });
-    } catch (e) { setBusy(null); setError(String(e)); }
+    } catch (e) { setBusy(null); logError(String(e)); }
   }
   async function deleteTerm(t: Term) {
     await call("delete_term", { source: t.source });
@@ -389,10 +407,18 @@ export default function App() {
             {projects.length === 0 && <li className="empty">{t("sidebar.noProjects")}</li>}
           </ul>
           <button className="add" onClick={openBook}>{t("sidebar.openBook")}</button>
+          {error && (
+            <div className="notif" role="alert">
+              <span className="notif-icon">⚠</span>
+              <span className="notif-msg">{error}</span>
+              <button className="icon" onClick={() => setError(null)}>×</button>
+            </div>
+          )}
         </aside>
         {!sidebar && <button className="sidebar-show" onClick={() => setSidebar(true)}>⟩</button>}
 
-        {/* Work area */}
+        {/* Right column: work area + console */}
+        <div className="rightcol">
         <main className="workarea">
           {showSettings ? (
             <div className="settings-page">
@@ -410,8 +436,6 @@ export default function App() {
               </Panel>
             </div>
           ) : (<>
-          {error && <div className="error" onClick={() => setError(null)}>{error}</div>}
-
           {!activeProject ? (
             <div className="welcome"><h1>book-converter</h1><p>{t("welcome.subtitle")}</p><button onClick={openBook}>{t("welcome.openBook")}</button></div>
           ) : (
@@ -581,23 +605,24 @@ export default function App() {
           )}
           </>)}
         </main>
-      </div>
 
-      {showConsole && (
-        <section className="console">
-          <div className="console-head">
-            <span className="console-title">{t("console.title")}</span>
-            <div className="menu-spacer" />
-            <button className="icon" title={t("console.clear")} onClick={() => setLog([])}>⌫</button>
-            <button className="icon" onClick={() => setShowConsole(false)}>×</button>
-          </div>
-          <div className="log" ref={logRef}>
-            {log.length === 0
-              ? <div className="muted">{t("console.empty")}</div>
-              : log.map((l, i) => <div key={i}>{l}</div>)}
-          </div>
-        </section>
-      )}
+        {showConsole && (
+          <section className="console">
+            <div className="console-head">
+              <span className="console-title">{t("console.title")}</span>
+              <div className="menu-spacer" />
+              <button className="icon" title={t("console.clear")} onClick={() => setLog([])}>⌫</button>
+              <button className="icon" onClick={() => setShowConsole(false)}>×</button>
+            </div>
+            <div className="log" ref={logRef}>
+              {log.length === 0
+                ? <div className="muted">{t("console.empty")}</div>
+                : log.map((l, i) => <div key={i}>{l}</div>)}
+            </div>
+          </section>
+        )}
+        </div>
+      </div>
     </div>
   );
 }

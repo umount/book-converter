@@ -556,20 +556,26 @@ async fn run_retarget(
             break;
         }
 
-        let new_title = apply_changes(&cl, lang, changes, &title).await;
+        let new_title = apply_changes(&cl, lang, changes, &title, app).await;
         let mut out_lines: Vec<String> = Vec::with_capacity(body.lines().count());
         for line in body.lines() {
-            out_lines.push(apply_changes(&cl, lang, changes, line).await);
+            out_lines.push(apply_changes(&cl, lang, changes, line, app).await);
         }
         let new_body = out_lines.join("\n");
 
-        if new_title != title || new_body != body {
+        let did_change = new_title != title || new_body != body;
+        if did_change {
             store.save_translation(idx, &new_title, &new_body)?;
             changed += 1;
         }
         let _ = app.emit(
             "retarget_progress",
-            serde_json::json!({ "done": i + 1, "total": total }),
+            serde_json::json!({
+                "done": i + 1,
+                "total": total,
+                "title": new_title,
+                "changed": did_change,
+            }),
         );
     }
     Ok(changed)
@@ -577,28 +583,37 @@ async fn run_retarget(
 
 /// Apply every relevant rename to one paragraph, in sequence (a paragraph that
 /// mentions two renamed terms is rewritten once per term, each on the prior result).
+/// A model failure on one paragraph is surfaced (a `retarget_warn` event) and the
+/// original text is kept, so one bad paragraph never aborts the whole job.
 async fn apply_changes(
     cl: &DeepSeekClient,
     lang: &str,
     changes: &[RenameChange],
     text: &str,
+    app: &AppHandle,
 ) -> String {
     use crate::retarget::paragraph_mentions;
     let mut cur = text.to_string();
     for c in changes {
         if paragraph_mentions(&cur, &c.old_target) {
-            if let Some(r) =
-                rewrite_paragraph(cl, lang, &c.kind, &c.old_target, &c.new_target, &cur).await
-            {
-                cur = r;
+            match rewrite_paragraph(cl, lang, &c.kind, &c.old_target, &c.new_target, &cur).await {
+                Ok(Some(r)) => cur = r,
+                Ok(None) => {}
+                Err(e) => {
+                    tracing::warn!("retarget rewrite failed: {e:#}");
+                    let _ = app.emit(
+                        "retarget_warn",
+                        format!("{} → {}: {e}", c.old_target, c.new_target),
+                    );
+                }
             }
         }
     }
     cur
 }
 
-/// Rewrite one paragraph via the model, applying the rename. Returns `None` on a
-/// failed/empty response so the caller can keep the original text (best-effort).
+/// Rewrite one paragraph via the model, applying the rename. `Ok(None)` means an
+/// empty response (keep original); `Err` means the request itself failed.
 async fn rewrite_paragraph(
     cl: &DeepSeekClient,
     lang: &str,
@@ -606,18 +621,11 @@ async fn rewrite_paragraph(
     old_target: &str,
     new_target: &str,
     text: &str,
-) -> Option<String> {
+) -> anyhow::Result<Option<String>> {
     let (sys, user) = crate::retarget::rewrite_prompt(lang, kind, old_target, new_target, text);
-    match cl.translate(&sys, &user).await {
-        Ok(out) => {
-            let t = out.trim().trim_matches('"').trim().to_string();
-            (!t.is_empty()).then_some(t)
-        }
-        Err(e) => {
-            tracing::warn!("retarget rewrite failed: {e:#}");
-            None
-        }
-    }
+    let out = cl.translate(&sys, &user).await?;
+    let t = out.trim().trim_matches('"').trim().to_string();
+    Ok((!t.is_empty()).then_some(t))
 }
 
 /// Export the translated chapters to `out_path` (format inferred from extension).

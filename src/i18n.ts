@@ -94,6 +94,8 @@ const en: Dict = {
   "busy.updatingTranslationN": "Updating translation… {done}/{total}",
   "log.runFinished": "✓ run finished",
   "log.opened": "Opened project: {name}",
+  "log.opening": "Opening project: {name}…",
+  "log.loaded": "✓ Loaded {name}: {n} chapters ({format}, {encoding})",
   "log.reference": "Reference: covers up to #{n}",
   "log.bootstrapped": "Bootstrapped {n} terms",
   "log.imported": "Imported {n} reference chapters",
@@ -102,6 +104,10 @@ const en: Dict = {
   "log.pauseRequested": "Pause requested",
   "log.exported": "Exported → {path}",
   "log.renamed": "✓ renamed in {n} chapter(s)",
+  "log.retargetStart": "↻ Updating translation ({n}): {list}",
+  "log.retargetItem": "  {done}/{total} · {mark} {title}",
+  "log.retargetWarn": "⚠ rewrite failed: {msg}",
+  "log.error": "✗ {msg}",
 };
 
 const ru: Dict = {
@@ -186,6 +192,8 @@ const ru: Dict = {
   "busy.updatingTranslationN": "Обновляю перевод… {done}/{total}",
   "log.runFinished": "✓ прогон завершён",
   "log.opened": "Открыт проект: {name}",
+  "log.opening": "Открываю проект: {name}…",
+  "log.loaded": "✓ Загружено {name}: глав {n} ({format}, {encoding})",
   "log.reference": "Эталон: покрывает до #{n}",
   "log.bootstrapped": "Извлечено терминов: {n}",
   "log.imported": "Импортировано глав эталона: {n}",
@@ -194,6 +202,10 @@ const ru: Dict = {
   "log.pauseRequested": "Запрошена пауза",
   "log.exported": "Экспортировано → {path}",
   "log.renamed": "✓ переименовано в главах: {n}",
+  "log.retargetStart": "↻ Обновление перевода ({n}): {list}",
+  "log.retargetItem": "  {done}/{total} · {mark} {title}",
+  "log.retargetWarn": "⚠ не удалось переписать: {msg}",
+  "log.error": "✗ {msg}",
 };
 
 const zh: Dict = {
@@ -278,6 +290,8 @@ const zh: Dict = {
   "busy.updatingTranslationN": "正在更新译文… {done}/{total}",
   "log.runFinished": "✓ 运行完成",
   "log.opened": "已打开项目：{name}",
+  "log.opening": "正在打开项目：{name}…",
+  "log.loaded": "✓ 已加载 {name}：{n} 章（{format}，{encoding}）",
   "log.reference": "参考译本：覆盖至 #{n}",
   "log.bootstrapped": "已提取术语：{n}",
   "log.imported": "已导入参考章节：{n}",
@@ -286,6 +300,10 @@ const zh: Dict = {
   "log.pauseRequested": "已请求暂停",
   "log.exported": "已导出 → {path}",
   "log.renamed": "✓ 已在 {n} 章中重命名",
+  "log.retargetStart": "↻ 更新译文（{n}）：{list}",
+  "log.retargetItem": "  {done}/{total} · {mark} {title}",
+  "log.retargetWarn": "⚠ 重写失败：{msg}",
+  "log.error": "✗ {msg}",
 };
 
 const messages: Record<Lang, Dict> = { en, ru, zh };

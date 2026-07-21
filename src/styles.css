@@ -55,8 +55,10 @@ body { background: var(--bg); color: var(--fg); overflow: hidden; }
 .loading { color: var(--muted); display: flex; align-items: center; gap: 8px; padding: 20px 0; }
 
 .body { display: flex; flex: 1; min-height: 0; }
+.rightcol { flex: 1; min-width: 0; display: flex; flex-direction: column; min-height: 0; }
+.rightcol .workarea { flex: 1; }
 
-/* --- Console (bottom output panel) --- */
+/* --- Console (bottom output panel, right column only) --- */
 .console { flex: 0 0 auto; display: flex; flex-direction: column; border-top: 1px solid var(--line); background: var(--bg-2); }
 .console-head { display: flex; align-items: center; gap: 6px; padding: 4px 8px; background: var(--panel); border-bottom: 1px solid var(--line); }
 .console-title { color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: .05em; }
@@ -163,6 +165,15 @@ button.primary:disabled { opacity: .45; }
 
 /* --- Misc --- */
 .error { background: color-mix(in srgb, var(--error) 20%, transparent); color: var(--error); border-radius: 6px; padding: 8px 12px; margin-bottom: 12px; cursor: pointer; flex: 0 0 auto; }
+
+/* IDE-style critical notification, pinned at the bottom of the sidebar */
+.notif { margin: 8px; padding: 8px 10px; display: flex; align-items: flex-start; gap: 8px;
+  background: color-mix(in srgb, var(--error) 16%, var(--bg-2));
+  border: 1px solid color-mix(in srgb, var(--error) 45%, transparent);
+  border-radius: 8px; color: var(--fg); font-size: 12px; box-shadow: 0 4px 14px rgba(0,0,0,.28); }
+.notif-icon { color: var(--error); flex: 0 0 auto; }
+.notif-msg { flex: 1; min-width: 0; word-break: break-word; max-height: 8.4em; overflow-y: auto; }
+.notif .icon { flex: 0 0 auto; }
 
 @media (max-width: 760px) {
   .sidebar { position: absolute; z-index: 15; height: calc(100vh - 34px); }
