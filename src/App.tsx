@@ -9,15 +9,15 @@ type BookInfo = {
   title: string; author: string; total_chapters: number;
   format: string; encoding: string; needs_delimiter: boolean; missing: number; duplicates: number;
 };
-type RefInfo = { title: string; chapters: number; max_covered: number | null };
+type RefInfo = { title: string; chapters: number; max_covered: number | null; imported: number };
 type Progress = { done: number; total: number; failed: number; pending: number; running: boolean };
 type Term = { source: string; target: string; kind: string; frequency: number; pinned: boolean };
 const TERM_KINDS = ["person", "location", "organization", "term"] as const;
 type BookDetails = { title: string; author: string; title_translated: string | null; author_translated: string | null; summary: string | null; cover: string | null };
-type ChapterRow = { idx: number; number: number | null; title: string; status: string };
+type ChapterRow = { idx: number; number: number | null; title: string; status: string; origin: string | null };
 type ChapterView = {
   idx: number; number: number | null; source_title: string; source: string;
-  translated_title: string | null; translated: string | null; status: string;
+  translated_title: string | null; translated: string | null; status: string; origin: string | null;
 };
 
 type Project = { path: string; name: string; refPath?: string };
@@ -77,7 +77,6 @@ export default function App() {
   const [sample, setSample] = useState(30);
   const [limit, setLimit] = useState<number | "">("");
   const [reFrom, setReFrom] = useState<number>(1);
-  const [continueMode, setContinueMode] = useState(false);
   const [sidebar, setSidebar] = useState(true);
   const [showConsole, setShowConsole] = useState(true);
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
@@ -177,7 +176,7 @@ export default function App() {
     if (info) {
       setBook(info);
       addLog(t("log.loaded", { name: p.name, n: info.total_chapters, format: info.format, encoding: info.encoding }));
-      if (p.refPath) { const r = await call<RefInfo>("load_reference", { path: p.refPath }); if (r) { setRef(r); addLog(t("log.reference", { n: r.max_covered ?? "?" })); } }
+      if (p.refPath) { const r = await call<RefInfo>("load_reference", { path: p.refPath }); if (r) { setRef(r); addLog(t("log.reference", { n: r.max_covered ?? "?" })); if (r.imported > 0) addLog(t("log.refImported", { n: r.imported })); } }
       await refreshDetails(); await refreshProgress(); await refreshGlossary();
       void translateTitle();
     }
@@ -211,7 +210,9 @@ export default function App() {
       setRef(info);
       setProjects((ps) => ps.map((p, i) => (i === active ? { ...p, refPath: path } : p)));
       addLog(t("log.reference", { n: info.max_covered ?? "?" }));
-      refreshDetails();
+      if (info.imported > 0) addLog(t("log.refImported", { n: info.imported }));
+      refreshDetails(); refreshProgress(); loadChapters();
+      const i = chapterIdxRef.current; if (i != null) openChapter(i);
     }
   }
 
@@ -223,12 +224,6 @@ export default function App() {
   }
 
   async function start() {
-    if (continueMode && ref) {
-      setBusy(t("busy.importing"));
-      const n = await call<number>("use_reference_as_base", {});
-      setBusy(null);
-      if (n !== undefined) addLog(t("log.imported", { n }));
-    }
     const lim = limit === "" ? null : Number(limit);
     await call("start_translation", { limit: lim });
     addLog(t("log.started", { suffix: lim ? t("log.startedNext", { n: lim }) : "" }));
@@ -502,7 +497,6 @@ export default function App() {
                           <input type="number" min={1} value={sample} onChange={(e) => setSample(Number(e.target.value))} style={{ width: 64 }} title={t("translate.sample")} />
                           <button onClick={bootstrap}>{t("translate.bootstrap")}</button>
                         </div>
-                        <label className="check" style={{ marginTop: 10 }}><input type="checkbox" checked={continueMode} onChange={(e) => setContinueMode(e.target.checked)} /> {t("translate.continueMode")}</label>
                       </>
                     )}
                   </Panel>
@@ -602,7 +596,7 @@ export default function App() {
                     <select value={chapterIdx ?? ""} onChange={(e) => setChapterIdx(Number(e.target.value))}>
                       {chapters.map((c) => (
                         <option key={c.idx} value={c.idx}>
-                          {c.status === "done" ? "✓ " : "· "}{c.title.slice(0, 60)}
+                          {c.origin === "reference" ? "◆ " : c.status === "done" ? "✓ " : "· "}{c.title.slice(0, 60)}
                         </option>
                       ))}
                     </select>
@@ -634,6 +628,8 @@ export default function App() {
                       <div className="pane">
                         <div className="pane-head">
                           <span>{t("reader.translation")} {chapter?.status !== "done" && `· ${t("reader.notTranslated")}`}</span>
+                          {chapter?.origin === "reference" && <span className="ref-badge" title={t("reader.fromReferenceTip")}>{t("reader.fromReference")}</span>}
+                          <div className="menu-spacer" />
                           <button className="icon" onClick={() => setPanes((p) => ({ ...p, transl: false }))}>×</button>
                         </div>
                         <div className="pane-body">

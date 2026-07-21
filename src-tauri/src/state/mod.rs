@@ -72,6 +72,7 @@ CREATE TABLE IF NOT EXISTS chapters (
     status           TEXT NOT NULL DEFAULT 'pending',
     translated       TEXT,
     translated_title TEXT,
+    origin           TEXT,
     updated_at       TEXT NOT NULL DEFAULT (datetime('now'))
 );
 CREATE TABLE IF NOT EXISTS glossary (
@@ -95,8 +96,25 @@ impl Store {
         let conn = Connection::open(path)?;
         conn.execute_batch(SCHEMA)?;
         let store = Store { conn };
+        store.migrate()?;
         store.reset_in_progress()?;
         Ok(store)
+    }
+
+    /// Additive migrations for databases created by an older version.
+    fn migrate(&self) -> Result<()> {
+        // `origin` marks where a chapter's translation came from ('reference' vs
+        // 'model'); older DBs predate the column.
+        let has_origin: i64 = self.conn.query_row(
+            "SELECT COUNT(*) FROM pragma_table_info('chapters') WHERE name = 'origin'",
+            [],
+            |r| r.get(0),
+        )?;
+        if has_origin == 0 {
+            self.conn
+                .execute("ALTER TABLE chapters ADD COLUMN origin TEXT", [])?;
+        }
+        Ok(())
     }
 
     /// Reset chapters stuck `in_progress` (from a previous crash) to `pending`.
@@ -160,7 +178,9 @@ impl Store {
         Ok(row)
     }
 
-    /// Save a chapter's translated title + body and mark it `done`.
+    /// Save a chapter's translated title + body (produced by the model) and mark it
+    /// `done`. Overwrites the `origin` (so re-translating a reference chapter with the
+    /// model re-labels it accordingly).
     pub fn save_translation(
         &self,
         index: usize,
@@ -170,11 +190,31 @@ impl Store {
         self.conn.execute(
             "UPDATE chapters
              SET translated = ?3, translated_title = ?2,
-                 status = 'done', updated_at = datetime('now')
+                 status = 'done', origin = 'model', updated_at = datetime('now')
              WHERE idx = ?1",
             params![index as i64, translated_title, translated_body],
         )?;
         Ok(())
+    }
+
+    /// Seed a chapter from a reference translation, but only if it is still
+    /// `pending` (never overwrite work already done by the model or an earlier
+    /// import). Marks it `done` with `origin = 'reference'`. Returns whether a row
+    /// was filled.
+    pub fn save_reference_chapter(
+        &self,
+        index: usize,
+        translated_title: &str,
+        translated_body: &str,
+    ) -> Result<bool> {
+        let n = self.conn.execute(
+            "UPDATE chapters
+             SET translated = ?3, translated_title = ?2,
+                 status = 'done', origin = 'reference', updated_at = datetime('now')
+             WHERE idx = ?1 AND status = 'pending'",
+            params![index as i64, translated_title, translated_body],
+        )?;
+        Ok(n > 0)
     }
 
     /// Reset chapters back to `pending` so a later run re-translates them (with the
@@ -230,11 +270,14 @@ impl Store {
         Ok(stats)
     }
 
-    /// List chapters for the UI: `(idx, number, title, status)` in reading order.
-    pub fn list_chapters(&self) -> Result<Vec<(usize, Option<usize>, String, String)>> {
+    /// List chapters for the UI: `(idx, number, title, status, origin)` in order.
+    #[allow(clippy::type_complexity)]
+    pub fn list_chapters(
+        &self,
+    ) -> Result<Vec<(usize, Option<usize>, String, String, Option<String>)>> {
         let mut stmt = self
             .conn
-            .prepare("SELECT idx, number, title, status FROM chapters ORDER BY idx")?;
+            .prepare("SELECT idx, number, title, status, origin FROM chapters ORDER BY idx")?;
         let rows = stmt
             .query_map([], |r| {
                 Ok((
@@ -242,22 +285,34 @@ impl Store {
                     r.get::<_, Option<i64>>(1)?.map(|n| n as usize),
                     r.get::<_, String>(2)?,
                     r.get::<_, String>(3)?,
+                    r.get::<_, Option<String>>(4)?,
                 ))
             })?
             .collect::<rusqlite::Result<Vec<_>>>()?;
         Ok(rows)
     }
 
-    /// Full chapter view: `(number, source_title, source, status, translated_title, translated)`.
+    /// Full chapter view:
+    /// `(number, source_title, source, status, translated_title, translated, origin)`.
     #[allow(clippy::type_complexity)]
     pub fn chapter_full(
         &self,
         index: usize,
-    ) -> Result<Option<(Option<usize>, String, String, String, Option<String>, Option<String>)>> {
+    ) -> Result<
+        Option<(
+            Option<usize>,
+            String,
+            String,
+            String,
+            Option<String>,
+            Option<String>,
+            Option<String>,
+        )>,
+    > {
         let row = self
             .conn
             .query_row(
-                "SELECT number, title, source, status, translated_title, translated
+                "SELECT number, title, source, status, translated_title, translated, origin
                  FROM chapters WHERE idx = ?1",
                 params![index as i64],
                 |r| {
@@ -268,6 +323,7 @@ impl Store {
                         r.get::<_, String>(3)?,
                         r.get::<_, Option<String>>(4)?,
                         r.get::<_, Option<String>>(5)?,
+                        r.get::<_, Option<String>>(6)?,
                     ))
                 },
             )

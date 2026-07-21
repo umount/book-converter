@@ -76,6 +76,8 @@ pub struct RefInfo {
     pub title: String,
     pub chapters: usize,
     pub max_covered: Option<usize>,
+    /// How many still-pending chapters were seeded from this reference.
+    pub imported: usize,
 }
 
 #[derive(Serialize, Clone)]
@@ -219,14 +221,53 @@ pub async fn load_source(path: String, state: State<'_, AppState>) -> Result<Boo
     })
 }
 
-/// Load a reference translation (used for canon/style and "continue" mode).
+/// Seed still-`pending` chapters from a reference translation (aligned by chapter
+/// number), marking them `done` with `origin = 'reference'`. Never overwrites work
+/// already done. Returns how many chapters were filled.
+fn import_reference_pending(
+    db: &str,
+    source_path: &str,
+    reference: &crate::reference::Reference,
+) -> anyhow::Result<usize> {
+    let source = load_book(Path::new(source_path))?;
+    let idx_by_number: HashMap<usize, usize> = source
+        .chapters
+        .iter()
+        .filter_map(|c| c.number.map(|n| (n, c.index)))
+        .collect();
+    let store = Store::open(db)?;
+    let mut count = 0;
+    for rc in &reference.chapters {
+        if let Some(&idx) = rc.number.and_then(|n| idx_by_number.get(&n)) {
+            if store.save_reference_chapter(idx, &rc.title, &rc.body)? {
+                count += 1;
+            }
+        }
+    }
+    Ok(count)
+}
+
+/// Load a reference translation: seed pending chapters from it (so they appear in
+/// the reader, labeled as coming from the reference) and adopt it for canon/style.
 #[tauri::command]
 pub async fn load_reference(path: String, state: State<'_, AppState>) -> Result<RefInfo, String> {
     let reference = reference::load_reference(Path::new(&path)).map_err(err)?;
+
+    // Seed pending chapters from the reference, if a source book is open.
+    let (db, source_path) = {
+        let s = state.0.lock().unwrap();
+        (s.db_path.clone(), s.source_path.clone())
+    };
+    let imported = match (&db, &source_path) {
+        (Some(db), Some(sp)) => import_reference_pending(db, sp, &reference).map_err(err)?,
+        _ => 0,
+    };
+
     let info = RefInfo {
         title: reference.meta.title.clone().unwrap_or_default(),
         chapters: reference.chapters.len(),
         max_covered: reference::max_covered_number(&reference),
+        imported,
     };
     let style = reference::style_exemplar(&reference, 600);
     let annotation = reference.head.as_ref().and_then(|h| h.annotation.clone());
@@ -279,8 +320,9 @@ pub async fn bootstrap_glossary(
     Ok(glossary.len())
 }
 
-/// "Continue" mode: mark chapters the reference already covers as done, using the
-/// professional text, so only the remaining chapters get machine-translated.
+/// "Continue" mode: seed the chapters the reference covers (that are still pending)
+/// from the professional text, so only the remaining chapters get machine-translated.
+/// Loading a reference already does this; kept for an explicit re-seed.
 #[tauri::command]
 pub async fn use_reference_as_base(state: State<'_, AppState>) -> Result<usize, String> {
     let (db, source_path, reference) = {
@@ -290,24 +332,7 @@ pub async fn use_reference_as_base(state: State<'_, AppState>) -> Result<usize, 
     let db = db.ok_or("no source loaded")?;
     let source_path = source_path.ok_or("no source loaded")?;
     let reference = reference.ok_or("no reference loaded")?;
-
-    let source = load_book(Path::new(&source_path)).map_err(err)?;
-    let idx_by_number: HashMap<usize, usize> = source
-        .chapters
-        .iter()
-        .filter_map(|c| c.number.map(|n| (n, c.index)))
-        .collect();
-
-    let store = Store::open(&db).map_err(err)?;
-    let mut count = 0;
-    for rc in &reference.chapters {
-        if let (Some(n), Some(&idx)) = (rc.number, rc.number.and_then(|n| idx_by_number.get(&n))) {
-            let _ = n;
-            store.save_translation(idx, &rc.title, &rc.body).map_err(err)?;
-            count += 1;
-        }
-    }
-    Ok(count)
+    import_reference_pending(&db, &source_path, &reference).map_err(err)
 }
 
 /// Start translating pending chapters (up to `limit`) on a background thread.
@@ -779,6 +804,8 @@ pub struct ChapterRow {
     pub number: Option<usize>,
     pub title: String,
     pub status: String,
+    /// Where the translation came from: `"reference"`, `"model"`, or none.
+    pub origin: Option<String>,
 }
 
 /// Full chapter view: original + translation.
@@ -791,6 +818,7 @@ pub struct ChapterView {
     pub translated_title: Option<String>,
     pub translated: Option<String>,
     pub status: String,
+    pub origin: Option<String>,
 }
 
 /// List chapters of the active project (for the reader).
@@ -801,7 +829,7 @@ pub async fn list_chapters(state: State<'_, AppState>) -> Result<Vec<ChapterRow>
     let rows = store.list_chapters().map_err(err)?;
     Ok(rows
         .into_iter()
-        .map(|(idx, number, title, status)| ChapterRow { idx, number, title, status })
+        .map(|(idx, number, title, status, origin)| ChapterRow { idx, number, title, status, origin })
         .collect())
 }
 
@@ -810,7 +838,7 @@ pub async fn list_chapters(state: State<'_, AppState>) -> Result<Vec<ChapterRow>
 pub async fn get_chapter(index: usize, state: State<'_, AppState>) -> Result<ChapterView, String> {
     let db = state.0.lock().unwrap().db_path.clone().ok_or("no source loaded")?;
     let store = Store::open(&db).map_err(err)?;
-    let (number, source_title, source, status, translated_title, translated) = store
+    let (number, source_title, source, status, translated_title, translated, origin) = store
         .chapter_full(index)
         .map_err(err)?
         .ok_or("chapter not found")?;
@@ -822,6 +850,7 @@ pub async fn get_chapter(index: usize, state: State<'_, AppState>) -> Result<Cha
         translated_title,
         translated,
         status,
+        origin,
     })
 }
 
