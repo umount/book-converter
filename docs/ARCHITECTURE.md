@@ -98,7 +98,7 @@ thing the frontend knows about; session/job helpers sit beside it.
 | **glossary** | Consistency: store terms, inject into prompt, auto-extract, merge with conflict resolution |
 | **retarget** | Propagate a glossary rename into already-translated text (inflection-aware) |
 | **translator::prompt** | System/user prompts: glossary + rolling summary + style |
-| **translator::deepseek** | DeepSeek HTTP client, retry + backoff |
+| **translator::deepseek** | DeepSeek HTTP client, retry + backoff, continue on output truncation |
 | **orchestrator** | Sequential translation loop (glossary + summary + enrich) |
 | **state** | Persist progress and glossary in per-project SQLite |
 | **settings** | App-wide key-value settings DB |

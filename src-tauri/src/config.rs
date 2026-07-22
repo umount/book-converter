@@ -23,11 +23,14 @@ pub struct Config {
     /// (DeepSeek's nominal 1.3) make long chapter outputs degenerate into
     /// gibberish near the end.
     pub temperature: f32,
-    /// Per-request timeout in seconds.
+    /// Per-request timeout in seconds. Long chapters can take several minutes
+    /// even when the output is well under the token cap.
     pub request_timeout_secs: u64,
 
     /// Max chunk size in characters (fallback splitting of long chapters).
     pub max_chunk_chars: usize,
+    /// Max tokens the model may generate per reply (DeepSeek V4: up to 384K).
+    pub max_output_tokens: u32,
     /// Number of retries on network errors / 429 / 5xx.
     pub max_retries: usize,
 }
@@ -41,8 +44,9 @@ impl Default for Config {
             source_lang: "Chinese".into(),
             target_lang: "Russian".into(),
             temperature: 0.3,
-            request_timeout_secs: 120,
-            max_chunk_chars: 6000,
+            request_timeout_secs: 600,
+            max_chunk_chars: 10000,
+            max_output_tokens: 384_000,
             max_retries: 5,
         }
     }

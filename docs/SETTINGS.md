@@ -30,8 +30,11 @@ Loaded by `Config::load()` via `dotenvy` (real env wins over `.env`).
 | `SOURCE_LANG` | (see settings DB / default Chinese) | Overrides source language |
 | `TARGET_LANG` | (see settings DB / default Russian) | Overrides target language |
 
-`Config` also holds `temperature`, `request_timeout_secs`, `max_chunk_chars`,
-`max_retries` (code defaults; not currently exposed in the UI).
+`Config` also holds `temperature`, `request_timeout_secs` (default 600),
+`max_chunk_chars` (10000), `max_output_tokens` (384000 — DeepSeek V4 max),
+`max_retries` (code defaults; not currently exposed in the UI). If a reply hits
+the output limit (`finish_reason=length`), the DeepSeek client continues the
+completion.
 
 ## Settings DB (`settings.db`)
 
