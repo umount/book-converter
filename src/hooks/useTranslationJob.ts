@@ -128,6 +128,12 @@ export function useTranslationJob({
       listen<{ project: string }>("done", (e) => {
         const id = e.payload.project;
         addLogToRef.current(id, tr("log.runFinished"));
+        // Clear running immediately so Edit / other actions unlock even if
+        // get_progress is slow or fails.
+        setProgressById((all) => {
+          const prev = all[id];
+          return prev ? { ...all, [id]: { ...prev, running: false } } : all;
+        });
         void refreshProgressForRef.current(id);
         setBusyForRef.current(id, null);
         if (isActive(id)) {
@@ -140,6 +146,11 @@ export function useTranslationJob({
       listen<{ project: string; message: string }>("job_error", (e) => {
         const { project, message } = e.payload;
         addLogToRef.current(project, tr("log.error", { msg: errTextRef.current(message) }));
+        setProgressById((all) => {
+          const prev = all[project];
+          return prev ? { ...all, [project]: { ...prev, running: false } } : all;
+        });
+        void refreshProgressForRef.current(project);
         // Clear busy for the event's project even if another project is active.
         setBusyForRef.current(project, null);
         if (isActive(project)) setErrorRef.current(errTextRef.current(message));
@@ -177,7 +188,9 @@ export function useTranslationJob({
 
   async function start() {
     const lim = limit === "" ? null : Number(limit);
-    await call("start_translation", { projectId: activeId, limit: lim });
+    const ok = await call("start_translation", { projectId: activeId, limit: lim });
+    // invoke Ok(()) → null; makeCall returns undefined only on failure
+    if (ok === undefined) return;
     addLog(t("log.started", { suffix: lim ? t("log.startedNext", { n: lim }) : "" }));
     // Optimistic: mark running immediately so the bar/Pause enable before first chapter event.
     if (progress) {
@@ -201,6 +214,17 @@ export function useTranslationJob({
   async function saveChapterPrompt(idx: number, prompt: string) {
     await call("set_chapter_prompt", { projectId: activeId, index: idx, prompt });
     addLog(t("log.chapterPromptSaved"));
+    await openChapter(idx);
+  }
+
+  async function saveChapterContext(idx: number, summary: string, prevTail: string) {
+    await call("set_chapter_context", {
+      projectId: activeId,
+      index: idx,
+      summary,
+      prevTail,
+    });
+    addLog(t("log.chapterContextSaved"));
     await openChapter(idx);
   }
 
@@ -257,7 +281,7 @@ export function useTranslationJob({
     refreshProgressFor, refreshProgress,
     bootstrap, start, pause, reTranslate,
     translateChapter, saveChapterTranslation,
-    saveChapterPrompt, retranslateWithPrompt,
+    saveChapterPrompt, saveChapterContext, retranslateWithPrompt,
     clearProjectJobState,
   };
 }

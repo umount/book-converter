@@ -84,6 +84,7 @@ pub fn run() {
             commands::list_chapters,
             commands::get_chapter,
             commands::set_chapter_prompt,
+            commands::set_chapter_context,
             commands::get_setting,
             commands::set_setting,
             commands::delete_project,

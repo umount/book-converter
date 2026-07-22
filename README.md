@@ -25,8 +25,10 @@ a single model request.
 - **Book-length runs.** Progress lives in SQLite under `projects/<id>/`; interrupt
   and resume anytime. Rolling summary is stored per chapter so a single-chapter
   retranslate or a mid-book resume keeps narrative continuity.
-- **Glossary first.** Terms are injected as a mandatory dictionary every chapter;
-  new terms are extracted after translation. Pinned entries win on conflict.
+- **Glossary first.** The full glossary can grow large, but each chapter’s prompt
+  only gets terms whose **source form appears in that chapter’s original text**
+  (not the whole dictionary). After translation, new terms are extracted and
+  merged; pinned entries win on conflict.
 - **Reference as canon, not copy-paste.** Mine names/style from a pro translation;
   optionally keep those chapters and machine-translate only what follows.
 - **Chapter-level control.** Custom prompt for one chapter, one-shot translate /

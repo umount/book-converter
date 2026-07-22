@@ -43,6 +43,10 @@ export type ChapterView = {
   translated_title: string | null; translated: string | null; status: string; origin: string | null;
   /** Per-chapter instruction injected into the translation prompt. */
   user_prompt: string | null;
+  /** Rolling story synopsis used when translating this chapter. */
+  rolling_summary: string | null;
+  /** Previous chapter ending used for continuity. */
+  prev_tail: string | null;
 };
 
 export type Project = { id: string; path: string; name: string; refPath?: string };

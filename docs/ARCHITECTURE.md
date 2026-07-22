@@ -133,8 +133,9 @@ export::{txt,fb2,epub,pdf}
 
 ## Glossary Subsystem
 
-**Phase 1 — before translation.** Inject matching terms into the prompt as a
-mandatory dictionary.
+**Phase 1 — before translation.** Scan the chapter’s **original** text and inject
+only glossary terms whose `source` appears there (`glossary::relevant_terms`) —
+not the entire glossary — as a mandatory dictionary.
 
 **Phase 2 — after translation.** Extract new terms; on conflict the fixed canon
 wins. `pinned=true` terms are never overwritten by auto-extraction.

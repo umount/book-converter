@@ -88,6 +88,7 @@ pub struct ChapterRow {
 #[derive(Serialize)]
 pub struct ChapterView {
     pub idx: usize,
+    /// Book chapter number from the title (`第N章`), when known.
     pub number: Option<usize>,
     pub source_title: String,
     pub source: String,
@@ -97,6 +98,10 @@ pub struct ChapterView {
     pub origin: Option<String>,
     /// Optional user instruction for this chapter only (injected into the prompt).
     pub user_prompt: Option<String>,
+    /// Rolling story synopsis fed into this chapter's translation prompt.
+    pub rolling_summary: Option<String>,
+    /// Closing lines of the previous chapter (continuity), for this chapter's prompt.
+    pub prev_tail: Option<String>,
 }
 
 /// Book cover + metadata for the UI.

@@ -87,8 +87,10 @@ quality and complicates reassembly.
 ## Consistency via an auto-growing glossary
 
 **Decision:** maintain a glossary of canonical translations (names, locations,
-organizations, terms). Inject relevant terms into each chapter's prompt; extract and
-merge new terms after each chapter; canon/pinned entries win on conflict.
+organizations, terms). Before each chapter, inject only terms that occur in that
+chapter’s **original** text; after translation, extract and merge new terms;
+canon/pinned entries win on conflict. The stored glossary may grow large; the
+per-chapter prompt does not receive the full list.
 
 **Why:** the core quality problem in long-form LLM translation is drift — the
 protagonist's name comes out three different ways across chapters. A shared,

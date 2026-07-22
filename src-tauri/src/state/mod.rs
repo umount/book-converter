@@ -356,7 +356,10 @@ impl Store {
 
         let Some((summary, prev_tail, translated)) = row else {
             let summary = self.get_meta("running_summary")?.unwrap_or_default();
-            return Ok((summary, None));
+            let prev_tail = self
+                .get_meta("boot_prev_tail")?
+                .filter(|s| !s.trim().is_empty());
+            return Ok((summary, prev_tail));
         };
 
         let summary = summary
@@ -378,6 +381,43 @@ impl Store {
             });
 
         Ok((summary, prev_tail))
+    }
+
+    /// Overwrite the continuity context that [`Self::context_before`] would return
+    /// for `index` (so the next translate of this chapter uses the edited text).
+    /// Writes onto the previous `done` chapter when one exists; always mirrors the
+    /// summary into book-level `running_summary`. When there is no previous chapter,
+    /// an optional `boot_prev_tail` meta key holds the tail.
+    pub fn set_context_before(
+        &self,
+        index: usize,
+        summary: &str,
+        prev_tail: &str,
+    ) -> Result<()> {
+        let summary = summary.trim();
+        let prev_tail = prev_tail.trim();
+
+        let prev_idx: Option<i64> = self
+            .conn
+            .query_row(
+                "SELECT idx FROM chapters
+                 WHERE idx < ?1 AND status = 'done'
+                 ORDER BY idx DESC
+                 LIMIT 1",
+                params![index as i64],
+                |r| r.get(0),
+            )
+            .optional()?;
+
+        if let Some(prev) = prev_idx {
+            self.save_chapter_context(prev as usize, summary, prev_tail)?;
+            // Clear a leftover boot tail so context_before prefers the chapter row.
+            let _ = self.set_meta("boot_prev_tail", "");
+        } else {
+            let _ = self.set_meta("boot_prev_tail", prev_tail);
+        }
+        self.set_meta("running_summary", summary)?;
+        Ok(())
     }
 
     /// Manually edit a chapter's translation (keeps/sets `origin = 'manual'`).
@@ -836,6 +876,24 @@ mod tests {
         let (sum0, tail0) = store.context_before(1).unwrap();
         assert!(sum0.is_empty());
         assert!(tail0.is_none());
+
+        store
+            .set_context_before(2, "Исправленный синопсис.", "новый хвост")
+            .unwrap();
+        let (sum2, tail2) = store.context_before(2).unwrap();
+        assert_eq!(sum2, "Исправленный синопсис.");
+        assert_eq!(tail2.as_deref(), Some("новый хвост"));
+        assert_eq!(
+            store.get_meta("running_summary").unwrap().as_deref(),
+            Some("Исправленный синопсис.")
+        );
+
+        store
+            .set_context_before(1, "Старт книги.", "пролог закончился так")
+            .unwrap();
+        let (sum1, tail1) = store.context_before(1).unwrap();
+        assert_eq!(sum1, "Старт книги.");
+        assert_eq!(tail1.as_deref(), Some("пролог закончился так"));
     }
 
     #[test]

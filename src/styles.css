@@ -191,10 +191,12 @@ button.ghost.danger:hover:not(:disabled) { color: #fff; background: color-mix(in
 }
 .chapter-prompt-head { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
 .chapter-prompt-title { font-weight: 600; }
+.chapter-prompt-label { font-size: 0.85em; color: var(--muted, #888); }
 .chapter-prompt-body {
   width: 100%; min-height: 72px; padding: 8px 10px; line-height: 1.45; resize: vertical;
   background: var(--bg); color: var(--fg); border: 1px solid var(--line); border-radius: 6px; font: inherit;
 }
+.chapter-prompt-body-lg { min-height: 120px; }
 .chapter-prompt-actions { display: flex; gap: 8px; justify-content: flex-end; flex-wrap: wrap; }
 
 /* --- Misc --- */

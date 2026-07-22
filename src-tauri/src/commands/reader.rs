@@ -49,6 +49,7 @@ pub async fn get_chapter(
             .chapter_full(index)
             .map_err(err)?
             .ok_or("chapter not found")?;
+    let (rolling_summary, prev_tail) = store.context_before(index).map_err(err)?;
     Ok(ChapterView {
         idx: index,
         number,
@@ -59,6 +60,12 @@ pub async fn get_chapter(
         status,
         origin,
         user_prompt,
+        rolling_summary: if rolling_summary.trim().is_empty() {
+            None
+        } else {
+            Some(rolling_summary)
+        },
+        prev_tail,
     })
 }
 
@@ -77,6 +84,26 @@ pub async fn set_chapter_prompt(
     let store = Store::open(&db).map_err(err)?;
     store
         .set_chapter_user_prompt(index, &prompt)
+        .map_err(err)?;
+    Ok(())
+}
+
+/// Edit the rolling continuity context used when translating this chapter
+/// (story synopsis + previous-chapter tail).
+#[tauri::command]
+pub async fn set_chapter_context(
+    project_id: String,
+    index: usize,
+    summary: String,
+    prev_tail: String,
+    state: State<'_, AppState>,
+) -> Result<(), String> {
+    let db = state
+        .with(&project_id, |s| s.db_path.clone())
+        .ok_or("no_source")?;
+    let store = Store::open(&db).map_err(err)?;
+    store
+        .set_context_before(index, &summary, &prev_tail)
         .map_err(err)?;
     Ok(())
 }
