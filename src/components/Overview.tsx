@@ -126,7 +126,10 @@ export function Overview({
         {progress && (
           <div className="muted resume-hint">
             {progress.pending > 0
-              ? t("translate.resumeHint", { from: progress.done + 1, remaining: progress.pending })
+              ? t("translate.resumeHint", {
+                  from: progress.next_number ?? "?",
+                  remaining: progress.pending,
+                })
               : t("translate.resumeHintAllDone")}
           </div>
         )}
@@ -148,8 +151,9 @@ export function Overview({
               <span className="muted">{t("translate.retranslate")}:</span>
               <button className="ghost danger" disabled={progress.running} onClick={() => onRetranslate(null)}>{t("translate.retranslateAll")}</button>
               <button className="ghost danger" disabled={progress.running} onClick={() => onRetranslate(reFrom)}>{t("translate.retranslateFrom")}</button>
-              <input type="number" min={1} max={progress.total} value={reFrom}
-                onChange={(e) => setReFrom(Math.max(1, Number(e.target.value) || 1))} style={{ width: 80 }} />
+              <input type="number" min={1} max={progress.max_number ?? progress.total} value={reFrom}
+                onChange={(e) => setReFrom(Math.max(1, Number(e.target.value) || 1))} style={{ width: 80 }}
+                title={t("translate.retranslateNumberTip")} />
             </div>
             <div className="muted resume-hint">{t("translate.retranslateHint")}</div>
           </div>

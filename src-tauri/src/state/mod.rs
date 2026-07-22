@@ -177,6 +177,67 @@ impl Store {
         Ok(rows.into_iter().map(|n| n as usize).collect())
     }
 
+    /// First pending/failed chapter: `(idx, number)` for resume hints.
+    pub fn next_pending(&self) -> Result<Option<(usize, Option<usize>)>> {
+        let row = self
+            .conn
+            .query_row(
+                "SELECT idx, number FROM chapters
+                 WHERE status IN ('pending', 'failed')
+                 ORDER BY idx
+                 LIMIT 1",
+                [],
+                |r| {
+                    Ok((
+                        r.get::<_, i64>(0)? as usize,
+                        r.get::<_, Option<i64>>(1)?.map(|n| n as usize),
+                    ))
+                },
+            )
+            .optional()?;
+        Ok(row)
+    }
+
+    /// Book chapter number stored for this reading-order index (`第N章` → N).
+    pub fn chapter_number(&self, index: usize) -> Result<Option<usize>> {
+        let row = self
+            .conn
+            .query_row(
+                "SELECT number FROM chapters WHERE idx = ?1",
+                params![index as i64],
+                |r| r.get::<_, Option<i64>>(0),
+            )
+            .optional()?;
+        Ok(row.flatten().map(|n| n as usize))
+    }
+
+    /// Reading-order index of the chapter with this book number, if any.
+    pub fn index_for_number(&self, number: usize) -> Result<Option<usize>> {
+        let row = self
+            .conn
+            .query_row(
+                "SELECT idx FROM chapters WHERE number = ?1 ORDER BY idx LIMIT 1",
+                params![number as i64],
+                |r| r.get::<_, i64>(0),
+            )
+            .optional()?;
+        Ok(row.map(|n| n as usize))
+    }
+
+    /// Highest book chapter number present (for UI inputs).
+    pub fn max_chapter_number(&self) -> Result<Option<usize>> {
+        let row: Option<i64> = self
+            .conn
+            .query_row(
+                "SELECT MAX(number) FROM chapters WHERE number IS NOT NULL",
+                [],
+                |r| r.get(0),
+            )
+            .optional()?
+            .flatten();
+        Ok(row.map(|n| n as usize))
+    }
+
     /// Read a chapter's source title and body (for building the request).
     pub fn chapter(&self, index: usize) -> Result<Option<(String, String)>> {
         let row = self
@@ -357,9 +418,9 @@ impl Store {
     }
 
     /// Reset chapters back to `pending` so a later run re-translates them (with the
-    /// current glossary). `from_index` limits it to chapters at/after that index;
-    /// `None` resets the whole book. Existing translated text is left in place until
-    /// a re-run overwrites it. Returns the number of chapters reset.
+    /// current glossary). `from_index` limits it to chapters at/after that reading-order
+    /// index; `None` resets the whole book. Existing translated text is left in place
+    /// until a re-run overwrites it. Returns the number of chapters reset.
     pub fn reset_from(&self, from_index: Option<usize>) -> Result<usize> {
         let n = match from_index {
             Some(idx) => self.conn.execute(
@@ -373,6 +434,20 @@ impl Store {
             )?,
         };
         Ok(n)
+    }
+
+    /// Like [`Self::reset_from`], but `from_number` is the book chapter number
+    /// (from the title, e.g. 523 for `第523章`), not the reading-order index.
+    pub fn reset_from_number(&self, from_number: Option<usize>) -> Result<usize> {
+        match from_number {
+            None => self.reset_from(None),
+            Some(n) => {
+                let idx = self
+                    .index_for_number(n)?
+                    .ok_or_else(|| anyhow::anyhow!("no chapter with number {n}"))?;
+                self.reset_from(Some(idx))
+            }
+        }
     }
 
     /// Update a chapter's status.

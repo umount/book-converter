@@ -219,7 +219,7 @@ App data layout (see also `PROJECT_ISOLATION.md`):
 |---------|---------|
 | `start_translation` / `pause_translation` | Start/resume or pause after current chapter |
 | `get_progress` | Snapshot (also pushed via `progress` events) |
-| `reset_translation` | Reset done → pending from an index |
+| `reset_translation` | Reset done → pending from a book chapter number |
 
 ### Glossary
 | Command | Purpose |

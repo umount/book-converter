@@ -100,20 +100,22 @@ export function useTranslationJob({
           }
         } else if (p.phase === "chapter_start") {
           const title = (p.current_title || "").slice(0, 60);
+          const n = p.current_number ?? p.current_idx ?? "?";
           addLogToRef.current(
             p.project,
             tr("log.chapterProgress", {
               done: (p.job_done ?? 0) + 1,
               total: p.job_total || "?",
-              idx: p.current_idx ?? "?",
+              n,
               title,
             }),
           );
         } else if (p.phase === "chapter_done") {
           const secs = p.last_ms != null ? Math.max(1, Math.round(p.last_ms / 1000)) : null;
+          const n = p.current_number ?? p.current_idx ?? "?";
           const parts = [
             tr("log.chapterDone", {
-              idx: p.current_idx ?? "?",
+              n,
               took: secs != null ? tr("log.tookSecs", { n: secs }) : "",
             }),
           ];
@@ -224,8 +226,8 @@ export function useTranslationJob({
     await refreshProgress();
   }
 
-  // Reset chapters to pending for a fresh run with the current glossary. `pos` is a
-  // 1-based reading-order position; null means the whole book.
+  // Reset chapters to pending for a fresh run with the current glossary. `pos` is
+  // the book chapter number from the title (e.g. 523); null means the whole book.
   async function reTranslate(pos: number | null) {
     if (progress?.running) return;
     const total = progress?.total ?? book?.total_chapters ?? 0;
@@ -233,8 +235,8 @@ export function useTranslationJob({
       ? t("translate.retranslateAllConfirm", { n: total })
       : t("translate.retranslateFromConfirm", { from: pos });
     if (!confirm(msg)) return;
-    const fromIndex = pos == null ? null : Math.max(1, pos) - 1;
-    const n = await call<number>("reset_translation", { projectId: activeId, fromIndex });
+    const fromNumber = pos == null ? null : Math.max(1, pos);
+    const n = await call<number>("reset_translation", { projectId: activeId, fromNumber });
     if (n !== undefined) { addLog(t("log.reset", { n })); await refreshProgress(); }
   }
 

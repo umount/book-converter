@@ -99,7 +99,8 @@ export function Reader({
         <select value={chapterIdx ?? ""} onChange={(e) => setChapterIdx(Number(e.target.value))}>
           {chapters.map((c) => (
             <option key={c.idx} value={c.idx}>
-              {c.origin === "reference" ? "◆ " : c.origin === "manual" ? "✎ " : c.status === "done" ? "✓ " : "· "}{c.title.slice(0, 60)}
+              {c.origin === "reference" ? "◆ " : c.origin === "manual" ? "✎ " : c.status === "done" ? "✓ " : "· "}
+              {c.number != null ? `#${c.number} ` : ""}{c.title.slice(0, 60)}
             </option>
           ))}
         </select>

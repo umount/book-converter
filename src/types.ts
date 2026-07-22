@@ -16,7 +16,12 @@ export type Progress = {
   job_done?: number;
   job_total?: number;
   current_idx?: number | null;
+  /** Book chapter number from the title (`第N章`), when known. */
+  current_number?: number | null;
   current_title?: string | null;
+  /** First still-pending chapter's book number. */
+  next_number?: number | null;
+  max_number?: number | null;
   phase?: string;
   last_ms?: number | null;
   eta_secs?: number | null;

@@ -31,7 +31,11 @@ pub struct ProgressEvent {
     pub job_done: usize,
     pub job_total: usize,
     pub current_idx: Option<usize>,
+    /// Book chapter number from the title (`第N章`), when known.
+    pub current_number: Option<usize>,
     pub current_title: Option<String>,
+    /// First still-pending chapter's book number (for resume hints).
+    pub next_number: Option<usize>,
     /// `start` | `chapter_start` | `chapter_done`
     pub phase: &'static str,
     pub last_ms: Option<u64>,
@@ -110,7 +114,9 @@ impl<'a> Orchestrator<'a> {
             job_done,
             job_total,
             current_idx: None,
+            current_number: None,
             current_title: None,
+            next_number: self.next_pending_number()?,
             phase: "start",
             last_ms: None,
             eta_secs: self.eta_secs(job_total, None),
@@ -130,13 +136,16 @@ impl<'a> Orchestrator<'a> {
                 .store
                 .chapter(idx)?
                 .ok_or_else(|| anyhow!("no source for chapter {idx}"))?;
+            let number = self.store.chapter_number(idx)?;
 
             progress(ProgressEvent {
                 stats: self.store.stats()?,
                 job_done,
                 job_total,
                 current_idx: Some(idx),
+                current_number: number,
                 current_title: Some(title.clone()),
+                next_number: number.or(self.next_pending_number()?),
                 phase: "chapter_start",
                 last_ms: None,
                 eta_secs: self.eta_secs(
@@ -172,7 +181,9 @@ impl<'a> Orchestrator<'a> {
                 job_done,
                 job_total,
                 current_idx: Some(idx),
+                current_number: number,
                 current_title: Some(title),
+                next_number: self.next_pending_number()?,
                 phase: "chapter_done",
                 last_ms: Some(last_ms),
                 eta_secs: self.eta_secs(
@@ -205,12 +216,15 @@ impl<'a> Orchestrator<'a> {
             .chapter(index)?
             .ok_or_else(|| anyhow!("no source for chapter {index}"))?;
 
+        let number = self.store.chapter_number(index)?;
         progress(ProgressEvent {
             stats: self.store.stats()?,
             job_done: 0,
             job_total: 1,
             current_idx: Some(index),
+            current_number: number,
             current_title: Some(title.clone()),
+            next_number: number,
             phase: "chapter_start",
             last_ms: None,
             eta_secs: self.eta_secs(1, None),
@@ -225,12 +239,18 @@ impl<'a> Orchestrator<'a> {
             job_done: 1,
             job_total: 1,
             current_idx: Some(index),
+            current_number: number,
             current_title: Some(title),
+            next_number: self.next_pending_number()?,
             phase: "chapter_done",
             last_ms: Some(last_ms),
             eta_secs: Some(0),
         });
         Ok(())
+    }
+
+    fn next_pending_number(&self) -> Result<Option<usize>> {
+        Ok(self.store.next_pending()?.map(|(idx, number)| number.unwrap_or(idx)))
     }
 
     async fn translate_chapter(&mut self, idx: usize) -> Result<()> {

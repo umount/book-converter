@@ -39,11 +39,20 @@ pub struct Progress {
     /// Chapters planned for the current job (e.g. min(limit, pending)).
     #[serde(default)]
     pub job_total: usize,
-    /// Chapter currently being translated (1-based display via idx).
+    /// Reading-order index of the chapter currently being translated.
     #[serde(default)]
     pub current_idx: Option<usize>,
+    /// Book chapter number from the title (`第N章`), when known.
+    #[serde(default)]
+    pub current_number: Option<usize>,
     #[serde(default)]
     pub current_title: Option<String>,
+    /// First still-pending chapter's book number (for the resume hint).
+    #[serde(default)]
+    pub next_number: Option<usize>,
+    /// Highest book chapter number in the source (for UI inputs).
+    #[serde(default)]
+    pub max_number: Option<usize>,
     /// `start` | `chapter_start` | `chapter_done` | `status`
     #[serde(default)]
     pub phase: String,

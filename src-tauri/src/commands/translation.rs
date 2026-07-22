@@ -79,6 +79,11 @@ pub async fn get_progress(
     let db = db.ok_or("no_source")?;
     let store = Store::open(&db).map_err(err)?;
     let st = store.stats().map_err(err)?;
+    let next_number = store
+        .next_pending()
+        .map_err(err)?
+        .map(|(idx, n)| n.unwrap_or(idx));
+    let max_number = store.max_chapter_number().map_err(err)?;
     Ok(Progress {
         project: project_id,
         done: st.done,
@@ -89,7 +94,10 @@ pub async fn get_progress(
         job_done: 0,
         job_total: 0,
         current_idx: None,
+        current_number: None,
         current_title: None,
+        next_number,
+        max_number,
         phase: "status".into(),
         last_ms: None,
         eta_secs: None,
@@ -97,13 +105,14 @@ pub async fn get_progress(
 }
 
 /// Reset translated chapters back to `pending` for a fresh run with the current
-/// glossary. `from_index` (0-based) limits it to that chapter onward; `None` resets
-/// the whole book and also clears the rolling context summary. Returns how many
-/// chapters were reset. The caller then calls `start_translation` to re-run them.
+/// glossary. `from_number` is the book chapter number from the title (e.g. 523 for
+/// `第523章`); `None` resets the whole book and also clears the rolling context
+/// summary. Returns how many chapters were reset. The caller then calls
+/// `start_translation` to re-run them.
 #[tauri::command]
 pub async fn reset_translation(
     project_id: String,
-    from_index: Option<usize>,
+    from_number: Option<usize>,
     state: State<'_, AppState>,
 ) -> Result<usize, String> {
     let (db, running) = state.with(&project_id, |s| (s.db_path.clone(), s.running));
@@ -112,9 +121,9 @@ pub async fn reset_translation(
     }
     let db = db.ok_or("no_source")?;
     let store = Store::open(&db).map_err(err)?;
-    let n = store.reset_from(from_index).map_err(err)?;
+    let n = store.reset_from_number(from_number).map_err(err)?;
     // A full reset rebuilds context from scratch, so drop the rolling summary.
-    if from_index.is_none() || from_index == Some(0) {
+    if from_number.is_none() {
         let _ = store.set_meta("running_summary", "");
     }
     Ok(n)
