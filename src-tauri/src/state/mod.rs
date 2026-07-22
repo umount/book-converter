@@ -76,6 +76,7 @@ CREATE TABLE IF NOT EXISTS chapters (
     origin           TEXT,
     rolling_summary  TEXT,
     prev_tail        TEXT,
+    user_prompt      TEXT,
     updated_at       TEXT NOT NULL DEFAULT (datetime('now'))
 );
 CREATE TABLE IF NOT EXISTS glossary (
@@ -109,6 +110,7 @@ impl Store {
         self.ensure_column("chapters", "origin", "TEXT")?;
         self.ensure_column("chapters", "rolling_summary", "TEXT")?;
         self.ensure_column("chapters", "prev_tail", "TEXT")?;
+        self.ensure_column("chapters", "user_prompt", "TEXT")?;
         Ok(())
     }
 
@@ -385,7 +387,7 @@ impl Store {
     }
 
     /// Full chapter view:
-    /// `(number, source_title, source, status, translated_title, translated, origin)`.
+    /// `(number, source_title, source, status, translated_title, translated, origin, user_prompt)`.
     #[allow(clippy::type_complexity)]
     pub fn chapter_full(
         &self,
@@ -399,12 +401,13 @@ impl Store {
             Option<String>,
             Option<String>,
             Option<String>,
+            Option<String>,
         )>,
     > {
         let row = self
             .conn
             .query_row(
-                "SELECT number, title, source, status, translated_title, translated, origin
+                "SELECT number, title, source, status, translated_title, translated, origin, user_prompt
                  FROM chapters WHERE idx = ?1",
                 params![index as i64],
                 |r| {
@@ -416,11 +419,43 @@ impl Store {
                         r.get::<_, Option<String>>(4)?,
                         r.get::<_, Option<String>>(5)?,
                         r.get::<_, Option<String>>(6)?,
+                        r.get::<_, Option<String>>(7)?,
                     ))
                 },
             )
             .optional()?;
         Ok(row)
+    }
+
+    /// Read the optional user instruction for one chapter (empty → None).
+    pub fn chapter_user_prompt(&self, index: usize) -> Result<Option<String>> {
+        let v: Option<String> = self
+            .conn
+            .query_row(
+                "SELECT user_prompt FROM chapters WHERE idx = ?1",
+                params![index as i64],
+                |r| r.get(0),
+            )
+            .optional()?
+            .flatten();
+        Ok(v.filter(|s| !s.trim().is_empty()))
+    }
+
+    /// Set or clear the per-chapter user instruction (empty string clears it).
+    pub fn set_chapter_user_prompt(&self, index: usize, prompt: &str) -> Result<()> {
+        let value: Option<&str> = {
+            let t = prompt.trim();
+            if t.is_empty() {
+                None
+            } else {
+                Some(t)
+            }
+        };
+        self.conn.execute(
+            "UPDATE chapters SET user_prompt = ?2, updated_at = datetime('now') WHERE idx = ?1",
+            params![index as i64, value],
+        )?;
+        Ok(())
     }
 
     /// All translated chapters in reading order (for export).
@@ -694,5 +729,26 @@ mod tests {
         assert_eq!(full.3, "done");
         assert_eq!(full.5.as_deref(), Some("ручной текст"));
         assert_eq!(full.6.as_deref(), Some("manual"));
+    }
+
+    #[test]
+    fn chapter_user_prompt_roundtrip() {
+        let store = Store::open(":memory:").unwrap();
+        store.init_chapters(&sample()).unwrap();
+        assert_eq!(store.chapter_user_prompt(1).unwrap(), None);
+        store
+            .set_chapter_user_prompt(1, "  Translate 她 as господин, not госпожа.  ")
+            .unwrap();
+        assert_eq!(
+            store.chapter_user_prompt(1).unwrap().as_deref(),
+            Some("Translate 她 as господин, not госпожа.")
+        );
+        let full = store.chapter_full(1).unwrap().unwrap();
+        assert_eq!(
+            full.7.as_deref(),
+            Some("Translate 她 as господин, not госпожа.")
+        );
+        store.set_chapter_user_prompt(1, "   ").unwrap();
+        assert_eq!(store.chapter_user_prompt(1).unwrap(), None);
     }
 }

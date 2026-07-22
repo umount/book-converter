@@ -144,6 +144,21 @@ export function useTranslationJob({
     await call("translate_chapter", { projectId: activeId, index: idx });
   }
 
+  async function saveChapterPrompt(idx: number, prompt: string) {
+    await call("set_chapter_prompt", { projectId: activeId, index: idx, prompt });
+    addLog(t("log.chapterPromptSaved"));
+    await openChapter(idx);
+  }
+
+  /** Persist the chapter instruction, then (re)translate that chapter with it. */
+  async function retranslateWithPrompt(idx: number, prompt: string) {
+    if (progress?.running) return;
+    await call("set_chapter_prompt", { projectId: activeId, index: idx, prompt });
+    setBusyFor(activeId, t("busy.translatingChapter"));
+    addLog(t("log.chapterRetranslate", { n: idx }));
+    await call("translate_chapter", { projectId: activeId, index: idx });
+  }
+
   async function saveChapterTranslation(idx: number, title: string, body: string) {
     await call("update_chapter_translation", {
       projectId: activeId,
@@ -188,6 +203,7 @@ export function useTranslationJob({
     refreshProgressFor, refreshProgress,
     bootstrap, start, pause, reTranslate,
     translateChapter, saveChapterTranslation,
+    saveChapterPrompt, retranslateWithPrompt,
     clearProjectJobState,
   };
 }

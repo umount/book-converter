@@ -22,6 +22,8 @@ pub struct PromptContext<'a> {
     pub prev_tail: Option<&'a str>,
     /// A professional excerpt to match in tone/register.
     pub style: Option<&'a str>,
+    /// Optional user instruction for this chapter only (not the glossary).
+    pub user_note: Option<&'a str>,
 }
 
 /// System prompt: role and general translation rules.
@@ -74,6 +76,17 @@ pub fn user_prompt(ctx: &PromptContext, text: &str) -> String {
         if !tail.trim().is_empty() {
             out.push_str("The previous chapter ended with (for continuity, do not translate):\n");
             out.push_str(tail.trim());
+            out.push_str("\n\n");
+        }
+    }
+
+    if let Some(note) = ctx.user_note {
+        if !note.trim().is_empty() {
+            out.push_str(
+                "Additional instructions from the user for THIS chapter only \
+                 (follow them; they override conflicting defaults for this chapter):\n",
+            );
+            out.push_str(note.trim());
             out.push_str("\n\n");
         }
     }
@@ -153,6 +166,17 @@ mod tests {
         assert!(p.contains("Wang Lin survived."));
         assert!(p.contains("previous chapter ended with"));
         assert!(p.contains("style guide"));
+    }
+
+    #[test]
+    fn includes_user_note() {
+        let ctx = PromptContext {
+            user_note: Some("Render 她 as господин, not госпожа."),
+            ..Default::default()
+        };
+        let p = user_prompt(&ctx, "text");
+        assert!(p.contains("Additional instructions from the user"));
+        assert!(p.contains("господин, not госпожа"));
     }
 
     #[test]

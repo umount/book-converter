@@ -22,6 +22,8 @@ export type ChapterRow = { idx: number; number: number | null; title: string; st
 export type ChapterView = {
   idx: number; number: number | null; source_title: string; source: string;
   translated_title: string | null; translated: string | null; status: string; origin: string | null;
+  /** Per-chapter instruction injected into the translation prompt. */
+  user_prompt: string | null;
 };
 
 export type Project = { id: string; path: string; name: string; refPath?: string };

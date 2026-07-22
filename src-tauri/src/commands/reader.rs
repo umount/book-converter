@@ -44,10 +44,11 @@ pub async fn get_chapter(
         .with(&project_id, |s| s.db_path.clone())
         .ok_or("no_source")?;
     let store = Store::open(&db).map_err(err)?;
-    let (number, source_title, source, status, translated_title, translated, origin) = store
-        .chapter_full(index)
-        .map_err(err)?
-        .ok_or("chapter not found")?;
+    let (number, source_title, source, status, translated_title, translated, origin, user_prompt) =
+        store
+            .chapter_full(index)
+            .map_err(err)?
+            .ok_or("chapter not found")?;
     Ok(ChapterView {
         idx: index,
         number,
@@ -57,7 +58,27 @@ pub async fn get_chapter(
         translated,
         status,
         origin,
+        user_prompt,
     })
+}
+
+/// Set or clear the per-chapter user instruction (empty string clears it).
+/// Used before re-translating a chapter with custom guidance.
+#[tauri::command]
+pub async fn set_chapter_prompt(
+    project_id: String,
+    index: usize,
+    prompt: String,
+    state: State<'_, AppState>,
+) -> Result<(), String> {
+    let db = state
+        .with(&project_id, |s| s.db_path.clone())
+        .ok_or("no_source")?;
+    let store = Store::open(&db).map_err(err)?;
+    store
+        .set_chapter_user_prompt(index, &prompt)
+        .map_err(err)?;
+    Ok(())
 }
 
 /// Current book details for display (cover, summary, translated title).

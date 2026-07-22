@@ -66,6 +66,8 @@ pub struct ChapterView {
     pub translated: Option<String>,
     pub status: String,
     pub origin: Option<String>,
+    /// Optional user instruction for this chapter only (injected into the prompt).
+    pub user_prompt: Option<String>,
 }
 
 /// Book cover + metadata for the UI.

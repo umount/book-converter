@@ -1,36 +1,38 @@
 # book-converter
 
-A desktop tool for translating **large books** with an LLM while keeping names,
-lore, and style consistent across the whole work — built for novels that are far
-too long to translate in a single request.
+Desktop app for translating **long books** with an LLM while keeping names, lore,
+and style consistent across the whole work — built for novels that do not fit in
+a single model request.
 
-Powered by the **DeepSeek API**. Rust core, Tauri v2 + React desktop app.
+**Stack:** Rust core (`book_converter_lib`) · Tauri v2 · React/TypeScript UI ·
+**DeepSeek** API (`deepseek-chat`).
+
+## What it does
+
+| Area | Capabilities |
+|---|---|
+| **Input** | TXT, FB2, PDF, ZIP · encoding auto-detected (UTF-8 / GBK / GB18030 / Big5) · chapter patterns + model-inferred delimiter / PDF TOC fallback |
+| **Translation** | Sequential by chapter · rolling story summary + previous-chapter tail · per-chapter context persisted in SQLite · pause / resume · optional limit (“next N”) · long chapters split on paragraph boundaries |
+| **Consistency** | Auto-growing glossary (person / location / organization / term) · pin & edit in UI · propagate renames into existing text (retarget) |
+| **Reference** | Load a professional translation · bootstrap pinned glossary + style exemplar · seed covered chapters and continue from where it ends |
+| **Per chapter** | Translate one chapter from the reader · **custom chapter prompt** (e.g. “господин, not госпожа”) without touching the glossary · retranslate with that prompt · manual edit of title/body |
+| **Projects** | Each book is an isolated project (own DB, glossary, progress, console) · parallel runs · portable `.bcproj` (manifest + DB) |
+| **Output** | FB2, EPUB, PDF, TXT · optional zip for text formats · cover, title, author, annotation |
+| **UI** | IDE-like: sidebar, overview, dual-pane reader (original ↔ translation + glossary highlight), glossary table, console, settings (UI + language pair) |
 
 ## Highlights
 
-- **Handles book-length input.** A book is split into chapters and translated
-  sequentially; progress is stored in SQLite, so a run can be paused, interrupted,
-  and resumed at any time. Abnormally long chapters are split on paragraph
-  boundaries automatically.
-- **Consistency where it matters.** An auto-growing **glossary** fixes the
-  canonical translation of names, places, sects, and terminology and enforces it
-  in every chapter.
-- **Narrative continuity.** Chapters are translated in order with a **rolling
-  summary** of the story so far, so meaning is not lost between chapters.
-- **Learn from a professional translation.** Point it at an existing reference
-  translation and it bootstraps a **pinned glossary** (names/lore) and a **style
-  exemplar**, and can **continue** the translation from where the reference ends.
-- **Universal, not hardcoded.** Configurable language pair; chapter detection uses
-  generic patterns and falls back to a model-inferred delimiter for unknown layouts.
-- **Formats.** Input: TXT, FB2, PDF, ZIP (encoding auto-detected — UTF-8 / GBK /
-  GB18030 / Big5). Output: FB2, EPUB, PDF, TXT — pick the format directly, output
-  optionally zipped. Book title, cover, and annotation are carried over (and can
-  be replaced).
-- **Isolated projects.** Each open book is its own project (own DB, glossary,
-  progress, console). Several books can translate in parallel. Save/open as a
-  portable `.bcproj` archive.
-- **IDE-style app.** Projects sidebar, chapter reader with side-by-side
-  **original ↔ translation** panes and glossary highlighting, editable glossary.
+- **Book-length runs.** Progress lives in SQLite under `projects/<id>/`; interrupt
+  and resume anytime. Rolling summary is stored per chapter so a single-chapter
+  retranslate or a mid-book resume keeps narrative continuity.
+- **Glossary first.** Terms are injected as a mandatory dictionary every chapter;
+  new terms are extracted after translation. Pinned entries win on conflict.
+- **Reference as canon, not copy-paste.** Mine names/style from a pro translation;
+  optionally keep those chapters and machine-translate only what follows.
+- **Chapter-level control.** Custom prompt for one chapter, one-shot translate /
+  retranslate, or hand-edit the result — without polluting the global glossary.
+- **Universal.** Language pair is a setting; formats and chapter detection are
+  generic, not hardcoded to one title.
 
 ## Requirements
 
@@ -44,55 +46,73 @@ Powered by the **DeepSeek API**. Rust core, Tauri v2 + React desktop app.
     libssl-dev libayatana-appindicator3-dev librsvg2-dev
   ```
 
-- A **DeepSeek API key**.
-- For PDF input/output, pdfium is fetched automatically by `make dev` /
-  `make binary` (or run `make fetch-pdfium` once).
+- A **DeepSeek API key**
+- PDF engine: pdfium is fetched by `make dev` / `make binary` (or `make fetch-pdfium`)
 
 ## Setup
 
 ```bash
 make install            # frontend + CLI deps
-cp .env.example .env     # then set DEEPSEEK_API_KEY=sk-...
+cp .env.example .env     # set DEEPSEEK_API_KEY=sk-...
 ```
 
-The key is read from `.env` (auto-loaded) or the `DEEPSEEK_API_KEY` environment
-variable.
+The key is read from `.env` (auto-loaded) or `DEEPSEEK_API_KEY`.
 
 ## Run
 
 ```bash
-make dev        # hot-reload dev window
-make binary     # standalone release binary → src-tauri/target/release/book-converter
-make bundle     # installers (.deb / .rpm / .AppImage)
-make run        # build the release binary and launch it
+make dev        # hot-reload window
+make binary     # release binary → src-tauri/target/release/book-converter
+make bundle     # .deb / .rpm / .AppImage
+make run        # build release binary and launch
 make check      # cargo check + tsc
 make test       # Rust unit tests
 ```
 
 ## Using the app
 
-1. **Open book** — pick a `.txt` / `.fb2` / `.pdf` / `.zip`. It becomes a project
-   in the sidebar.
-2. *(Optional)* **Open reference** — a professional translation of the same book;
-   then **Bootstrap** the glossary from it. Loading a reference also seeds covered
-   chapters so you can **continue** from where the professional text ends.
-3. Set how many chapters to translate (or leave blank for all) and press **Start**.
-   Watch progress; **Pause** stops after the current chapter. You can work on
-   another project while one is translating.
-4. **Translation** view: read any chapter with original and translation side by
-   side, with glossary terms highlighted.
-5. **File → Export as** FB2 / EPUB / PDF / TXT. Cover, title, and summary are
-   included.
-6. **File → Save project** / **Open project** — portable `.bcproj` (manifest +
-   progress DB; no copy of the original book needed).
+### Projects
+
+1. **File → Open book** — `.txt` / `.fb2` / `.pdf` / `.zip` → new project in the
+   sidebar (same file opened twice = two projects).
+2. **File → Save project** / **Open project** — `.bcproj` archive (manifest +
+   progress DB; original book file not required after import).
+3. Several projects can translate at once; each has its own progress and console.
+
+### Overview
+
+1. *(Optional)* **Open reference** → **Bootstrap** glossary from a sample of
+   aligned chapters. Covered chapters can be seeded so you only translate the rest.
+2. Set “next N chapters” or leave blank for all → **Start** / **Pause**.
+3. **Retranslate** from chapter N (or whole book) with the current glossary, then
+   Start again.
+4. Cover, translated title/author, and annotation can be edited or generated.
+
+### Translation (reader)
+
+1. Side-by-side **original** and **translation**, with glossary highlighting.
+2. Untranslated chapter → **Translate this chapter**.
+3. **Prompt** chip → per-chapter instruction (not the glossary), e.g. how to render
+   a character’s gender/title. **Save prompt** or **Retranslate with prompt**.
+4. Done chapter → **Edit** title/body manually (marked as edited).
+
+### Glossary
+
+1. Browse / filter / add / pin terms; change a rendering to queue a rename.
+2. **Update translation** rewrites affected paragraphs via the model (inflection-aware).
+
+### Export
+
+**File → Export as** FB2 / EPUB / PDF / TXT (zipped when useful). Uses stored
+cover, titles, and summary.
 
 ## Documentation
 
 | Document | Description |
 |---|---|
-| [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) | Components, pipeline, glossary, IPC |
-| [`docs/DECISIONS.md`](docs/DECISIONS.md) | Design decisions and rationale |
-| [`docs/PROJECT_ISOLATION.md`](docs/PROJECT_ISOLATION.md) | Per-project data, parallel runs, `.bcproj` |
+| [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) | Pipeline, modules, IPC |
+| [`docs/DECISIONS.md`](docs/DECISIONS.md) | Design decisions |
+| [`docs/PROJECT_ISOLATION.md`](docs/PROJECT_ISOLATION.md) | Per-project layout, parallel runs, `.bcproj` |
 | [`docs/SETTINGS.md`](docs/SETTINGS.md) | Env / settings DB / localStorage / project meta |
 | [`docs/README.md`](docs/README.md) | Docs index |
 
@@ -105,12 +125,11 @@ Environment / `.env`:
 | `DEEPSEEK_API_KEY` | — | API key (required) |
 | `DEEPSEEK_MODEL` | `deepseek-chat` | Model |
 | `DEEPSEEK_BASE_URL` | `https://api.deepseek.com` | API base URL |
-| `SOURCE_LANG` | (UI setting / Chinese) | Override source language |
-| `TARGET_LANG` | (UI setting / Russian) | Override target language |
+| `SOURCE_LANG` | (UI / Chinese) | Override source language |
+| `TARGET_LANG` | (UI / Russian) | Override target language |
 
-UI language and the translation language pair are also set in **Settings** and
-persisted in the app settings DB. See [`docs/SETTINGS.md`](docs/SETTINGS.md) for the
-full matrix.
+UI language and the translation language pair are also set under **Settings** and
+stored in the app settings DB. Full matrix: [`docs/SETTINGS.md`](docs/SETTINGS.md).
 
 ## License
 

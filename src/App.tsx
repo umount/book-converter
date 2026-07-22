@@ -254,6 +254,8 @@ export default function App() {
                       translating={!!progress?.running}
                       onTranslateChapter={job.translateChapter}
                       onSaveTranslation={job.saveChapterTranslation}
+                      onSaveChapterPrompt={job.saveChapterPrompt}
+                      onRetranslateWithPrompt={job.retranslateWithPrompt}
                     />
                   )}
                 </>

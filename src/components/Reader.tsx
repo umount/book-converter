@@ -19,23 +19,34 @@ type Props = {
   translating: boolean;
   onTranslateChapter: (idx: number) => void;
   onSaveTranslation: (idx: number, title: string, body: string) => Promise<void>;
+  /** Persist the chapter prompt, then optionally start a (re)translation. */
+  onSaveChapterPrompt: (idx: number, prompt: string) => Promise<void>;
+  onRetranslateWithPrompt: (idx: number, prompt: string) => Promise<void>;
 };
 
 export function Reader({
   t, chapters, chapterIdx, setChapterIdx, chapter, chapterLoading,
   panes, setPanes, hl, setHl, sourceTerms, targetTerms,
   translating, onTranslateChapter, onSaveTranslation,
+  onSaveChapterPrompt, onRetranslateWithPrompt,
 }: Props) {
   const [editing, setEditing] = useState(false);
   const [editTitle, setEditTitle] = useState("");
   const [editBody, setEditBody] = useState("");
   const [saving, setSaving] = useState(false);
+  const [promptOpen, setPromptOpen] = useState(false);
+  const [promptDraft, setPromptDraft] = useState("");
+  const [promptBusy, setPromptBusy] = useState(false);
 
-  // Leave edit mode when switching chapters.
+  // Leave edit mode / sync prompt draft when switching chapters.
   useEffect(() => {
     setEditing(false);
     setSaving(false);
-  }, [chapterIdx]);
+    setPromptDraft(chapter?.user_prompt ?? "");
+    // Keep the panel open if the new chapter already has a note; otherwise leave as-is.
+    if (chapter?.user_prompt) setPromptOpen(true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [chapterIdx, chapter?.user_prompt]);
 
   function startEdit() {
     if (!chapter) return;
@@ -55,8 +66,29 @@ export function Reader({
     }
   }
 
+  async function savePromptOnly() {
+    if (chapterIdx == null) return;
+    setPromptBusy(true);
+    try {
+      await onSaveChapterPrompt(chapterIdx, promptDraft);
+    } finally {
+      setPromptBusy(false);
+    }
+  }
+
+  async function applyAndRetranslate() {
+    if (chapterIdx == null || translating) return;
+    setPromptBusy(true);
+    try {
+      await onRetranslateWithPrompt(chapterIdx, promptDraft);
+    } finally {
+      setPromptBusy(false);
+    }
+  }
+
   const hasTranslation = !!(chapter?.translated && chapter.status === "done");
-  const canTranslate = !!chapter && chapter.status !== "done" && chapterIdx != null && !translating;
+  const canTranslate = !!chapter && chapterIdx != null && !translating;
+  const hasPrompt = !!(promptDraft.trim() || chapter?.user_prompt);
 
   return (
     <div className="reader">
@@ -75,10 +107,50 @@ export function Reader({
           const i = chapters.findIndex((c) => c.idx === chapterIdx); if (i >= 0 && i < chapters.length - 1) setChapterIdx(chapters[i + 1].idx);
         }}>›</button>
         <div className="menu-spacer" />
+        <button
+          className={`chip ${promptOpen || hasPrompt ? "on" : ""}`}
+          title={t("reader.promptTip")}
+          disabled={!chapter}
+          onClick={() => setPromptOpen((o) => !o)}
+        >
+          {t("reader.prompt")}{hasPrompt ? " ·" : ""}
+        </button>
         <label className="check"><input type="checkbox" checked={hl} onChange={(e) => setHl(e.target.checked)} /> {t("reader.highlight")}</label>
         <button className={`chip ${panes.orig ? "on" : ""}`} onClick={() => setPanes((p) => ({ ...p, orig: !p.orig }))}>{t("reader.original")}</button>
         <button className={`chip ${panes.transl ? "on" : ""}`} onClick={() => setPanes((p) => ({ ...p, transl: !p.transl }))}>{t("reader.translation")}</button>
       </div>
+
+      {promptOpen && chapter && (
+        <div className="chapter-prompt">
+          <div className="chapter-prompt-head">
+            <span className="chapter-prompt-title">{t("reader.promptTitle")}</span>
+            <span className="muted">{t("reader.promptHint")}</span>
+          </div>
+          <textarea
+            className="chapter-prompt-body"
+            value={promptDraft}
+            onChange={(e) => setPromptDraft(e.target.value)}
+            placeholder={t("reader.promptPlaceholder")}
+            disabled={translating || promptBusy}
+          />
+          <div className="chapter-prompt-actions">
+            <button className="ghost" disabled={promptBusy || translating} onClick={() => void savePromptOnly()}>
+              {t("reader.savePrompt")}
+            </button>
+            <button
+              disabled={!canTranslate || promptBusy}
+              onClick={() => void applyAndRetranslate()}
+              title={t("reader.retranslateWithPromptTip")}
+            >
+              {translating
+                ? t("reader.translating")
+                : hasTranslation
+                  ? t("reader.retranslateWithPrompt")
+                  : t("reader.translateWithPrompt")}
+            </button>
+          </div>
+        </div>
+      )}
 
       <div className="panes">
         {panes.orig && (

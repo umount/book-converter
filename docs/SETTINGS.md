@@ -71,7 +71,8 @@ Written by load/open/commands; restored on `open_project`.
 Plus tables `chapters` and `glossary` (not KV meta). Each translated chapter also
 stores its own `rolling_summary` and `prev_tail` — the continuity context after
 that chapter — so a later single-chapter translate or a resumed run can restore
-context without relying only on in-memory state.
+context without relying only on in-memory state. Optional `user_prompt` holds a
+per-chapter instruction injected into the model prompt (not the glossary).
 
 ## Ephemeral UI state (not persisted)
 

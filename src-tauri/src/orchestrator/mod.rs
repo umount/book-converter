@@ -115,8 +115,9 @@ impl<'a> Orchestrator<'a> {
             .store
             .chapter(idx)?
             .ok_or_else(|| anyhow!("no source for chapter {idx}"))?;
+        let user_note = self.store.chapter_user_prompt(idx)?;
 
-        match self.translate_one(&title, &source).await {
+        match self.translate_one(&title, &source, user_note.as_deref()).await {
             Ok(full) => {
                 let (t_title, t_body) = split_title_body(&full, &title);
                 self.store.save_translation(idx, &t_title, &t_body)?;
@@ -162,7 +163,12 @@ impl<'a> Orchestrator<'a> {
     /// Abnormally long chapters are split on paragraph boundaries
     /// (`max_chunk_chars`); the title is prepended only to the first chunk, and
     /// chunk translations are joined with blank lines.
-    async fn translate_one(&self, title: &str, source: &str) -> Result<String> {
+    async fn translate_one(
+        &self,
+        title: &str,
+        source: &str,
+        user_note: Option<&str>,
+    ) -> Result<String> {
         let chapter = Chapter {
             index: 0,
             number: None,
@@ -176,6 +182,7 @@ impl<'a> Orchestrator<'a> {
             summary: non_empty(&self.summary),
             prev_tail: self.prev_tail.as_deref(),
             style: self.style.as_deref(),
+            user_note,
         };
         let system = prompt::system_prompt(self.config);
 
