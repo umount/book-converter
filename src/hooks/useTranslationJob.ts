@@ -122,6 +122,7 @@ export function useTranslationJob({
 
   async function bootstrap() {
     setBusyFor(activeId, t("busy.bootstrapping", { n: sample }));
+    addLog(t("log.bootstrapping", { n: sample }));
     const n = await call<number>("bootstrap_glossary", { projectId: activeId, sample }, { critical: true });
     setBusyFor(activeId, null);
     if (n !== undefined) { addLog(t("log.bootstrapped", { n })); void refreshGlossary(); }
