@@ -84,6 +84,7 @@ export default function App() {
     setBusyFor, setError, setPending: glossary.setPending,
     refreshGlossary: glossary.refreshGlossary,
     openChapter: book.openChapter,
+    loadChapters: book.loadChapters,
     errText, limit,
   });
 
@@ -250,6 +251,9 @@ export default function App() {
                       hl={book.hl} setHl={book.setHl}
                       sourceTerms={glossary.sourceTerms}
                       targetTerms={glossary.targetTerms}
+                      translating={!!progress?.running}
+                      onTranslateChapter={job.translateChapter}
+                      onSaveTranslation={job.saveChapterTranslation}
                     />
                   )}
                 </>

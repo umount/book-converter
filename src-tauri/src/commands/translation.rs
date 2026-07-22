@@ -37,7 +37,7 @@ pub fn start_translation(
             .enable_all()
             .build()
             .expect("current-thread runtime");
-        let result = rt.block_on(run_job(&pid, &db, style, limit, &cancel, &app2));
+        let result = rt.block_on(run_job(&pid, &db, style, limit, None, &cancel, &app2));
 
         if let Some(st) = app2.try_state::<AppState>() {
             st.with(&pid, |s| s.running = false);
@@ -111,4 +111,82 @@ pub async fn reset_translation(
         let _ = store.set_meta("running_summary", "");
     }
     Ok(n)
+}
+
+/// Translate a single chapter by index (reader action). Uses the previous
+/// chapter's saved rolling context. Runs on a background thread like a normal job.
+#[tauri::command]
+pub fn translate_chapter(
+    project_id: String,
+    index: usize,
+    app: AppHandle,
+    state: State<'_, AppState>,
+) -> Result<(), String> {
+    let res: Result<_, String> = state.with(&project_id, |s| {
+        if s.running {
+            return Err("translation_running".to_string());
+        }
+        let db = s.db_path.clone().ok_or("no_source")?;
+        let cancel = Arc::new(AtomicBool::new(false));
+        s.cancel = Some(cancel.clone());
+        s.running = true;
+        Ok((db, s.style.clone(), cancel))
+    });
+    let (db, style, cancel) = res?;
+
+    let app2 = app.clone();
+    let pid = project_id.clone();
+    std::thread::spawn(move || {
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .expect("current-thread runtime");
+        let result = rt.block_on(run_job(
+            &pid,
+            &db,
+            style,
+            None,
+            Some(index),
+            &cancel,
+            &app2,
+        ));
+
+        if let Some(st) = app2.try_state::<AppState>() {
+            st.with(&pid, |s| s.running = false);
+        }
+        match result {
+            Ok(()) => {
+                let _ = app2.emit("done", serde_json::json!({ "project": pid }));
+            }
+            Err(e) => {
+                let _ = app2.emit(
+                    "job_error",
+                    serde_json::json!({ "project": pid, "message": e.to_string() }),
+                );
+            }
+        }
+    });
+
+    Ok(())
+}
+
+/// Manually save an edited chapter translation (origin = `manual`).
+#[tauri::command]
+pub async fn update_chapter_translation(
+    project_id: String,
+    index: usize,
+    translated_title: String,
+    translated: String,
+    state: State<'_, AppState>,
+) -> Result<(), String> {
+    let (db, running) = state.with(&project_id, |s| (s.db_path.clone(), s.running));
+    if running {
+        return Err("job_running".into());
+    }
+    let db = db.ok_or("no_source")?;
+    let store = Store::open(&db).map_err(err)?;
+    store
+        .save_manual_translation(index, translated_title.trim(), translated.trim())
+        .map_err(err)?;
+    Ok(())
 }

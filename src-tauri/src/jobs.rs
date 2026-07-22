@@ -15,6 +15,7 @@ pub(crate) async fn run_job(
     db: &str,
     style: Option<String>,
     limit: Option<usize>,
+    only_index: Option<usize>,
     cancel: &AtomicBool,
     app: &AppHandle,
 ) -> anyhow::Result<()> {
@@ -22,7 +23,7 @@ pub(crate) async fn run_job(
     let cl = DeepSeekClient::new(config.clone())?;
     let store = Store::open(db)?;
     let mut orch = Orchestrator::new(&cl, &store, &config, style)?;
-    orch.run(limit, cancel, |st| {
+    let emit = |st: crate::state::Stats| {
         let _ = app.emit(
             "progress",
             Progress {
@@ -34,8 +35,12 @@ pub(crate) async fn run_job(
                 running: true,
             },
         );
-    })
-    .await
+    };
+    if let Some(idx) = only_index {
+        orch.run_one(idx, cancel, emit).await
+    } else {
+        orch.run(limit, cancel, emit).await
+    }
 }
 
 pub(crate) async fn run_retarget(

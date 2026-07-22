@@ -1,15 +1,16 @@
 //! Persisting translation progress in SQLite.
 //!
 //! Critical for a ~1350-chapter book: the process can be interrupted and resumed
-//! from where it left off. Stores each chapter's status, its translation, and
-//! the glossary.
+//! from where it left off. Stores each chapter's status, its translation, the
+//! per-chapter rolling context (summary + previous-chapter tail), and the glossary.
 //!
 //! ## Schema
-//! - `chapters(idx PK, number, title, source, status, translated, updated_at)` —
-//!   status: pending | in_progress | done | failed. (`idx` = `Chapter.index`;
-//!   the column is not named `index` because that is a SQL keyword.)
+//! - `chapters(idx PK, number, title, source, status, translated, …,
+//!   rolling_summary, prev_tail)` — status: pending | in_progress | done | failed.
+//!   `rolling_summary` / `prev_tail` are the continuity context *after* this chapter
+//!   finished, used to resume or translate a later chapter in isolation.
 //! - `glossary(source PK, target, kind, frequency, pinned)`
-//! - `meta(key PK, value)` — book path, run settings, schema version
+//! - `meta(key PK, value)` — book path, run settings, book-level `running_summary`
 //!
 //! Self-contained apart from `rusqlite` (bundled SQLite, no system deps), so it
 //! is testable without the Tauri crate.
@@ -73,6 +74,8 @@ CREATE TABLE IF NOT EXISTS chapters (
     translated       TEXT,
     translated_title TEXT,
     origin           TEXT,
+    rolling_summary  TEXT,
+    prev_tail        TEXT,
     updated_at       TEXT NOT NULL DEFAULT (datetime('now'))
 );
 CREATE TABLE IF NOT EXISTS glossary (
@@ -103,16 +106,21 @@ impl Store {
 
     /// Additive migrations for databases created by an older version.
     fn migrate(&self) -> Result<()> {
-        // `origin` marks where a chapter's translation came from ('reference' vs
-        // 'model'); older DBs predate the column.
-        let has_origin: i64 = self.conn.query_row(
-            "SELECT COUNT(*) FROM pragma_table_info('chapters') WHERE name = 'origin'",
+        self.ensure_column("chapters", "origin", "TEXT")?;
+        self.ensure_column("chapters", "rolling_summary", "TEXT")?;
+        self.ensure_column("chapters", "prev_tail", "TEXT")?;
+        Ok(())
+    }
+
+    fn ensure_column(&self, table: &str, name: &str, ty: &str) -> Result<()> {
+        let has: i64 = self.conn.query_row(
+            &format!("SELECT COUNT(*) FROM pragma_table_info('{table}') WHERE name = '{name}'"),
             [],
             |r| r.get(0),
         )?;
-        if has_origin == 0 {
+        if has == 0 {
             self.conn
-                .execute("ALTER TABLE chapters ADD COLUMN origin TEXT", [])?;
+                .execute(&format!("ALTER TABLE {table} ADD COLUMN {name} {ty}"), [])?;
         }
         Ok(())
     }
@@ -191,6 +199,90 @@ impl Store {
             "UPDATE chapters
              SET translated = ?3, translated_title = ?2,
                  status = 'done', origin = 'model', updated_at = datetime('now')
+             WHERE idx = ?1",
+            params![index as i64, translated_title, translated_body],
+        )?;
+        Ok(())
+    }
+
+    /// Persist the rolling continuity context *after* a chapter finished translating.
+    /// `summary` is the story-so-far synopsis; `prev_tail` is the closing lines of
+    /// this chapter's translation (fed into the next chapter's prompt).
+    pub fn save_chapter_context(
+        &self,
+        index: usize,
+        summary: &str,
+        prev_tail: &str,
+    ) -> Result<()> {
+        self.conn.execute(
+            "UPDATE chapters
+             SET rolling_summary = ?2, prev_tail = ?3, updated_at = datetime('now')
+             WHERE idx = ?1",
+            params![index as i64, summary, prev_tail],
+        )?;
+        Ok(())
+    }
+
+    /// Continuity context to use when translating `index`: the rolling summary and
+    /// previous-chapter tail from the nearest earlier `done` chapter that has them.
+    /// Falls back to deriving a tail from that chapter's translated body.
+    pub fn context_before(&self, index: usize) -> Result<(String, Option<String>)> {
+        let row = self
+            .conn
+            .query_row(
+                "SELECT rolling_summary, prev_tail, translated
+                 FROM chapters
+                 WHERE idx < ?1 AND status = 'done'
+                 ORDER BY idx DESC
+                 LIMIT 1",
+                params![index as i64],
+                |r| {
+                    Ok((
+                        r.get::<_, Option<String>>(0)?,
+                        r.get::<_, Option<String>>(1)?,
+                        r.get::<_, Option<String>>(2)?,
+                    ))
+                },
+            )
+            .optional()?;
+
+        let Some((summary, prev_tail, translated)) = row else {
+            let summary = self.get_meta("running_summary")?.unwrap_or_default();
+            return Ok((summary, None));
+        };
+
+        let summary = summary
+            .filter(|s| !s.trim().is_empty())
+            .or_else(|| self.get_meta("running_summary").ok().flatten())
+            .unwrap_or_default();
+
+        let prev_tail = prev_tail
+            .filter(|s| !s.trim().is_empty())
+            .or_else(|| {
+                translated
+                    .as_deref()
+                    .map(|b| {
+                        let chars: Vec<char> = b.chars().collect();
+                        let start = chars.len().saturating_sub(400);
+                        chars[start..].iter().collect::<String>()
+                    })
+                    .filter(|s| !s.trim().is_empty())
+            });
+
+        Ok((summary, prev_tail))
+    }
+
+    /// Manually edit a chapter's translation (keeps/sets `origin = 'manual'`).
+    pub fn save_manual_translation(
+        &self,
+        index: usize,
+        translated_title: &str,
+        translated_body: &str,
+    ) -> Result<()> {
+        self.conn.execute(
+            "UPDATE chapters
+             SET translated = ?3, translated_title = ?2,
+                 status = 'done', origin = 'manual', updated_at = datetime('now')
              WHERE idx = ?1",
             params![index as i64, translated_title, translated_body],
         )?;
@@ -498,7 +590,6 @@ mod tests {
         let store = Store::open(":memory:").unwrap();
         store.init_chapters(&sample()).unwrap();
         store.set_status(1, Status::Failed).unwrap();
-        // failed stays in the queue for a re-run
         assert_eq!(store.pending_chapters().unwrap(), vec![1, 2, 3]);
         assert_eq!(store.stats().unwrap().failed, 1);
     }
@@ -508,7 +599,6 @@ mod tests {
         let store = Store::open(":memory:").unwrap();
         store.init_chapters(&sample()).unwrap();
         store.save_translation(2, "T2", "done text").unwrap();
-        // Re-init (e.g. reopening the same book) must not clobber the translation.
         store.init_chapters(&sample()).unwrap();
         assert_eq!(store.pending_chapters().unwrap(), vec![1, 3]);
         assert_eq!(store.translated_chapters().unwrap().len(), 1);
@@ -525,11 +615,9 @@ mod tests {
             let store = Store::open(path_str).unwrap();
             store.init_chapters(&sample()).unwrap();
             store.set_status(2, Status::InProgress).unwrap();
-            // Simulate a crash mid-chapter: 2 is left in_progress.
             assert_eq!(store.pending_chapters().unwrap(), vec![1, 3]);
         }
         {
-            // Reopening must recover chapter 2 back into the queue.
             let store = Store::open(path_str).unwrap();
             assert_eq!(store.pending_chapters().unwrap(), vec![1, 2, 3]);
         }
@@ -573,5 +661,38 @@ mod tests {
             store.get_meta("book_path").unwrap(),
             Some("/books/y.txt".to_string())
         );
+    }
+
+    #[test]
+    fn chapter_context_roundtrip_and_before() {
+        let store = Store::open(":memory:").unwrap();
+        store.init_chapters(&sample()).unwrap();
+        store
+            .save_translation(1, "Глава 1", "конец первой главы вот так")
+            .unwrap();
+        store
+            .save_chapter_context(1, "Герой начал путь.", "вот так")
+            .unwrap();
+
+        let (sum, tail) = store.context_before(2).unwrap();
+        assert_eq!(sum, "Герой начал путь.");
+        assert_eq!(tail.as_deref(), Some("вот так"));
+
+        let (sum0, tail0) = store.context_before(1).unwrap();
+        assert!(sum0.is_empty());
+        assert!(tail0.is_none());
+    }
+
+    #[test]
+    fn manual_translation_sets_origin() {
+        let store = Store::open(":memory:").unwrap();
+        store.init_chapters(&sample()).unwrap();
+        store
+            .save_manual_translation(1, "Заголовок", "ручной текст")
+            .unwrap();
+        let full = store.chapter_full(1).unwrap().unwrap();
+        assert_eq!(full.3, "done");
+        assert_eq!(full.5.as_deref(), Some("ручной текст"));
+        assert_eq!(full.6.as_deref(), Some("manual"));
     }
 }

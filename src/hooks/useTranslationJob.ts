@@ -17,6 +17,7 @@ type TranslateOpts = {
   setPending: React.Dispatch<React.SetStateAction<Record<string, { old: string; new: string; kind: string }>>>;
   refreshGlossary: () => void | Promise<void>;
   openChapter: (idx: number) => void | Promise<void>;
+  loadChapters: () => void | Promise<void>;
   errText: (raw: string) => string;
   limit: number | "";
 };
@@ -24,7 +25,7 @@ type TranslateOpts = {
 /** Progress/logs, translation job controls, and backend event listeners. */
 export function useTranslationJob({
   call, activeId, book, t, tRef, activeIdRef, chapterIdxRef,
-  setBusyFor, setError, setPending, refreshGlossary, openChapter, errText, limit,
+  setBusyFor, setError, setPending, refreshGlossary, openChapter, loadChapters, errText, limit,
 }: TranslateOpts) {
   // Progress and console log are per project (keyed by id) so background/parallel
   // runs keep updating even while another project is in the foreground.
@@ -57,6 +58,8 @@ export function useTranslationJob({
   refreshGlossaryRef.current = refreshGlossary;
   const openChapterRef = useRef(openChapter);
   openChapterRef.current = openChapter;
+  const loadChaptersRef = useRef(loadChapters);
+  loadChaptersRef.current = loadChapters;
   const setBusyForRef = useRef(setBusyFor);
   setBusyForRef.current = setBusyFor;
   const setErrorRef = useRef(setError);
@@ -79,7 +82,13 @@ export function useTranslationJob({
         const id = e.payload.project;
         addLogToRef.current(id, tr("log.runFinished"));
         void refreshProgressForRef.current(id);
-        if (isActive(id)) void refreshGlossaryRef.current();
+        setBusyForRef.current(id, null);
+        if (isActive(id)) {
+          void refreshGlossaryRef.current();
+          void loadChaptersRef.current();
+          const i = chapterIdxRef.current;
+          if (i != null) void openChapterRef.current(i);
+        }
       }),
       listen<{ project: string; message: string }>("job_error", (e) => {
         const { project, message } = e.payload;
@@ -127,6 +136,27 @@ export function useTranslationJob({
     await call("pause_translation", { projectId: activeId });
     addLog(t("log.pauseRequested"));
   }
+
+  async function translateChapter(idx: number) {
+    if (progress?.running) return;
+    setBusyFor(activeId, t("busy.translatingChapter"));
+    addLog(t("log.chapterStarted", { n: idx }));
+    await call("translate_chapter", { projectId: activeId, index: idx });
+  }
+
+  async function saveChapterTranslation(idx: number, title: string, body: string) {
+    await call("update_chapter_translation", {
+      projectId: activeId,
+      index: idx,
+      translatedTitle: title,
+      translated: body,
+    });
+    addLog(t("log.chapterSaved"));
+    await loadChapters();
+    await openChapter(idx);
+    await refreshProgress();
+  }
+
   // Reset chapters to pending for a fresh run with the current glossary. `pos` is a
   // 1-based reading-order position; null means the whole book.
   async function reTranslate(pos: number | null) {
@@ -157,6 +187,7 @@ export function useTranslationJob({
     setProgressFor,
     refreshProgressFor, refreshProgress,
     bootstrap, start, pause, reTranslate,
+    translateChapter, saveChapterTranslation,
     clearProjectJobState,
   };
 }

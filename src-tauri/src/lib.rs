@@ -68,6 +68,8 @@ pub fn run() {
             commands::start_translation,
             commands::pause_translation,
             commands::reset_translation,
+            commands::translate_chapter,
+            commands::update_chapter_translation,
             commands::get_progress,
             commands::get_glossary,
             commands::update_term,

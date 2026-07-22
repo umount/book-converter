@@ -66,9 +66,12 @@ Written by load/open/commands; restored on `open_project`.
 | `summary` | Annotation |
 | `cover_ct` / `cover_b64` | Cover image |
 | `format` / `encoding` | Source format info |
-| `running_summary` | Rolling story synopsis for sequential translation |
+| `running_summary` | Rolling story synopsis for sequential translation (book-level mirror) |
 
-Plus tables `chapters` and `glossary` (not KV meta).
+Plus tables `chapters` and `glossary` (not KV meta). Each translated chapter also
+stores its own `rolling_summary` and `prev_tail` — the continuity context after
+that chapter — so a later single-chapter translate or a resumed run can restore
+context without relying only on in-memory state.
 
 ## Ephemeral UI state (not persisted)
 
