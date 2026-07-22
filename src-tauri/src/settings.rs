@@ -7,13 +7,11 @@ use std::path::{Path, PathBuf};
 use anyhow::Result;
 use rusqlite::{params, Connection, OptionalExtension};
 
+use crate::paths;
+
 /// Path to the app-wide settings DB (`<app_data>/settings.db`).
 pub fn db_path() -> PathBuf {
-    let base = std::env::var_os("XDG_DATA_HOME")
-        .map(PathBuf::from)
-        .or_else(|| std::env::var_os("HOME").map(|h| PathBuf::from(h).join(".local/share")))
-        .unwrap_or_else(std::env::temp_dir);
-    base.join("book-converter").join("settings.db")
+    paths::app_data_dir().join("settings.db")
 }
 
 fn open(db: &Path) -> Result<Connection> {

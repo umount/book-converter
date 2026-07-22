@@ -7,12 +7,16 @@
 mod book;
 mod commands;
 mod config;
+mod dto;
 mod export;
 mod glossary;
 mod i18n;
+mod jobs;
 mod orchestrator;
+mod paths;
 mod reference;
 mod retarget;
+mod session;
 mod settings;
 mod state;
 mod translator;

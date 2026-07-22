@@ -26,8 +26,6 @@ pub struct Config {
     /// Per-request timeout in seconds.
     pub request_timeout_secs: u64,
 
-    /// How many chapters to translate in parallel.
-    pub concurrency: usize,
     /// Max chunk size in characters (fallback splitting of long chapters).
     pub max_chunk_chars: usize,
     /// Number of retries on network errors / 429 / 5xx.
@@ -44,7 +42,6 @@ impl Default for Config {
             target_lang: "Russian".into(),
             temperature: 0.3,
             request_timeout_secs: 120,
-            concurrency: 4,
             max_chunk_chars: 6000,
             max_retries: 5,
         }

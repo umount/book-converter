@@ -4,13 +4,14 @@ A desktop tool for translating **large books** with an LLM while keeping names,
 lore, and style consistent across the whole work — built for novels that are far
 too long to translate in a single request.
 
-Powered by the **DeepSeek API**. Rust core, Tauri + React desktop app.
+Powered by the **DeepSeek API**. Rust core, Tauri v2 + React desktop app.
 
 ## Highlights
 
 - **Handles book-length input.** A book is split into chapters and translated
   sequentially; progress is stored in SQLite, so a run can be paused, interrupted,
-  and resumed at any time.
+  and resumed at any time. Abnormally long chapters are split on paragraph
+  boundaries automatically.
 - **Consistency where it matters.** An auto-growing **glossary** fixes the
   canonical translation of names, places, sects, and terminology and enforces it
   in every chapter.
@@ -25,9 +26,11 @@ Powered by the **DeepSeek API**. Rust core, Tauri + React desktop app.
   GB18030 / Big5). Output: FB2, EPUB, PDF, TXT — pick the format directly, output
   optionally zipped. Book title, cover, and annotation are carried over (and can
   be replaced).
-- **IDE-style app.** A projects sidebar (each book is a project), a chapter reader
-  with side-by-side **original ↔ translation** panes and glossary highlighting, an
-  editable glossary, and per-project state.
+- **Isolated projects.** Each open book is its own project (own DB, glossary,
+  progress, console). Several books can translate in parallel. Save/open as a
+  portable `.bcproj` archive.
+- **IDE-style app.** Projects sidebar, chapter reader with side-by-side
+  **original ↔ translation** panes and glossary highlighting, editable glossary.
 
 ## Requirements
 
@@ -42,6 +45,8 @@ Powered by the **DeepSeek API**. Rust core, Tauri + React desktop app.
   ```
 
 - A **DeepSeek API key**.
+- For PDF input/output, pdfium is fetched automatically by `make dev` /
+  `make binary` (or run `make fetch-pdfium` once).
 
 ## Setup
 
@@ -60,25 +65,36 @@ make dev        # hot-reload dev window
 make binary     # standalone release binary → src-tauri/target/release/book-converter
 make bundle     # installers (.deb / .rpm / .AppImage)
 make run        # build the release binary and launch it
+make check      # cargo check + tsc
+make test       # Rust unit tests
 ```
 
 ## Using the app
 
-1. **Open book** — pick a `.txt` / `.fb2` / `.zip`. It becomes a project in the
-   sidebar.
+1. **Open book** — pick a `.txt` / `.fb2` / `.pdf` / `.zip`. It becomes a project
+   in the sidebar.
 2. *(Optional)* **Open reference** — a professional translation of the same book;
-   then **Bootstrap** the glossary from it. Enable **Continue mode** to keep the
-   professional chapters and translate only what follows.
+   then **Bootstrap** the glossary from it. Loading a reference also seeds covered
+   chapters so you can **continue** from where the professional text ends.
 3. Set how many chapters to translate (or leave blank for all) and press **Start**.
-   Watch progress; **Pause** stops after the current chapter.
+   Watch progress; **Pause** stops after the current chapter. You can work on
+   another project while one is translating.
 4. **Translation** view: read any chapter with original and translation side by
    side, with glossary terms highlighted.
-5. **File → Export as** FB2 / EPUB / PDF / TXT (zipped if you like). Cover, title,
-   and summary are included.
+5. **File → Export as** FB2 / EPUB / PDF / TXT. Cover, title, and summary are
+   included.
+6. **File → Save project** / **Open project** — portable `.bcproj` (manifest +
+   progress DB; no copy of the original book needed).
 
 ## Documentation
 
-See [`docs/`](docs/README.md): architecture and design decisions.
+| Document | Description |
+|---|---|
+| [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) | Components, pipeline, glossary, IPC |
+| [`docs/DECISIONS.md`](docs/DECISIONS.md) | Design decisions and rationale |
+| [`docs/PROJECT_ISOLATION.md`](docs/PROJECT_ISOLATION.md) | Per-project data, parallel runs, `.bcproj` |
+| [`docs/SETTINGS.md`](docs/SETTINGS.md) | Env / settings DB / localStorage / project meta |
+| [`docs/README.md`](docs/README.md) | Docs index |
 
 ## Configuration
 
@@ -89,6 +105,12 @@ Environment / `.env`:
 | `DEEPSEEK_API_KEY` | — | API key (required) |
 | `DEEPSEEK_MODEL` | `deepseek-chat` | Model |
 | `DEEPSEEK_BASE_URL` | `https://api.deepseek.com` | API base URL |
+| `SOURCE_LANG` | (UI setting / Chinese) | Override source language |
+| `TARGET_LANG` | (UI setting / Russian) | Override target language |
+
+UI language and the translation language pair are also set in **Settings** and
+persisted in the app settings DB. See [`docs/SETTINGS.md`](docs/SETTINGS.md) for the
+full matrix.
 
 ## License
 

@@ -1,4 +1,4 @@
-//! Exporting the translated book to a chosen format (TXT, FB2; EPUB planned).
+//! Exporting the translated book to a chosen format (TXT, FB2, EPUB, PDF).
 
 pub mod epub;
 pub mod fb2;

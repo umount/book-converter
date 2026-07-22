@@ -16,6 +16,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 
 use anyhow::{anyhow, Result};
 
+use crate::book::{split_chapter, Chapter};
 use crate::config::Config;
 use crate::glossary::{self, Term};
 use crate::state::{Stats, Status, Store};
@@ -105,7 +106,18 @@ impl<'a> Orchestrator<'a> {
     }
 
     /// Translate one chapter (title + body) with the current context.
+    ///
+    /// Abnormally long chapters are split on paragraph boundaries
+    /// (`max_chunk_chars`); the title is prepended only to the first chunk, and
+    /// chunk translations are joined with blank lines.
     async fn translate_one(&self, title: &str, source: &str) -> Result<String> {
+        let chapter = Chapter {
+            index: 0,
+            number: None,
+            title: title.to_string(),
+            body: source.to_string(),
+        };
+        let chunks = split_chapter(&chapter, self.config.max_chunk_chars);
         let relevant = glossary::relevant_terms(&self.glossary, source);
         let ctx = prompt::PromptContext {
             terms: &relevant,
@@ -114,14 +126,20 @@ impl<'a> Orchestrator<'a> {
             style: self.style.as_deref(),
         };
         let system = prompt::system_prompt(self.config);
-        // Prepend the title so it is translated in the target language too.
-        let input = if title.trim().is_empty() {
-            source.to_string()
-        } else {
-            format!("{}\n\n{}", title.trim(), source)
-        };
-        let user = prompt::user_prompt(&ctx, &input);
-        self.client.translate(&system, &user).await
+
+        let mut parts: Vec<String> = Vec::with_capacity(chunks.len());
+        for chunk in &chunks {
+            // Prepend the title only on the first part so it is translated once.
+            let input = if chunk.part == 0 && !title.trim().is_empty() {
+                format!("{}\n\n{}", title.trim(), chunk.text)
+            } else {
+                chunk.text.clone()
+            };
+            let user = prompt::user_prompt(&ctx, &input);
+            let out = self.client.translate(&system, &user).await?;
+            parts.push(out);
+        }
+        Ok(parts.join("\n\n"))
     }
 
     async fn update_summary(&self, translation: &str) -> Result<String> {

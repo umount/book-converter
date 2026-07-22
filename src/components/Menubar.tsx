@@ -1,0 +1,66 @@
+type Props = {
+  t: (key: string, vars?: Record<string, string | number>) => string;
+  menu: "file" | "view" | null;
+  setMenu: (m: "file" | "view" | null) => void;
+  busy: string | null;
+  canExport: boolean;
+  hasActive: boolean;
+  onOpenBook: () => void;
+  onOpenReference: () => void;
+  onOpenProject: () => void;
+  onSaveProject: () => void;
+  onExport: (fmt: "fb2" | "epub" | "pdf" | "txt") => void;
+  onToggleSidebar: () => void;
+  onShowBothPanes: () => void;
+  onToggleHighlight: () => void;
+  onToggleConsole: () => void;
+  onOpenSettings: () => void;
+};
+
+export function Menubar({
+  t, menu, setMenu, busy, canExport, hasActive,
+  onOpenBook, onOpenReference, onOpenProject, onSaveProject, onExport,
+  onToggleSidebar, onShowBothPanes, onToggleHighlight, onToggleConsole, onOpenSettings,
+}: Props) {
+  return (
+    <>
+      <header className="menubar">
+        <span className="brand">book-converter</span>
+        <div className="menuitem" onClick={() => setMenu(menu === "file" ? null : "file")}>
+          {t("menu.file")}
+          {menu === "file" && (
+            <div className="dropdown" onClick={(e) => e.stopPropagation()}>
+              <div className="mi" onClick={onOpenBook}>{t("file.openBook")}</div>
+              <div className={`mi ${!hasActive ? "disabled" : ""}`} onClick={() => hasActive && onOpenReference()}>{t("file.openReference")}</div>
+              <div className="sep" />
+              <div className="mi" onClick={onOpenProject}>{t("file.openProject")}</div>
+              <div className={`mi ${!hasActive ? "disabled" : ""}`} onClick={() => hasActive && onSaveProject()}>{t("file.saveProject")}</div>
+              <div className="sep" />
+              <div className="mi-label">{t("file.exportAs")}</div>
+              <div className={`mi ${!canExport ? "disabled" : ""}`} onClick={() => canExport && onExport("fb2")}>FB2</div>
+              <div className={`mi ${!canExport ? "disabled" : ""}`} onClick={() => canExport && onExport("epub")}>EPUB</div>
+              <div className={`mi ${!canExport ? "disabled" : ""}`} onClick={() => canExport && onExport("pdf")}>PDF</div>
+              <div className={`mi ${!canExport ? "disabled" : ""}`} onClick={() => canExport && onExport("txt")}>TXT</div>
+            </div>
+          )}
+        </div>
+        <div className="menuitem" onClick={() => setMenu(menu === "view" ? null : "view")}>
+          {t("menu.view")}
+          {menu === "view" && (
+            <div className="dropdown" onClick={(e) => e.stopPropagation()}>
+              <div className="mi" onClick={() => { onToggleSidebar(); setMenu(null); }}>{t("view.toggleSidebar")}</div>
+              <div className="mi" onClick={() => { onShowBothPanes(); setMenu(null); }}>{t("view.showBothPanes")}</div>
+              <div className="mi" onClick={() => { onToggleHighlight(); setMenu(null); }}>{t("view.toggleHighlight")}</div>
+              <div className="mi" onClick={() => { onToggleConsole(); setMenu(null); }}>{t("view.toggleConsole")}</div>
+            </div>
+          )}
+        </div>
+        <div className="menuitem" onClick={onOpenSettings}>{t("menu.settings")}</div>
+        <div className="menu-spacer" />
+        {busy && <span className="busy-inline">{busy}</span>}
+      </header>
+      {busy && <div className="loadbar" />}
+      {menu && <div className="menu-backdrop" onClick={() => setMenu(null)} />}
+    </>
+  );
+}

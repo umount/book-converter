@@ -10,8 +10,8 @@ Record of the key choices and their rationale. Newest first.
 
 **Decision:** translate chapters in order, carrying a compact **running summary**
 of the story so far (plus the previous chapter's closing lines) into each chapter's
-prompt. Default `concurrency = 1`. A parallel mode is available but drops
-cross-chapter context.
+prompt. Translation is always sequential. Parallel chapter translation is out of
+scope (it would drop cross-chapter context).
 
 **Why:** translating each chapter in isolation loses narrative continuity — ongoing
 scenes, who characters are, unresolved threads, tone shifts. Feeding a running
@@ -20,7 +20,8 @@ explicitly. The summary is updated after each chapter with a light call and stor
 in `meta.running_summary`, so an interrupted run resumes with context intact.
 
 **Trade-off:** slower than a parallel pool. Accepted — coherence matters more than
-raw speed for a long novel; parallel mode remains for users who want throughput.
+raw speed for a long novel. A future parallel mode would be an explicit opt-in that
+disables the rolling summary; it is not implemented.
 
 ---
 
