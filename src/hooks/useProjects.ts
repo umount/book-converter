@@ -132,7 +132,9 @@ export function useProjects(helpersRef: MutableRefObject<ProjectHelpers>) {
     if (!activeProject) return;
     const path = await open({ filters: [{ name: "Reference", extensions: ["fb2", "txt", "pdf", "zip"] }] });
     if (typeof path !== "string") return;
+    const name = baseName(path);
     h.setBusyFor(activeId, h.t("busy.loadingReference"));
+    h.addLog(h.t("log.loadingReference", { name }));
     const info = await h.call<RefInfo>("load_reference", { projectId: activeId, path });
     h.setBusyFor(activeId, null);
     if (info) {
