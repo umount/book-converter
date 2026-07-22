@@ -268,7 +268,7 @@ impl<'a> Orchestrator<'a> {
                 let ms = started.elapsed().as_millis() as u64;
                 self.store
                     .save_translation_timed(idx, &t_title, &t_body, Some(ms))?;
-                let chapter_tail = tail(&t_body, 400);
+                let chapter_tail = crate::textutil::closing_excerpt(&t_body, 400);
                 self.prev_tail = Some(chapter_tail.clone());
 
                 match self.update_summary(&t_body).await {
@@ -377,12 +377,6 @@ fn clean_title(line: &str) -> String {
         .to_string()
 }
 
-fn tail(s: &str, n: usize) -> String {
-    let chars: Vec<char> = s.chars().collect();
-    let start = chars.len().saturating_sub(n);
-    chars[start..].iter().collect()
-}
-
 fn non_empty(s: &str) -> Option<&str> {
     if s.trim().is_empty() {
         None
@@ -394,13 +388,6 @@ fn non_empty(s: &str) -> Option<&str> {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn tail_is_char_safe_and_bounded() {
-        assert_eq!(tail("abcdef", 3), "def");
-        assert_eq!(tail("ab", 5), "ab");
-        assert_eq!(tail("王林城", 2), "林城");
-    }
 
     #[test]
     fn non_empty_filters_blank() {

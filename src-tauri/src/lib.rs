@@ -19,6 +19,7 @@ mod retarget;
 mod session;
 mod settings;
 mod state;
+mod textutil;
 mod translator;
 
 /// Build and run the Tauri application.

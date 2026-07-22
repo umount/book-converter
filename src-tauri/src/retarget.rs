@@ -1,4 +1,7 @@
-//! Propagate a glossary rename into the already-translated text.
+//! Propagate a glossary rename into the already-translated text **and** into
+//! rolling continuity context (`rolling_summary` / `prev_tail` / book-level
+//! `running_summary`), so a later chapter retranslate does not reintroduce the
+//! old rendering from the prompt context.
 //!
 //! A plain find/replace breaks inflected languages: the old rendering appears in
 //! many grammatical forms ("Сюй Цина", "Сюй Цину") and changing a name's gender

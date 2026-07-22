@@ -372,11 +372,7 @@ impl Store {
             .or_else(|| {
                 translated
                     .as_deref()
-                    .map(|b| {
-                        let chars: Vec<char> = b.chars().collect();
-                        let start = chars.len().saturating_sub(400);
-                        chars[start..].iter().collect::<String>()
-                    })
+                    .map(|b| crate::textutil::closing_excerpt(b, 400))
                     .filter(|s| !s.trim().is_empty())
             });
 
@@ -524,22 +520,24 @@ impl Store {
         Ok(stats)
     }
 
-    /// List chapters for the UI: `(idx, number, title, status, origin)` in order.
+    /// List chapters for the UI:
+    /// `(idx, number, title, translated_title, status, origin)` in order.
     #[allow(clippy::type_complexity)]
     pub fn list_chapters(
         &self,
-    ) -> Result<Vec<(usize, Option<usize>, String, String, Option<String>)>> {
-        let mut stmt = self
-            .conn
-            .prepare("SELECT idx, number, title, status, origin FROM chapters ORDER BY idx")?;
+    ) -> Result<Vec<(usize, Option<usize>, String, Option<String>, String, Option<String>)>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT idx, number, title, translated_title, status, origin FROM chapters ORDER BY idx",
+        )?;
         let rows = stmt
             .query_map([], |r| {
                 Ok((
                     r.get::<_, i64>(0)? as usize,
                     r.get::<_, Option<i64>>(1)?.map(|n| n as usize),
                     r.get::<_, String>(2)?,
-                    r.get::<_, String>(3)?,
-                    r.get::<_, Option<String>>(4)?,
+                    r.get::<_, Option<String>>(3)?,
+                    r.get::<_, String>(4)?,
+                    r.get::<_, Option<String>>(5)?,
                 ))
             })?
             .collect::<rusqlite::Result<Vec<_>>>()?;
@@ -625,6 +623,28 @@ impl Store {
         let mut stmt = self.conn.prepare(
             "SELECT idx, COALESCE(translated_title, title), translated FROM chapters
              WHERE status = 'done' AND translated IS NOT NULL
+             ORDER BY idx",
+        )?;
+        let rows = stmt
+            .query_map([], |r| {
+                Ok((
+                    r.get::<_, i64>(0)? as usize,
+                    r.get::<_, String>(1)?,
+                    r.get::<_, String>(2)?,
+                ))
+            })?
+            .collect::<rusqlite::Result<Vec<_>>>()?;
+        Ok(rows)
+    }
+
+    /// Chapters that have a stored rolling context: `(idx, rolling_summary, prev_tail)`.
+    /// Empty strings are normalized to `""` (never null in the result).
+    pub fn chapter_contexts(&self) -> Result<Vec<(usize, String, String)>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT idx, COALESCE(rolling_summary, ''), COALESCE(prev_tail, '')
+             FROM chapters
+             WHERE (rolling_summary IS NOT NULL AND TRIM(rolling_summary) != '')
+                OR (prev_tail IS NOT NULL AND TRIM(prev_tail) != '')
              ORDER BY idx",
         )?;
         let rows = stmt

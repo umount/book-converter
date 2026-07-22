@@ -37,7 +37,10 @@ export type BookDetails = {
   title: string; author: string; title_translated: string | null; author_translated: string | null;
   summary: string | null; cover: string | null;
 };
-export type ChapterRow = { idx: number; number: number | null; title: string; status: string; origin: string | null };
+export type ChapterRow = {
+  idx: number; number: number | null; title: string;
+  translated_title: string | null; status: string; origin: string | null;
+};
 export type ChapterView = {
   idx: number; number: number | null; source_title: string; source: string;
   translated_title: string | null; translated: string | null; status: string; origin: string | null;

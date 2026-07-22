@@ -75,10 +75,36 @@ pub(crate) async fn run_retarget(
         .into_iter()
         .filter(|(_, title, body)| mentions_any(title) || body.lines().any(mentions_any))
         .collect();
-    let total = jobs.len();
+    let contexts = store.chapter_contexts()?;
+    let context_jobs: Vec<(usize, String, String)> = contexts
+        .into_iter()
+        .filter(|(_, summary, prev_tail)| mentions_any(summary) || mentions_any(prev_tail))
+        .collect();
 
+    let meta_summary = store
+        .get_meta("running_summary")?
+        .filter(|s| mentions_any(s));
+    let meta_boot_tail = store
+        .get_meta("boot_prev_tail")?
+        .filter(|s| mentions_any(s));
+
+    // Snapshot summaries so we can refresh prev_tail after a body rewrite
+    // without an extra DB round-trip per chapter.
+    let summary_by_idx: std::collections::HashMap<usize, String> = store
+        .chapter_contexts()?
+        .into_iter()
+        .map(|(idx, summary, _)| (idx, summary))
+        .collect();
+
+    let total = jobs.len()
+        + context_jobs.len()
+        + usize::from(meta_summary.is_some())
+        + usize::from(meta_boot_tail.is_some());
+    let mut done_units = 0usize;
     let mut changed = 0usize;
-    for (i, (idx, title, body)) in jobs.into_iter().enumerate() {
+
+    // --- chapter translations ---
+    for (idx, title, body) in jobs {
         if cancel.load(Ordering::Relaxed) {
             break;
         }
@@ -93,19 +119,111 @@ pub(crate) async fn run_retarget(
         let did_change = new_title != title || new_body != body;
         if did_change {
             store.save_translation(idx, &new_title, &new_body)?;
+            // Keep prev_tail in sync with the rewritten ending (no extra LLM call).
+            if let Some(summary) = summary_by_idx.get(&idx) {
+                let _ = store.save_chapter_context(idx, summary, &crate::textutil::closing_excerpt(&new_body, 400));
+            }
             changed += 1;
         }
+        done_units += 1;
         let _ = app.emit(
             "retarget_progress",
             serde_json::json!({
                 "project": project_id,
-                "done": i + 1,
+                "done": done_units,
                 "total": total,
                 "title": new_title,
                 "changed": did_change,
             }),
         );
     }
+
+    // --- per-chapter rolling summary / leftover prev_tail ---
+    // Re-read contexts after body rewrites (prev_tails may already be refreshed).
+    let contexts_again = store.chapter_contexts()?;
+    for (idx, summary, prev_tail) in contexts_again {
+        if cancel.load(Ordering::Relaxed) {
+            break;
+        }
+        if !mentions_any(&summary) && !mentions_any(&prev_tail) {
+            continue;
+        }
+
+        let new_summary = if mentions_any(&summary) {
+            apply_changes(project_id, &cl, lang, changes, &summary, app).await
+        } else {
+            summary.clone()
+        };
+        // If the chapter body was retargeted above, prev_tail was already cut from
+        // the new body; only LLM-rewrite when the old name is still present.
+        let new_tail = if mentions_any(&prev_tail) {
+            apply_changes(project_id, &cl, lang, changes, &prev_tail, app).await
+        } else {
+            prev_tail.clone()
+        };
+
+        let did_change = new_summary != summary || new_tail != prev_tail;
+        if did_change {
+            store.save_chapter_context(idx, &new_summary, &new_tail)?;
+            changed += 1;
+        }
+        done_units += 1;
+        let _ = app.emit(
+            "retarget_progress",
+            serde_json::json!({
+                "project": project_id,
+                "done": done_units,
+                "total": total,
+                "title": format!("context #{idx}"),
+                "changed": did_change,
+            }),
+        );
+    }
+
+    // --- book-level meta mirrors ---
+    if let Some(summary) = meta_summary {
+        if !cancel.load(Ordering::Relaxed) {
+            let new_summary = apply_changes(project_id, &cl, lang, changes, &summary, app).await;
+            let did_change = new_summary != summary;
+            if did_change {
+                store.set_meta("running_summary", &new_summary)?;
+                changed += 1;
+            }
+            done_units += 1;
+            let _ = app.emit(
+                "retarget_progress",
+                serde_json::json!({
+                    "project": project_id,
+                    "done": done_units,
+                    "total": total,
+                    "title": "running_summary",
+                    "changed": did_change,
+                }),
+            );
+        }
+    }
+    if let Some(tail) = meta_boot_tail {
+        if !cancel.load(Ordering::Relaxed) {
+            let new_tail = apply_changes(project_id, &cl, lang, changes, &tail, app).await;
+            let did_change = new_tail != tail;
+            if did_change {
+                store.set_meta("boot_prev_tail", &new_tail)?;
+                changed += 1;
+            }
+            done_units += 1;
+            let _ = app.emit(
+                "retarget_progress",
+                serde_json::json!({
+                    "project": project_id,
+                    "done": done_units,
+                    "total": total,
+                    "title": "boot_prev_tail",
+                    "changed": did_change,
+                }),
+            );
+        }
+    }
+
     Ok(changed)
 }
 

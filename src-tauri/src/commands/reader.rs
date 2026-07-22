@@ -23,10 +23,11 @@ pub async fn list_chapters(
     let rows = store.list_chapters().map_err(err)?;
     Ok(rows
         .into_iter()
-        .map(|(idx, number, title, status, origin)| ChapterRow {
+        .map(|(idx, number, title, translated_title, status, origin)| ChapterRow {
             idx,
             number,
             title,
+            translated_title,
             status,
             origin,
         })

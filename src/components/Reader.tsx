@@ -124,12 +124,15 @@ export function Reader({
           const i = chapters.findIndex((c) => c.idx === chapterIdx); if (i > 0) setChapterIdx(chapters[i - 1].idx);
         }}>‹</button>
         <select value={chapterIdx ?? ""} onChange={(e) => setChapterIdx(Number(e.target.value))}>
-          {chapters.map((c) => (
-            <option key={c.idx} value={c.idx}>
-              {c.origin === "reference" ? "◆ " : c.origin === "manual" ? "✎ " : c.status === "done" ? "✓ " : "· "}
-              {c.number != null ? `#${c.number} ` : ""}{c.title.slice(0, 60)}
-            </option>
-          ))}
+          {chapters.map((c) => {
+            const label = (c.translated_title?.trim() || c.title).slice(0, 60);
+            return (
+              <option key={c.idx} value={c.idx}>
+                {c.origin === "reference" ? "◆ " : c.origin === "manual" ? "✎ " : c.status === "done" ? "✓ " : "· "}
+                {c.number != null ? `#${c.number} ` : ""}{label}
+              </option>
+            );
+          })}
         </select>
         <button className="ghost" disabled={!chapters.length} onClick={() => {
           const i = chapters.findIndex((c) => c.idx === chapterIdx); if (i >= 0 && i < chapters.length - 1) setChapterIdx(chapters[i + 1].idx);

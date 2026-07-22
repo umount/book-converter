@@ -96,7 +96,7 @@ thing the frontend knows about; session/job helpers sit beside it.
 | **book::chunker** | Fallback splitting of an over-long chapter on paragraph boundaries |
 | **reference** | Optional reference translation: load, align, bootstrap pinned glossary + style exemplar |
 | **glossary** | Consistency: store terms, inject into prompt, auto-extract, merge with conflict resolution |
-| **retarget** | Propagate a glossary rename into already-translated text (inflection-aware) |
+| **retarget** | Propagate a glossary rename into translated text + rolling context (inflection-aware) |
 | **translator::prompt** | System/user prompts: glossary + rolling summary + style |
 | **translator::deepseek** | DeepSeek HTTP client, retry + backoff, continue on output truncation |
 | **orchestrator** | Sequential translation loop (glossary + summary + enrich) |

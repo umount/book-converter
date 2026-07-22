@@ -79,6 +79,8 @@ pub struct ChapterRow {
     pub idx: usize,
     pub number: Option<usize>,
     pub title: String,
+    /// Translated title when the chapter is done (shown in the chapter picker).
+    pub translated_title: Option<String>,
     pub status: String,
     /// Where the translation came from: `"reference"`, `"model"`, or none.
     pub origin: Option<String>,
