@@ -1,6 +1,17 @@
 import type { BookDetails, Progress, RefInfo } from "../types";
 import { Panel } from "./Panel";
 
+function formatEtaLocal(secs: number): string {
+  const s = Math.max(0, Math.round(secs));
+  if (s < 60) return `${s}s`;
+  const m = Math.floor(s / 60);
+  const r = s % 60;
+  if (m < 60) return r > 0 ? `${m}m ${r}s` : `${m}m`;
+  const h = Math.floor(m / 60);
+  const rm = m % 60;
+  return rm > 0 ? `${h}h ${rm}m` : `${h}h`;
+}
+
 type Props = {
   t: (key: string, vars?: Record<string, string | number>) => string;
   collapsed: Record<string, boolean>;
@@ -33,7 +44,27 @@ export function Overview({
   onTranslateTitle, onReplaceCover, onGenerateSummary, onSaveSummary,
   onOpenReference, onBootstrap, onStart, onPause, onRefreshProgress, onRetranslate,
 }: Props) {
-  const pct = progress && progress.total > 0 ? Math.round((progress.done / progress.total) * 100) : 0;
+  const jobTotal = progress?.job_total && progress.job_total > 0 ? progress.job_total : null;
+  const jobDone = progress?.job_done ?? 0;
+  const showJob = !!(progress?.running && jobTotal);
+  const pct = showJob
+    ? Math.round((jobDone / jobTotal!) * 100)
+    : progress && progress.total > 0
+      ? Math.round((progress.done / progress.total) * 100)
+      : 0;
+  const barLabel = showJob
+    ? `${jobDone}/${jobTotal}`
+    : progress
+      ? `${progress.done}/${progress.total}`
+      : "";
+  const eta =
+    progress?.running && progress.eta_secs != null && progress.eta_secs > 0
+      ? formatEtaLocal(progress.eta_secs)
+      : null;
+  const current =
+    progress?.running && progress.current_title
+      ? progress.current_title.slice(0, 50)
+      : null;
 
   return (
     <>
@@ -102,7 +133,13 @@ export function Overview({
         {progress && (
           <div className="progress">
             <div className="bar"><div className="bar-fill" style={{ width: `${pct}%` }} /></div>
-            <div className="progress-text">{progress.done}/{progress.total} ({pct}%){progress.failed > 0 && ` · ${t("progress.failed", { n: progress.failed })}`}{progress.running ? ` · ${t("progress.running")}` : ""}</div>
+            <div className="progress-text">
+              {barLabel} ({pct}%)
+              {progress.failed > 0 && ` · ${t("progress.failed", { n: progress.failed })}`}
+              {progress.running ? ` · ${t("progress.running")}` : ""}
+              {eta ? ` · ${t("progress.eta", { eta })}` : ""}
+              {current ? ` · ${t("progress.current", { title: current })}` : ""}
+            </div>
           </div>
         )}
         {progress && progress.done > 0 && (

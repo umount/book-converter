@@ -77,6 +77,7 @@ CREATE TABLE IF NOT EXISTS chapters (
     rolling_summary  TEXT,
     prev_tail        TEXT,
     user_prompt      TEXT,
+    translate_ms     INTEGER,
     updated_at       TEXT NOT NULL DEFAULT (datetime('now'))
 );
 CREATE TABLE IF NOT EXISTS glossary (
@@ -111,6 +112,7 @@ impl Store {
         self.ensure_column("chapters", "rolling_summary", "TEXT")?;
         self.ensure_column("chapters", "prev_tail", "TEXT")?;
         self.ensure_column("chapters", "user_prompt", "TEXT")?;
+        self.ensure_column("chapters", "translate_ms", "INTEGER")?;
         Ok(())
     }
 
@@ -197,14 +199,57 @@ impl Store {
         translated_title: &str,
         translated_body: &str,
     ) -> Result<()> {
+        self.save_translation_timed(index, translated_title, translated_body, None)
+    }
+
+    /// Save a model translation and optionally record how long it took (ms).
+    pub fn save_translation_timed(
+        &self,
+        index: usize,
+        translated_title: &str,
+        translated_body: &str,
+        translate_ms: Option<u64>,
+    ) -> Result<()> {
         self.conn.execute(
             "UPDATE chapters
              SET translated = ?3, translated_title = ?2,
-                 status = 'done', origin = 'model', updated_at = datetime('now')
+                 status = 'done', origin = 'model',
+                 translate_ms = COALESCE(?4, translate_ms),
+                 updated_at = datetime('now')
              WHERE idx = ?1",
-            params![index as i64, translated_title, translated_body],
+            params![
+                index as i64,
+                translated_title,
+                translated_body,
+                translate_ms.map(|m| m as i64),
+            ],
         )?;
         Ok(())
+    }
+
+    /// Average `translate_ms` over recent timed chapters (for ETA).
+    pub fn avg_translate_ms(&self, limit: usize) -> Result<Option<u64>> {
+        let lim = limit.max(1) as i64;
+        let row: Option<(i64, i64)> = self
+            .conn
+            .query_row(
+                "SELECT COUNT(*), COALESCE(SUM(translate_ms), 0) FROM (
+                    SELECT translate_ms FROM chapters
+                    WHERE translate_ms IS NOT NULL AND translate_ms > 0 AND status = 'done'
+                    ORDER BY idx DESC
+                    LIMIT ?1
+                 )",
+                params![lim],
+                |r| Ok((r.get(0)?, r.get(1)?)),
+            )
+            .optional()?;
+        Ok(row.and_then(|(n, sum)| {
+            if n == 0 {
+                None
+            } else {
+                Some((sum / n) as u64)
+            }
+        }))
     }
 
     /// Persist the rolling continuity context *after* a chapter finished translating.
@@ -750,5 +795,18 @@ mod tests {
         );
         store.set_chapter_user_prompt(1, "   ").unwrap();
         assert_eq!(store.chapter_user_prompt(1).unwrap(), None);
+    }
+
+    #[test]
+    fn translate_ms_and_average() {
+        let store = Store::open(":memory:").unwrap();
+        store.init_chapters(&sample()).unwrap();
+        store
+            .save_translation_timed(1, "T1", "body1", Some(1000))
+            .unwrap();
+        store
+            .save_translation_timed(2, "T2", "body2", Some(3000))
+            .unwrap();
+        assert_eq!(store.avg_translate_ms(10).unwrap(), Some(2000));
     }
 }

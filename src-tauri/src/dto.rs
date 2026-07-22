@@ -33,6 +33,26 @@ pub struct Progress {
     pub failed: usize,
     pub pending: usize,
     pub running: bool,
+    /// Chapters finished in the current job (0..job_total).
+    #[serde(default)]
+    pub job_done: usize,
+    /// Chapters planned for the current job (e.g. min(limit, pending)).
+    #[serde(default)]
+    pub job_total: usize,
+    /// Chapter currently being translated (1-based display via idx).
+    #[serde(default)]
+    pub current_idx: Option<usize>,
+    #[serde(default)]
+    pub current_title: Option<String>,
+    /// `start` | `chapter_start` | `chapter_done` | `status`
+    #[serde(default)]
+    pub phase: String,
+    /// Duration of the last finished chapter, milliseconds.
+    #[serde(default)]
+    pub last_ms: Option<u64>,
+    /// Estimated remaining seconds for this job (from avg chapter time).
+    #[serde(default)]
+    pub eta_secs: Option<u64>,
 }
 
 #[derive(Serialize, Deserialize, Clone)]

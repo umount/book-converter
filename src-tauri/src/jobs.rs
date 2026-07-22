@@ -23,16 +23,23 @@ pub(crate) async fn run_job(
     let cl = DeepSeekClient::new(config.clone())?;
     let store = Store::open(db)?;
     let mut orch = Orchestrator::new(&cl, &store, &config, style)?;
-    let emit = |st: crate::state::Stats| {
+    let emit = |ev: crate::orchestrator::ProgressEvent| {
         let _ = app.emit(
             "progress",
             Progress {
                 project: project_id.to_string(),
-                done: st.done,
-                total: st.total,
-                failed: st.failed,
-                pending: st.pending,
+                done: ev.stats.done,
+                total: ev.stats.total,
+                failed: ev.stats.failed,
+                pending: ev.stats.pending,
                 running: true,
+                job_done: ev.job_done,
+                job_total: ev.job_total,
+                current_idx: ev.current_idx,
+                current_title: ev.current_title,
+                phase: ev.phase.to_string(),
+                last_ms: ev.last_ms,
+                eta_secs: ev.eta_secs,
             },
         );
     };

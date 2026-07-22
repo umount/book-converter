@@ -3,6 +3,18 @@ import { listen } from "@tauri-apps/api/event";
 import type { CallFn } from "../api";
 import type { BookInfo, Progress } from "../types";
 
+/** Format seconds as `Xm Ys` / `Xh Ym` for ETA display. */
+function formatEta(secs: number): string {
+  const s = Math.max(0, Math.round(secs));
+  if (s < 60) return `${s}s`;
+  const m = Math.floor(s / 60);
+  const r = s % 60;
+  if (m < 60) return r > 0 ? `${m}m ${r}s` : `${m}m`;
+  const h = Math.floor(m / 60);
+  const rm = m % 60;
+  return rm > 0 ? `${h}h ${rm}m` : `${h}h`;
+}
+
 type TranslateOpts = {
   call: CallFn;
   activeId: string;
@@ -77,7 +89,40 @@ export function useTranslationJob({
     const tr = (key: string, vars?: Record<string, string | number>) => tRef.current(key, vars);
     const isActive = (id: string) => id === activeIdRef.current;
     const unsubs = [
-      listen<Progress>("progress", (e) => setProgressForRef.current(e.payload.project, e.payload)),
+      listen<Progress>("progress", (e) => {
+        const p = e.payload;
+        setProgressForRef.current(p.project, p);
+        if (p.phase === "start") {
+          const n = p.job_total || 0;
+          addLogToRef.current(p.project, tr("log.jobProgressStart", { n }));
+          if (p.eta_secs != null && p.eta_secs > 0) {
+            addLogToRef.current(p.project, tr("log.eta", { eta: formatEta(p.eta_secs) }));
+          }
+        } else if (p.phase === "chapter_start") {
+          const title = (p.current_title || "").slice(0, 60);
+          addLogToRef.current(
+            p.project,
+            tr("log.chapterProgress", {
+              done: (p.job_done ?? 0) + 1,
+              total: p.job_total || "?",
+              idx: p.current_idx ?? "?",
+              title,
+            }),
+          );
+        } else if (p.phase === "chapter_done") {
+          const secs = p.last_ms != null ? Math.max(1, Math.round(p.last_ms / 1000)) : null;
+          const parts = [
+            tr("log.chapterDone", {
+              idx: p.current_idx ?? "?",
+              took: secs != null ? tr("log.tookSecs", { n: secs }) : "",
+            }),
+          ];
+          if (p.eta_secs != null && (p.job_done ?? 0) < (p.job_total ?? 0)) {
+            parts.push(tr("log.eta", { eta: formatEta(p.eta_secs) }));
+          }
+          addLogToRef.current(p.project, parts.filter(Boolean).join(" · "));
+        }
+      }),
       listen<{ project: string }>("done", (e) => {
         const id = e.payload.project;
         addLogToRef.current(id, tr("log.runFinished"));
@@ -132,6 +177,12 @@ export function useTranslationJob({
     const lim = limit === "" ? null : Number(limit);
     await call("start_translation", { projectId: activeId, limit: lim });
     addLog(t("log.started", { suffix: lim ? t("log.startedNext", { n: lim }) : "" }));
+    // Optimistic: mark running immediately so the bar/Pause enable before first chapter event.
+    if (progress) {
+      setProgressFor(activeId, { ...progress, running: true });
+    } else {
+      void refreshProgress();
+    }
   }
   async function pause() {
     await call("pause_translation", { projectId: activeId });

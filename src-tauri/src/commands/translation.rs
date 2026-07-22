@@ -86,6 +86,13 @@ pub async fn get_progress(
         failed: st.failed,
         pending: st.pending,
         running,
+        job_done: 0,
+        job_total: 0,
+        current_idx: None,
+        current_title: None,
+        phase: "status".into(),
+        last_ms: None,
+        eta_secs: None,
     })
 }
 

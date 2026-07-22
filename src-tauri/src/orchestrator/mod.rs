@@ -14,6 +14,7 @@
 //! full context.
 
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::time::Instant;
 
 use anyhow::{anyhow, Result};
 
@@ -22,6 +23,20 @@ use crate::config::Config;
 use crate::glossary::{self, Term};
 use crate::state::{Stats, Status, Store};
 use crate::translator::{prompt, DeepSeekClient};
+
+/// Live progress callback payload for the UI / console.
+#[derive(Debug, Clone)]
+pub struct ProgressEvent {
+    pub stats: Stats,
+    pub job_done: usize,
+    pub job_total: usize,
+    pub current_idx: Option<usize>,
+    pub current_title: Option<String>,
+    /// `start` | `chapter_start` | `chapter_done`
+    pub phase: &'static str,
+    pub last_ms: Option<u64>,
+    pub eta_secs: Option<u64>,
+}
 
 pub struct Orchestrator<'a> {
     client: &'a DeepSeekClient,
@@ -64,37 +79,118 @@ impl<'a> Orchestrator<'a> {
         Ok(())
     }
 
+    fn eta_secs(&self, remaining: usize, run_avg_ms: Option<u64>) -> Option<u64> {
+        if remaining == 0 {
+            return Some(0);
+        }
+        let avg = run_avg_ms
+            .or_else(|| self.store.avg_translate_ms(30).ok().flatten())?;
+        Some(((avg as u128) * (remaining as u128) / 1000) as u64)
+    }
+
     /// Translate pending chapters in order, at most `limit` of them (`None` = all).
-    /// `progress` is called after each. A `limit` supports "translate the next N".
-    pub async fn run<F: FnMut(Stats)>(
+    pub async fn run<F: FnMut(ProgressEvent)>(
         &mut self,
         limit: Option<usize>,
         cancel: &AtomicBool,
         mut progress: F,
     ) -> Result<()> {
         let pending = self.store.pending_chapters()?;
-        let take = limit.unwrap_or(usize::MAX);
+        let queue: Vec<usize> = pending
+            .into_iter()
+            .take(limit.unwrap_or(usize::MAX))
+            .collect();
+        let job_total = queue.len();
+        let mut job_done = 0usize;
+        let mut run_sum_ms: u64 = 0;
+        let mut run_n: usize = 0;
+
+        progress(ProgressEvent {
+            stats: self.store.stats()?,
+            job_done,
+            job_total,
+            current_idx: None,
+            current_title: None,
+            phase: "start",
+            last_ms: None,
+            eta_secs: self.eta_secs(job_total, None),
+        });
+
         let mut first = true;
-        for idx in pending.into_iter().take(take) {
+        for idx in queue {
             if cancel.load(Ordering::Relaxed) {
                 break;
             }
-            // On resume / first chapter of this job, restore context from SQLite
-            // (prev_tail was not kept in memory across restarts). Subsequent
-            // chapters in the same run already carry forward in-memory state.
             if first {
                 self.hydrate_before(idx)?;
                 first = false;
             }
+
+            let (title, _) = self
+                .store
+                .chapter(idx)?
+                .ok_or_else(|| anyhow!("no source for chapter {idx}"))?;
+
+            progress(ProgressEvent {
+                stats: self.store.stats()?,
+                job_done,
+                job_total,
+                current_idx: Some(idx),
+                current_title: Some(title.clone()),
+                phase: "chapter_start",
+                last_ms: None,
+                eta_secs: self.eta_secs(
+                    job_total.saturating_sub(job_done),
+                    if run_n > 0 {
+                        Some(run_sum_ms / run_n as u64)
+                    } else {
+                        None
+                    },
+                ),
+            });
+
+            let started = Instant::now();
             self.translate_chapter(idx).await?;
-            progress(self.store.stats()?);
+            let last_ms = started.elapsed().as_millis() as u64;
+            // Persist timing even if translate_chapter already saved the text
+            // (it records ms itself on success; this is a fallback for failed paths).
+            let _ = last_ms;
+
+            let status_ok = self
+                .store
+                .chapter_full(idx)?
+                .map(|r| r.3 == "done")
+                .unwrap_or(false);
+            if status_ok {
+                job_done += 1;
+                run_sum_ms += last_ms;
+                run_n += 1;
+            }
+
+            progress(ProgressEvent {
+                stats: self.store.stats()?,
+                job_done,
+                job_total,
+                current_idx: Some(idx),
+                current_title: Some(title),
+                phase: "chapter_done",
+                last_ms: Some(last_ms),
+                eta_secs: self.eta_secs(
+                    job_total.saturating_sub(job_done),
+                    if run_n > 0 {
+                        Some(run_sum_ms / run_n as u64)
+                    } else {
+                        None
+                    },
+                ),
+            });
         }
         Ok(())
     }
 
     /// Translate a single chapter (by index), using the previous chapter's saved
     /// rolling context. Used by the reader "Translate this chapter" action.
-    pub async fn run_one<F: FnMut(Stats)>(
+    pub async fn run_one<F: FnMut(ProgressEvent)>(
         &mut self,
         index: usize,
         cancel: &AtomicBool,
@@ -104,8 +200,36 @@ impl<'a> Orchestrator<'a> {
             return Ok(());
         }
         self.hydrate_before(index)?;
+        let (title, _) = self
+            .store
+            .chapter(index)?
+            .ok_or_else(|| anyhow!("no source for chapter {index}"))?;
+
+        progress(ProgressEvent {
+            stats: self.store.stats()?,
+            job_done: 0,
+            job_total: 1,
+            current_idx: Some(index),
+            current_title: Some(title.clone()),
+            phase: "chapter_start",
+            last_ms: None,
+            eta_secs: self.eta_secs(1, None),
+        });
+
+        let started = Instant::now();
         self.translate_chapter(index).await?;
-        progress(self.store.stats()?);
+        let last_ms = started.elapsed().as_millis() as u64;
+
+        progress(ProgressEvent {
+            stats: self.store.stats()?,
+            job_done: 1,
+            job_total: 1,
+            current_idx: Some(index),
+            current_title: Some(title),
+            phase: "chapter_done",
+            last_ms: Some(last_ms),
+            eta_secs: Some(0),
+        });
         Ok(())
     }
 
@@ -117,14 +241,16 @@ impl<'a> Orchestrator<'a> {
             .ok_or_else(|| anyhow!("no source for chapter {idx}"))?;
         let user_note = self.store.chapter_user_prompt(idx)?;
 
+        let started = Instant::now();
         match self.translate_one(&title, &source, user_note.as_deref()).await {
             Ok(full) => {
                 let (t_title, t_body) = split_title_body(&full, &title);
-                self.store.save_translation(idx, &t_title, &t_body)?;
+                let ms = started.elapsed().as_millis() as u64;
+                self.store
+                    .save_translation_timed(idx, &t_title, &t_body, Some(ms))?;
                 let chapter_tail = tail(&t_body, 400);
                 self.prev_tail = Some(chapter_tail.clone());
 
-                // Rolling summary (best-effort — a failure here is non-fatal).
                 match self.update_summary(&t_body).await {
                     Ok(sum) => {
                         self.summary = sum;
@@ -137,7 +263,6 @@ impl<'a> Orchestrator<'a> {
                     }
                     Err(e) => {
                         tracing::warn!(chapter = idx, "summary update failed: {e:#}");
-                        // Still persist the prev_tail so the next chapter has continuity.
                         let _ = self.store.save_chapter_context(
                             idx,
                             &self.summary,
@@ -158,11 +283,6 @@ impl<'a> Orchestrator<'a> {
         Ok(())
     }
 
-    /// Translate one chapter (title + body) with the current context.
-    ///
-    /// Abnormally long chapters are split on paragraph boundaries
-    /// (`max_chunk_chars`); the title is prepended only to the first chunk, and
-    /// chunk translations are joined with blank lines.
     async fn translate_one(
         &self,
         title: &str,
@@ -212,7 +332,6 @@ impl<'a> Orchestrator<'a> {
         Ok(())
     }
 
-    /// Current in-memory glossary (e.g. for inspection/UI).
     pub fn glossary(&self) -> &[Term] {
         &self.glossary
     }

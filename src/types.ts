@@ -6,7 +6,21 @@ export type BookInfo = {
   format: string; encoding: string; needs_delimiter: boolean; missing: number; duplicates: number;
 };
 export type RefInfo = { title: string; chapters: number; max_covered: number | null; imported: number };
-export type Progress = { project: string; done: number; total: number; failed: number; pending: number; running: boolean };
+export type Progress = {
+  project: string;
+  done: number;
+  total: number;
+  failed: number;
+  pending: number;
+  running: boolean;
+  job_done?: number;
+  job_total?: number;
+  current_idx?: number | null;
+  current_title?: string | null;
+  phase?: string;
+  last_ms?: number | null;
+  eta_secs?: number | null;
+};
 export type Term = { source: string; target: string; kind: string; frequency: number; pinned: boolean };
 export const TERM_KINDS = ["person", "location", "organization", "term"] as const;
 // Language names understood by the model in prompts ("translate from X to Y").
