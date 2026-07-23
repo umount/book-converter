@@ -659,6 +659,28 @@ impl Store {
         Ok(rows)
     }
 
+    /// Done chapters with source + translation, in reading order:
+    /// `(idx, source, translated)`.
+    pub fn done_chapter_pairs(&self) -> Result<Vec<(usize, String, String)>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT idx, source, translated FROM chapters
+             WHERE status = 'done'
+               AND translated IS NOT NULL AND TRIM(translated) != ''
+               AND source IS NOT NULL AND TRIM(source) != ''
+             ORDER BY idx",
+        )?;
+        let rows = stmt
+            .query_map([], |r| {
+                Ok((
+                    r.get::<_, i64>(0)? as usize,
+                    r.get::<_, String>(1)?,
+                    r.get::<_, String>(2)?,
+                ))
+            })?
+            .collect::<rusqlite::Result<Vec<_>>>()?;
+        Ok(rows)
+    }
+
     /// Load the whole glossary.
     pub fn load_glossary(&self) -> Result<Vec<Term>> {
         let mut stmt = self

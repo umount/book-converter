@@ -213,6 +213,7 @@ export default function App() {
                       onSaveSummary={book.saveSummary}
                       onOpenReference={openReference}
                       onBootstrap={job.bootstrap}
+                      onHarvestGlossary={job.harvestGlossary}
                       onStart={job.start} onPause={job.pause}
                       onRefreshProgress={job.refreshProgress}
                       onRetranslate={job.reTranslate}

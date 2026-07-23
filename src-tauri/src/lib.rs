@@ -65,6 +65,7 @@ pub fn run() {
             commands::open_project,
             commands::load_reference,
             commands::bootstrap_glossary,
+            commands::harvest_glossary,
             commands::use_reference_as_base,
             commands::start_translation,
             commands::pause_translation,

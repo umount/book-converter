@@ -83,10 +83,14 @@ pub async fn bootstrap_glossary(
 
     let source = load_book(Path::new(&source_path)).map_err(err)?;
     let cl = client()?;
-    let glossary = reference::bootstrap_glossary(&cl, &source.chapters, &reference, sample)
+    let store = Store::open(&db).map_err(err)?;
+    // Merge into whatever is already there so a re-bootstrap does not wipe
+    // terms harvested from later machine-translated chapters.
+    let mut glossary = store.load_glossary().map_err(err)?;
+    let extracted = reference::bootstrap_glossary(&cl, &source.chapters, &reference, sample)
         .await
         .map_err(err)?;
-    let store = Store::open(&db).map_err(err)?;
+    crate::glossary::merge(&mut glossary, extracted);
     store.save_glossary(&glossary).map_err(err)?;
     Ok(glossary.len())
 }

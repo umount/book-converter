@@ -186,6 +186,20 @@ export function useTranslationJob({
     if (n !== undefined) { addLog(t("log.bootstrapped", { n })); void refreshGlossary(); }
   }
 
+  /** Pull terms from already-translated chapters (start or end of the done range). */
+  async function harvestGlossary(fromEnd: boolean) {
+    if (progress?.running) return;
+    setBusyFor(activeId, t("busy.harvesting", { n: sample, where: fromEnd ? t("glossary.harvestEnd") : t("glossary.harvestStart") }));
+    addLog(t("log.harvesting", { n: sample, where: fromEnd ? t("glossary.harvestEnd") : t("glossary.harvestStart") }));
+    const n = await call<number>(
+      "harvest_glossary",
+      { projectId: activeId, sample, fromEnd },
+      { critical: true },
+    );
+    setBusyFor(activeId, null);
+    if (n !== undefined) { addLog(t("log.harvested", { n })); void refreshGlossary(); }
+  }
+
   async function start() {
     const lim = limit === "" ? null : Number(limit);
     const ok = await call("start_translation", { projectId: activeId, limit: lim });
@@ -279,7 +293,7 @@ export function useTranslationJob({
     addLog, addLogTo,
     setProgressFor,
     refreshProgressFor, refreshProgress,
-    bootstrap, start, pause, reTranslate,
+    bootstrap, harvestGlossary, start, pause, reTranslate,
     translateChapter, saveChapterTranslation,
     saveChapterPrompt, saveChapterContext, retranslateWithPrompt,
     clearProjectJobState,

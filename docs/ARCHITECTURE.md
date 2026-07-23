@@ -213,6 +213,7 @@ App data layout (see also `PROJECT_ISOLATION.md`):
 |---------|---------|
 | `load_reference` | Load reference; seed pending chapters |
 | `bootstrap_glossary` | Pinned glossary from aligned sample |
+| `harvest_glossary` | Extract terms from done chapters (start or end) into glossary |
 | `use_reference_as_base` | Explicit continue-mode re-seed |
 
 ### Translation job

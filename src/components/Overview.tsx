@@ -32,6 +32,7 @@ type Props = {
   onSaveSummary: (text: string) => void;
   onOpenReference: () => void;
   onBootstrap: () => void;
+  onHarvestGlossary: (fromEnd: boolean) => void;
   onStart: () => void;
   onPause: () => void;
   onRefreshProgress: () => void;
@@ -42,7 +43,7 @@ export function Overview({
   t, collapsed, onToggle, refInfo, details, progress, activeKey,
   sample, setSample, limit, setLimit, reFrom, setReFrom,
   onTranslateTitle, onReplaceCover, onGenerateSummary, onSaveSummary,
-  onOpenReference, onBootstrap, onStart, onPause, onRefreshProgress, onRetranslate,
+  onOpenReference, onBootstrap, onHarvestGlossary, onStart, onPause, onRefreshProgress, onRetranslate,
 }: Props) {
   const jobTotal = progress?.job_total && progress.job_total > 0 ? progress.job_total : null;
   const jobDone = progress?.job_done ?? 0;
@@ -98,19 +99,59 @@ export function Overview({
             <button onClick={onOpenReference}>{t("reference.add")}</button>
           </div>
         ) : (
-          <>
+          <div className="row">
+            <strong>{refInfo.title || t("book.untitled")}</strong>
+            <span className="muted">{t("reference.covers", { n: refInfo.max_covered ?? "?", chapters: refInfo.chapters })}</span>
+            <div className="menu-spacer" />
+            <button className="ghost" onClick={onOpenReference}>{t("reference.replace")}</button>
+          </div>
+        )}
+        {(refInfo || (progress && progress.done > 0)) && (
+          <div className="retranslate" style={{ marginTop: 10 }}>
             <div className="row">
-              <strong>{refInfo.title || t("book.untitled")}</strong>
-              <span className="muted">{t("reference.covers", { n: refInfo.max_covered ?? "?", chapters: refInfo.chapters })}</span>
-              <div className="menu-spacer" />
-              <button className="ghost" onClick={onOpenReference}>{t("reference.replace")}</button>
-            </div>
-            <div className="row" style={{ marginTop: 10 }}>
               <label>{t("reference.bootstrapLabel")}</label>
-              <input type="number" min={1} value={sample} onChange={(e) => setSample(Number(e.target.value))} style={{ width: 64 }} title={t("translate.sample")} />
-              <button onClick={onBootstrap}>{t("translate.bootstrap")}</button>
+              <input
+                type="number"
+                min={1}
+                value={sample}
+                onChange={(e) => setSample(Math.max(1, Number(e.target.value) || 1))}
+                style={{ width: 64 }}
+                title={t("glossary.harvestSampleTip")}
+              />
+              {refInfo && (
+                <button disabled={!!progress?.running} onClick={onBootstrap} title={t("translate.bootstrap")}>
+                  {t("translate.bootstrap")}
+                </button>
+              )}
+              {progress && progress.done > 0 && (
+                <>
+                  <button
+                    className="ghost"
+                    disabled={progress.running}
+                    onClick={() => onHarvestGlossary(false)}
+                    title={t("glossary.harvestHint")}
+                  >
+                    {t("glossary.harvestStart")}
+                  </button>
+                  <button
+                    className="ghost"
+                    disabled={progress.running}
+                    onClick={() => onHarvestGlossary(true)}
+                    title={t("glossary.harvestHint")}
+                  >
+                    {t("glossary.harvestEnd")}
+                  </button>
+                </>
+              )}
             </div>
-          </>
+            <div className="muted resume-hint">
+              {refInfo && progress && progress.done > 0
+                ? t("glossary.seedHintBoth")
+                : refInfo
+                  ? t("glossary.seedHintReference")
+                  : t("glossary.harvestHint")}
+            </div>
+          </div>
         )}
       </Panel>
 
