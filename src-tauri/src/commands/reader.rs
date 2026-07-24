@@ -70,6 +70,36 @@ pub async fn get_chapter(
     })
 }
 
+/// Literal find/replace across every stored translation in the project. Returns
+/// the number of chapters changed. Deterministic counterpart to the glossary
+/// retarget (which rewrites paragraphs via the model).
+#[tauri::command]
+pub async fn replace_in_book(
+    project_id: String,
+    find: String,
+    replace: String,
+    match_case: bool,
+    whole_word: bool,
+    state: State<'_, AppState>,
+) -> Result<usize, String> {
+    if find.is_empty() {
+        return Ok(0);
+    }
+    let db = state
+        .with(&project_id, |s| s.db_path.clone())
+        .ok_or("no_source")?;
+    let mut pat = regex::escape(&find);
+    if whole_word {
+        pat = format!(r"\b{pat}\b");
+    }
+    let re = regex::RegexBuilder::new(&pat)
+        .case_insensitive(!match_case)
+        .build()
+        .map_err(err)?;
+    let store = Store::open(&db).map_err(err)?;
+    store.replace_in_translations(&re, &replace).map_err(err)
+}
+
 /// Set or clear the per-chapter user instruction (empty string clears it).
 /// Used before re-translating a chapter with custom guidance.
 #[tauri::command]

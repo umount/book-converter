@@ -298,6 +298,21 @@ tr.add-row input::placeholder { color: var(--fg-subtle); }
 .tp-target { font-weight: 600; }
 .tp-kind { margin-left: auto; font-size: 10px; text-transform: uppercase; letter-spacing: .05em; color: var(--fg-subtle); border: 1px solid var(--border); border-radius: 8px; padding: 0 6px; }
 .tp-open { align-self: flex-start; }
+
+/* Search matches (find bar) */
+.search-hit { background: color-mix(in srgb, var(--warn) 32%, transparent); border-radius: 2px; }
+.search-current { background: var(--warn); color: #17171a; }
+
+/* Find / replace bar */
+.findbar { display: flex; align-items: flex-start; gap: 6px; margin-bottom: 10px; padding: 8px; background: var(--bg-panel); border: 1px solid var(--border); border-radius: var(--r-lg); flex: 0 0 auto; }
+.findbar-toggle { background: transparent; border: 0; color: var(--fg-muted); cursor: pointer; padding: 4px 6px; font-size: 12px; }
+.findbar-toggle:hover { color: var(--fg); }
+.findbar-rows { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 6px; }
+.findbar-row { display: flex; align-items: center; gap: 6px; }
+.findbar-input { flex: 1; min-width: 0; }
+.findbar-count { font-size: 11px; color: var(--fg-muted); flex: 0 0 auto; min-width: 68px; text-align: right; }
+.findbar .chip { padding: 3px 7px; font-family: var(--font-mono); }
+.findbar .chip[data-on="true"] { background: var(--accent); color: var(--accent-fg); border-color: var(--accent); }
 .ch-empty { display: flex; align-items: center; justify-content: center; min-height: 120px; }
 .ch-edit { display: flex; flex-direction: column; gap: 8px; height: 100%; min-height: 200px; }
 .ch-edit-title { width: 100%; padding: 8px 10px; font-weight: 600; font-size: 14px; }

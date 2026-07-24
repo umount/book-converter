@@ -15,6 +15,7 @@ import { TabBar } from "./components/shell/TabBar";
 import { CommandPalette, type Command } from "./components/CommandPalette";
 import { useHotkeys } from "./hooks/useHotkeys";
 import { useTabs } from "./hooks/useTabs";
+import type { FindOpts } from "./lib/find";
 import { useBookWorkspace } from "./hooks/useBookWorkspace";
 import { useGlossary } from "./hooks/useGlossary";
 import { useProjects, type ProjectHelpers } from "./hooks/useProjects";
@@ -115,6 +116,20 @@ export default function App() {
   function openGlossaryTerm(source: string) {
     glossary.setGlossaryQuery(source);
     setView("glossary");
+  }
+
+  // Literal find/replace across every stored translation, then reload the reader.
+  async function replaceInBook(findStr: string, replaceStr: string, opts: FindOpts): Promise<number> {
+    const n = await call<number>("replace_in_book", {
+      projectId: activeId, find: findStr, replace: replaceStr,
+      matchCase: opts.matchCase, wholeWord: opts.wholeWord,
+    });
+    if (n != null) {
+      job.addLog(t("log.replacedInBook", { n }));
+      await book.loadChapters();
+      if (book.chapterIdx != null) await book.openChapter(book.chapterIdx);
+    }
+    return n ?? 0;
   }
 
   helpersRef.current = {
@@ -338,6 +353,7 @@ export default function App() {
                       hl={book.hl} setHl={book.setHl}
                       terms={glossary.glossary}
                       onOpenGlossaryTerm={openGlossaryTerm}
+                      onReplaceInBook={replaceInBook}
                       translating={!!progress?.running}
                       onTranslateChapter={job.translateChapter}
                       onSaveTranslation={job.saveChapterTranslation}

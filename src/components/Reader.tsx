@@ -1,7 +1,11 @@
 import { useEffect, useMemo, useState, type Dispatch, type SetStateAction } from "react";
+import { countMatches, replaceAllText, replaceNth, type FindOpts } from "../lib/find";
 import { tokenizeLines } from "../lib/highlight";
+import { useFindReplace } from "../hooks/useFindReplace";
+import { useHotkeys } from "../hooks/useHotkeys";
 import type { ChapterRow, ChapterView, Term } from "../types";
 import { EditorSurface } from "./reader/EditorSurface";
+import { FindReplaceBar } from "./reader/FindReplaceBar";
 import { TermPopover } from "./reader/TermPopover";
 
 type PaneState = { orig: boolean; transl: boolean };
@@ -22,6 +26,8 @@ type Props = {
   terms: Term[];
   /** Jump to a term's entry in the glossary view. */
   onOpenGlossaryTerm: (source: string) => void;
+  /** Literal find/replace across every stored translation; returns changed count. */
+  onReplaceInBook: (find: string, replace: string, opts: FindOpts) => Promise<number>;
   /** True while a translation job is running for this project. */
   translating: boolean;
   onTranslateChapter: (idx: number) => void;
@@ -33,7 +39,7 @@ type Props = {
 
 export function Reader({
   t, chapters, chapterIdx, setChapterIdx, chapter, chapterLoading,
-  panes, setPanes, hl, setHl, terms, onOpenGlossaryTerm,
+  panes, setPanes, hl, setHl, terms, onOpenGlossaryTerm, onReplaceInBook,
   translating, onTranslateChapter, onSaveTranslation,
   onSaveChapterPrompt, onSaveChapterContext, onRetranslateWithPrompt,
 }: Props) {
@@ -70,14 +76,68 @@ export function Reader({
   const termMap = useMemo(() => new Map(terms.map((tm) => [tm.source, tm])), [terms]);
   const srcMatches = useMemo(() => terms.map((tm) => ({ match: tm.source, key: tm.source })), [terms]);
   const tgtMatches = useMemo(() => terms.map((tm) => ({ match: tm.target, key: tm.source })), [terms]);
+
+  const find = useFindReplace();
+  const [replaceBusy, setReplaceBusy] = useState(false);
+  const translation = chapter?.translated ?? "";
+  const findOpts = useMemo<FindOpts>(
+    () => ({ matchCase: find.matchCase, wholeWord: find.wholeWord }),
+    [find.matchCase, find.wholeWord],
+  );
+  const searchSpec = useMemo(
+    () => (find.open && find.query ? { query: find.query, opts: findOpts } : null),
+    [find.open, find.query, findOpts],
+  );
+  const matchCount = useMemo(
+    () => (searchSpec ? countMatches(translation, searchSpec.query, findOpts) : 0),
+    [searchSpec, translation, findOpts],
+  );
+
   const sourceLines = useMemo(
     () => tokenizeLines(chapter?.source ?? "", hl ? srcMatches : []),
     [chapter?.source, srcMatches, hl],
   );
   const translLines = useMemo(
-    () => tokenizeLines(chapter?.translated ?? "", hl ? tgtMatches : []),
-    [chapter?.translated, tgtMatches, hl],
+    () => tokenizeLines(translation, hl ? tgtMatches : [], searchSpec),
+    [translation, tgtMatches, hl, searchSpec],
   );
+
+  // Keep the active match index valid across query / chapter changes.
+  useEffect(() => {
+    if (find.current >= matchCount) find.setCurrent(0);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [matchCount]);
+  useEffect(() => {
+    find.setCurrent(0);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [find.query, find.matchCase, find.wholeWord, chapterIdx]);
+
+  useHotkeys({
+    "mod+f": (e) => { if (chapter) { e.preventDefault(); find.openBar("find"); } },
+    "mod+h": (e) => { if (chapter) { e.preventDefault(); find.openBar("replace"); } },
+  });
+
+  function findNext() { if (matchCount) find.setCurrent((find.current + 1) % matchCount); }
+  function findPrev() { if (matchCount) find.setCurrent((find.current - 1 + matchCount) % matchCount); }
+
+  async function replaceOne() {
+    if (chapterIdx == null || !find.query || matchCount === 0) return;
+    const next = replaceNth(translation, find.query, find.replacement, findOpts, find.current);
+    if (next !== translation) await onSaveTranslation(chapterIdx, chapter?.translated_title ?? "", next);
+  }
+  async function replaceAll() {
+    if (!find.query) return;
+    if (find.scope === "book") {
+      if (!confirm(t("find.replaceBookConfirm", { find: find.query, replace: find.replacement }))) return;
+      setReplaceBusy(true);
+      try { await onReplaceInBook(find.query, find.replacement, findOpts); }
+      finally { setReplaceBusy(false); }
+      return;
+    }
+    if (chapterIdx == null) return;
+    const { text: next, count } = replaceAllText(translation, find.query, find.replacement, findOpts);
+    if (count > 0) await onSaveTranslation(chapterIdx, chapter?.translated_title ?? "", next);
+  }
 
   function onTermClick(key: string, rect: DOMRect) {
     const term = termMap.get(key);
@@ -174,6 +234,21 @@ export function Reader({
         </button>
       </div>
 
+      {find.open && chapter && (
+        <FindReplaceBar
+          t={t} mode={find.mode} setMode={find.setMode}
+          query={find.query} setQuery={find.setQuery}
+          replacement={find.replacement} setReplacement={find.setReplacement}
+          matchCase={find.matchCase} setMatchCase={find.setMatchCase}
+          wholeWord={find.wholeWord} setWholeWord={find.setWholeWord}
+          scope={find.scope} setScope={find.setScope}
+          count={matchCount} current={find.current} busy={replaceBusy}
+          onPrev={findPrev} onNext={findNext}
+          onReplaceOne={() => void replaceOne()} onReplaceAll={() => void replaceAll()}
+          onClose={find.close}
+        />
+      )}
+
       {promptOpen && chapter && (
         <div className="chapter-prompt">
           <div className="chapter-prompt-head">
@@ -266,7 +341,7 @@ export function Reader({
               ) : <>
                 <div className="chtitle">{chapter?.translated_title}</div>
                 {hasTranslation ? (
-                  <EditorSurface lines={translLines} activeKey={activeTerm} onTermClick={onTermClick} />
+                  <EditorSurface lines={translLines} activeKey={activeTerm} onTermClick={onTermClick} currentSearch={searchSpec ? find.current : undefined} />
                 ) : (
                   <div className="ch-empty">
                     <button disabled={!canTranslate} onClick={() => chapterIdx != null && onTranslateChapter(chapterIdx)}>

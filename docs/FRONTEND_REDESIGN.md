@@ -199,7 +199,11 @@ literals in components, matching the current convention. New key groups:
   (`TermPopover`) with jump-to-glossary; cross-pane source<->target via a shared
   term key. The old blanket `highlight()` and the `<select>` chapter picker are
   gone (replaced by prev/next + tree/tabs/palette).
-- **P3 — Find & replace.** ⌘F / ⌘H in-chapter; book-wide via the backend command.
+- **P3 — Find & replace. [done]** `⌘F` find / `⌘H` replace bar in the reader
+  (`useFindReplace`, `FindReplaceBar`, `lib/find.ts`); match count + prev/next
+  with scroll, search highlight woven into the tokenizer; replace one / all in the
+  current chapter (persisted via `update_chapter_translation`); whole-book replace
+  via the new `replace_in_book` command (`Store::replace_in_translations`).
 - **P4 — Glossary + Overview restyle.** Deep-link anchors, kind tags + filter;
   dashboard styling for Overview (all current actions preserved).
 - **P5 — Settings.** Section-nav settings page + search; advanced options wired to

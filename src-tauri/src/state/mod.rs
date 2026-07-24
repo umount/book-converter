@@ -637,6 +637,42 @@ impl Store {
         Ok(rows)
     }
 
+    /// Literal find/replace across every stored translation (title + body).
+    /// Returns the number of chapters actually changed. Status and origin are
+    /// left untouched (this is a text edit, not a re-translation).
+    pub fn replace_in_translations(&self, re: &regex::Regex, replacement: &str) -> Result<usize> {
+        let mut stmt = self.conn.prepare(
+            "SELECT idx, translated_title, translated FROM chapters WHERE translated IS NOT NULL",
+        )?;
+        let rows = stmt
+            .query_map([], |r| {
+                Ok((
+                    r.get::<_, i64>(0)? as usize,
+                    r.get::<_, Option<String>>(1)?,
+                    r.get::<_, String>(2)?,
+                ))
+            })?
+            .collect::<rusqlite::Result<Vec<_>>>()?;
+
+        let mut changed = 0usize;
+        for (idx, title, body) in rows {
+            let new_body = re.replace_all(&body, replacement).into_owned();
+            let new_title = title.as_ref().map(|t| re.replace_all(t, replacement).into_owned());
+            if new_body != body || new_title.as_deref() != title.as_deref() {
+                self.conn.execute(
+                    "UPDATE chapters
+                     SET translated = ?2,
+                         translated_title = COALESCE(?3, translated_title),
+                         updated_at = datetime('now')
+                     WHERE idx = ?1",
+                    params![idx as i64, new_body, new_title],
+                )?;
+                changed += 1;
+            }
+        }
+        Ok(changed)
+    }
+
     /// Chapters that have a stored rolling context: `(idx, rolling_summary, prev_tail)`.
     /// Empty strings are normalized to `""` (never null in the result).
     pub fn chapter_contexts(&self) -> Result<Vec<(usize, String, String)>> {
