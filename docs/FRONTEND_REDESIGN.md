@@ -193,8 +193,12 @@ literals in components, matching the current convention. New key groups:
   actions; global hotkeys (`useHotkeys`: ⌘P/⌘B/⌘J/⌘,/Alt+↑↓/⌘Enter). Shared
   `lib/chapters.ts` (glyph, label, match). The reader's chapter `<select>` stays
   until the P2 reader rework replaces it.
-- **P2 — Editor.** Gutter line numbers; pane-mode segmented control; new tokenized
-  occurrence highlight + popover + jump-to-glossary + cross-pane linking.
+- **P2 — Editor. [done]** Line-number gutter + tokenized text (`EditorSurface`,
+  `lib/highlight.ts`); pane-mode segmented control (Split / Original /
+  Translation); resting dotted underline, click -> occurrence highlight + popover
+  (`TermPopover`) with jump-to-glossary; cross-pane source<->target via a shared
+  term key. The old blanket `highlight()` and the `<select>` chapter picker are
+  gone (replaced by prev/next + tree/tabs/palette).
 - **P3 — Find & replace.** ⌘F / ⌘H in-chapter; book-wide via the backend command.
 - **P4 — Glossary + Overview restyle.** Deep-link anchors, kind tags + filter;
   dashboard styling for Overview (all current actions preserved).

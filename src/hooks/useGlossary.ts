@@ -104,15 +104,12 @@ export function useGlossary({
       ? glossary.filter((term) => term.source.toLowerCase().includes(q) || term.target.toLowerCase().includes(q))
       : glossary;
   }, [glossary, glossaryQuery]);
-  const sourceTerms = useMemo(() => glossary.map((term) => term.source), [glossary]);
-  const targetTerms = useMemo(() => glossary.map((term) => term.target), [glossary]);
-
   return {
     glossary, setGlossary,
     glossaryQuery, setGlossaryQuery,
     newTerm, setNewTerm,
     pending, setPending, pendingCount,
-    filteredGlossary, sourceTerms, targetTerms,
+    filteredGlossary,
     refreshGlossary,
     editTarget, editKind, updateTranslation,
     deleteTerm, renameTerm, addTerm,

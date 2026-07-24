@@ -111,6 +111,12 @@ export default function App() {
     if (i >= 0 && j >= 0 && j < cs.length) tabs.openChapter(cs[j].idx);
   }
 
+  // Jump from a highlighted term in the reader to its glossary entry.
+  function openGlossaryTerm(source: string) {
+    glossary.setGlossaryQuery(source);
+    setView("glossary");
+  }
+
   helpersRef.current = {
     call, t, setBusyFor, setBusyById, setError, logError,
     addLog: job.addLog, addLogTo: job.addLogTo,
@@ -330,8 +336,8 @@ export default function App() {
                       chapterLoading={book.chapterLoading}
                       panes={book.panes} setPanes={book.setPanes}
                       hl={book.hl} setHl={book.setHl}
-                      sourceTerms={glossary.sourceTerms}
-                      targetTerms={glossary.targetTerms}
+                      terms={glossary.glossary}
+                      onOpenGlossaryTerm={openGlossaryTerm}
                       translating={!!progress?.running}
                       onTranslateChapter={job.translateChapter}
                       onSaveTranslation={job.saveChapterTranslation}

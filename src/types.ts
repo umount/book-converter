@@ -1,5 +1,3 @@
-import { createElement, type ReactNode } from "react";
-
 // --- DTOs (mirror src-tauri/src/commands.rs) ---
 export type BookInfo = {
   title: string; author: string; total_chapters: number;
@@ -62,14 +60,3 @@ export const baseName = (p: string) => p.split(/[\\/]/).pop() || p;
 export const newId = () =>
   (crypto.randomUUID ? crypto.randomUUID() : `p-${Date.now()}-${Math.random().toString(36).slice(2)}`);
 export const escapeRe = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-
-// Wrap glossary terms present in `text` with <mark>.
-export function highlight(text: string, terms: string[]): ReactNode[] {
-  const present = Array.from(new Set(terms.filter((t) => t && text.includes(t))))
-    .sort((a, b) => b.length - a.length)
-    .slice(0, 400);
-  if (present.length === 0) return [text];
-  const re = new RegExp(`(${present.map(escapeRe).join("|")})`, "g");
-  return text.split(re).map((part, i) =>
-    (i % 2 === 1 ? createElement("mark", { key: i }, part) : part));
-}
