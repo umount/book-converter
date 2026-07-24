@@ -11,6 +11,7 @@
 | **[DECISIONS.md](DECISIONS.md)** | Key design decisions and their rationale |
 | **[PROJECT_ISOLATION.md](PROJECT_ISOLATION.md)** | Per-project data dirs, parallel runs, `.bcproj` |
 | **[SETTINGS.md](SETTINGS.md)** | Where configuration lives (env, settings DB, localStorage, project meta) |
+| **[FRONTEND_REDESIGN.md](FRONTEND_REDESIGN.md)** | Planned Cursor-style IDE frontend rework: shell, editor, highlight, find/replace, settings |
 | **[../README.md](../README.md)** | Product overview, requirements, setup, usage |
 
 ## At a glance

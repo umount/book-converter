@@ -1,16 +1,6 @@
+import { formatEta } from "../lib/format";
 import type { BookDetails, Progress, RefInfo } from "../types";
 import { Panel } from "./Panel";
-
-function formatEtaLocal(secs: number): string {
-  const s = Math.max(0, Math.round(secs));
-  if (s < 60) return `${s}s`;
-  const m = Math.floor(s / 60);
-  const r = s % 60;
-  if (m < 60) return r > 0 ? `${m}m ${r}s` : `${m}m`;
-  const h = Math.floor(m / 60);
-  const rm = m % 60;
-  return rm > 0 ? `${h}h ${rm}m` : `${h}h`;
-}
 
 type Props = {
   t: (key: string, vars?: Record<string, string | number>) => string;
@@ -60,7 +50,7 @@ export function Overview({
       : "";
   const eta =
     progress?.running && progress.eta_secs != null && progress.eta_secs > 0
-      ? formatEtaLocal(progress.eta_secs)
+      ? formatEta(progress.eta_secs)
       : null;
   const current =
     progress?.running && progress.current_title

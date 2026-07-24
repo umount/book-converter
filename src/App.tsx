@@ -8,6 +8,10 @@ import { Reader } from "./components/Reader";
 import { Settings } from "./components/Settings";
 import { Sidebar } from "./components/Sidebar";
 import { Welcome } from "./components/Welcome";
+import { ActivityBar } from "./components/shell/ActivityBar";
+import { BottomPanel } from "./components/shell/BottomPanel";
+import { StatusBar } from "./components/shell/StatusBar";
+import { TabBar } from "./components/shell/TabBar";
 import { useBookWorkspace } from "./hooks/useBookWorkspace";
 import { useGlossary } from "./hooks/useGlossary";
 import { useProjects, type ProjectHelpers } from "./hooks/useProjects";
@@ -164,18 +168,25 @@ export default function App() {
       />
 
       <div className="body">
+        <ActivityBar
+          t={t}
+          sidebarOpen={sidebar}
+          onToggleSidebar={() => setSidebar((s) => !s)}
+          settingsOpen={showSettings}
+          onToggleSettings={() => setShowSettings((s) => !s)}
+          consoleOpen={showConsole}
+          onToggleConsole={() => setShowConsole((s) => !s)}
+        />
         <Sidebar
-          t={t} sidebar={sidebar} setSidebar={setSidebar}
+          t={t} sidebar={sidebar}
           projects={projects} active={active} setActive={setActive}
-          view={view} setView={setView}
           progressById={progressById} busyById={busyById}
-          glossaryCount={glossary.glossary.length}
           error={error} setError={setError}
           onRemove={removeProject} onOpenBook={openBook}
         />
 
         <div className="rightcol">
-          <main className="workarea">
+          <div className="editor-region">
             {showSettings ? (
               <Settings
                 t={t} collapsed={collapsed} onToggle={toggle}
@@ -185,11 +196,12 @@ export default function App() {
                 onChangeTargetLang={changeTargetLang}
                 onClose={() => setShowSettings(false)}
               />
-            ) : (<>
-              {!activeProject ? (
-                <Welcome t={t} onOpenBook={openBook} />
-              ) : (
-                <>
+            ) : !activeProject ? (
+              <Welcome t={t} onOpenBook={openBook} />
+            ) : (
+              <>
+                <TabBar t={t} view={view} setView={setView} glossaryCount={glossary.glossary.length} />
+                <main className="workarea">
                   <div className="workhead">
                     <div className="worktitle">{book.details?.title_translated || book.details?.title || activeProject.name}</div>
                     <div className="worksub">
@@ -260,20 +272,28 @@ export default function App() {
                       onRetranslateWithPrompt={job.retranslateWithPrompt}
                     />
                   )}
-                </>
-              )}
-            </>)}
-          </main>
+                </main>
+              </>
+            )}
+          </div>
 
           {showConsole && (
-            <Console
-              t={t} log={log} logRef={logRef}
-              onClear={() => activeId && job.setLogsById((all) => ({ ...all, [activeId]: [] }))}
-              onClose={() => setShowConsole(false)}
-            />
+            <BottomPanel>
+              <Console
+                t={t} log={log} logRef={logRef}
+                onClear={() => activeId && job.setLogsById((all) => ({ ...all, [activeId]: [] }))}
+                onClose={() => setShowConsole(false)}
+              />
+            </BottomPanel>
           )}
         </div>
       </div>
+      <StatusBar
+        t={t} progress={progress} book={book.book}
+        glossaryCount={glossary.glossary.length}
+        srcLang={srcLang} tgtLang={tgtLang} busy={busy}
+        onToggleConsole={() => setShowConsole((s) => !s)}
+      />
     </div>
   );
 }
