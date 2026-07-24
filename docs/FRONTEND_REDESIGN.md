@@ -213,8 +213,9 @@ literals in components, matching the current convention. New key groups:
   persisted to the settings DB and read by `Config::load` (default < DB < env);
   `get_effective_config` readback shows resolved values, env-locked keys, and API
   key presence.
-- **P6 — Polish.** Status-bar wiring, i18n completion, performance pass, tooltips
-  and empty states.
+- **P6 — Polish. [done]** Keyboard-shortcut hints in the command palette and the
+  View menu; a "Command palette" menu entry; a ⌘P hint on the Welcome screen;
+  removed dead `.chtext` styles and mark tokens; i18n completed in en/ru/zh.
 
 Each phase is independently shippable and leaves the app runnable.
 

@@ -14,13 +14,15 @@ type Props = {
   onShowBothPanes: () => void;
   onToggleHighlight: () => void;
   onToggleConsole: () => void;
+  onOpenCommandPalette: () => void;
   onOpenSettings: () => void;
 };
 
 export function Menubar({
   t, menu, setMenu, busy, canExport, hasActive,
   onOpenBook, onOpenReference, onOpenProject, onSaveProject, onExport,
-  onToggleSidebar, onShowBothPanes, onToggleHighlight, onToggleConsole, onOpenSettings,
+  onToggleSidebar, onShowBothPanes, onToggleHighlight, onToggleConsole,
+  onOpenCommandPalette, onOpenSettings,
 }: Props) {
   return (
     <>
@@ -48,10 +50,12 @@ export function Menubar({
           {t("menu.view")}
           {menu === "view" && (
             <div className="dropdown" onClick={(e) => e.stopPropagation()}>
-              <div className="mi" onClick={() => { onToggleSidebar(); setMenu(null); }}>{t("view.toggleSidebar")}</div>
+              <div className="mi" onClick={() => { onOpenCommandPalette(); setMenu(null); }}>{t("view.commandPalette")}<span className="mi-key">⌘P</span></div>
+              <div className="sep" />
+              <div className="mi" onClick={() => { onToggleSidebar(); setMenu(null); }}>{t("view.toggleSidebar")}<span className="mi-key">⌘B</span></div>
               <div className="mi" onClick={() => { onShowBothPanes(); setMenu(null); }}>{t("view.showBothPanes")}</div>
               <div className="mi" onClick={() => { onToggleHighlight(); setMenu(null); }}>{t("view.toggleHighlight")}</div>
-              <div className="mi" onClick={() => { onToggleConsole(); setMenu(null); }}>{t("view.toggleConsole")}</div>
+              <div className="mi" onClick={() => { onToggleConsole(); setMenu(null); }}>{t("view.toggleConsole")}<span className="mi-key">⌘J</span></div>
             </div>
           )}
         </div>

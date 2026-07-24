@@ -164,7 +164,7 @@ export default function App() {
     { id: "glossary", label: t("palette.goGlossary"), run: () => setView("glossary") },
     ...(activeProject
       ? [
-          { id: "translate", label: t("palette.translateChapter"), run: () => { if (book.chapterIdx != null) job.translateChapter(book.chapterIdx); } },
+          { id: "translate", label: t("palette.translateChapter"), hint: "⌘⏎", run: () => { if (book.chapterIdx != null) job.translateChapter(book.chapterIdx); } },
           { id: "start", label: t("palette.start"), run: () => job.start() },
           { id: "pause", label: t("palette.pause"), run: () => job.pause() },
           { id: "toggleOriginal", label: t("palette.toggleOriginal"), run: () => book.setPanes((p) => ({ ...p, orig: !p.orig })) },
@@ -175,8 +175,8 @@ export default function App() {
           { id: "export-txt", label: t("palette.exportAs", { fmt: "TXT" }), run: () => exportAs("txt") },
         ]
       : []),
-    { id: "settings", label: t("palette.settings"), run: () => setShowSettings(true) },
-    { id: "toggleConsole", label: t("palette.toggleConsole"), run: () => setShowConsole((s) => !s) },
+    { id: "settings", label: t("palette.settings"), hint: "⌘,", run: () => setShowSettings(true) },
+    { id: "toggleConsole", label: t("palette.toggleConsole"), hint: "⌘J", run: () => setShowConsole((s) => !s) },
   ];
 
   // Language: localStorage is an instant cache to avoid a flash on load; the DB
@@ -243,6 +243,7 @@ export default function App() {
         onShowBothPanes={() => book.setPanes({ orig: true, transl: true })}
         onToggleHighlight={() => book.setHl((h) => !h)}
         onToggleConsole={() => setShowConsole((s) => !s)}
+        onOpenCommandPalette={() => setPaletteOpen(true)}
         onOpenSettings={() => { setShowSettings(true); setMenu(null); }}
       />
 
