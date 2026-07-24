@@ -59,6 +59,15 @@ export function Overview({
 
   return (
     <>
+      {progress && (
+        <div className="stats">
+          <div className="stat"><div className="stat-n">{progress.total}</div><div className="stat-l">{t("overview.statTotal")}</div></div>
+          <div className="stat"><div className="stat-n">{progress.done}</div><div className="stat-l">{t("overview.statDone")}</div></div>
+          <div className="stat"><div className="stat-n">{progress.pending}</div><div className="stat-l">{t("overview.statPending")}</div></div>
+          <div className={`stat ${progress.failed > 0 ? "failed" : ""}`}><div className="stat-n">{progress.failed}</div><div className="stat-l">{t("overview.statFailed")}</div></div>
+        </div>
+      )}
+
       <Panel id="book" title={t("panel.book")} collapsed={collapsed} onToggle={onToggle}>
         <div className="book-details">
           {details?.cover ? <img className="cover" src={details.cover} alt="cover" /> : <div className="cover cover-empty">{t("book.noCover")}</div>}

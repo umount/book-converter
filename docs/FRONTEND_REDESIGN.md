@@ -204,8 +204,10 @@ literals in components, matching the current convention. New key groups:
   with scroll, search highlight woven into the tokenizer; replace one / all in the
   current chapter (persisted via `update_chapter_translation`); whole-book replace
   via the new `replace_in_book` command (`Store::replace_in_translations`).
-- **P4 — Glossary + Overview restyle.** Deep-link anchors, kind tags + filter;
-  dashboard styling for Overview (all current actions preserved).
+- **P4 — Glossary + Overview restyle. [done]** Glossary kind filter + colored
+  kind tags (per-kind color tokens); reader deep-link filters the glossary to the
+  clicked term. Overview gains a stat-tile strip (Chapters / Done / Pending /
+  Failed). All existing actions preserved.
 - **P5 — Settings.** Section-nav settings page + search; advanced options wired to
   the backend (§8); effective-config readback.
 - **P6 — Polish.** Status-bar wiring, i18n completion, performance pass, tooltips

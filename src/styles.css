@@ -42,6 +42,12 @@
   --warn: #e3b341;
   --error: #f14c4c;
 
+  /* --- Glossary term-kind colors --- */
+  --kind-person: #4c8bf5;
+  --kind-location: #3fb950;
+  --kind-organization: #a371f7;
+  --kind-term: #e3b341;
+
   /* --- Glossary term markers (used now; refined in the editor phase) --- */
   --term-underline: color-mix(in srgb, var(--accent) 55%, transparent);
   --mark-bg: color-mix(in srgb, var(--warn) 22%, transparent);
@@ -259,6 +265,24 @@ tr.add-row input::placeholder { color: var(--fg-subtle); }
 
 .settings-page { max-width: 660px; }
 .settings-head { display: flex; align-items: center; justify-content: space-between; }
+
+/* Glossary kind filter + colored tags */
+.kind-filter { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 12px; }
+.kind-chip { display: inline-flex; align-items: center; gap: 6px; }
+.kind-dot { width: 8px; height: 8px; border-radius: 2px; flex: 0 0 auto; }
+.kind-dot.kind-person { background: var(--kind-person); }
+.kind-dot.kind-location { background: var(--kind-location); }
+.kind-dot.kind-organization { background: var(--kind-organization); }
+.kind-dot.kind-term { background: var(--kind-term); }
+.kind-cell { display: flex; align-items: center; gap: 7px; }
+.kind-cell select { flex: 1; }
+
+/* Overview stat tiles */
+.stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 14px; flex: 0 0 auto; }
+.stat { background: var(--bg-panel); border: 1px solid var(--border); border-radius: var(--r-lg); padding: 12px 14px; }
+.stat-n { font-size: 22px; font-weight: 650; line-height: 1.1; }
+.stat-l { color: var(--fg-muted); font-size: 11px; text-transform: uppercase; letter-spacing: .06em; margin-top: 3px; }
+.stat.failed .stat-n { color: var(--danger); }
 
 /* ============================================================================
    Reader (editor surface) — restyled; gutter + occurrence highlight land in P2
