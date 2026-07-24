@@ -21,43 +21,6 @@ pub struct TranslatedChapter {
     pub body: String,
 }
 
-impl TranslatedChapter {
-    /// Build from `state::Store::translated_chapters` rows `(index, title, body)`.
-    pub fn from_rows(rows: Vec<(usize, String, String)>) -> Vec<Self> {
-        rows.into_iter()
-            .map(|(index, title, body)| Self { index, number: None, title, body })
-            .collect()
-    }
-
-}
-
-/// Merge an existing translation with newly translated chapters (the "continue
-/// translation" case). Numbered chapters are ordered by number; a `new` chapter
-/// overrides an `existing` one with the same number. Unnumbered chapters keep
-/// their order at the end.
-pub fn combine(
-    existing: Vec<TranslatedChapter>,
-    new: Vec<TranslatedChapter>,
-) -> Vec<TranslatedChapter> {
-    use std::collections::BTreeMap;
-
-    let mut by_number: BTreeMap<usize, TranslatedChapter> = BTreeMap::new();
-    let mut unnumbered: Vec<TranslatedChapter> = Vec::new();
-
-    for ch in existing.into_iter().chain(new) {
-        match ch.number {
-            Some(n) => {
-                by_number.insert(n, ch);
-            }
-            None => unnumbered.push(ch),
-        }
-    }
-
-    let mut result: Vec<TranslatedChapter> = by_number.into_values().collect();
-    result.extend(unnumbered);
-    result
-}
-
 /// Normalize numbered chapter titles to a uniform "`<label> <n>. <name>`" form.
 ///
 /// Strips a leading chapter marker the model may have left untranslated (`第N章`,
@@ -211,36 +174,6 @@ pub fn export_zip(
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    fn ch(number: usize, body: &str) -> TranslatedChapter {
-        TranslatedChapter {
-            index: number,
-            number: Some(number),
-            title: format!("Гл {number}"),
-            body: body.into(),
-        }
-    }
-
-    #[test]
-    fn combine_appends_and_orders() {
-        let existing = vec![ch(1, "pro1"), ch(2, "pro2")];
-        let new = vec![ch(3, "new3"), ch(4, "new4")];
-        let merged = combine(existing, new);
-        assert_eq!(
-            merged.iter().map(|c| c.number.unwrap()).collect::<Vec<_>>(),
-            vec![1, 2, 3, 4]
-        );
-        assert_eq!(merged[2].body, "new3");
-    }
-
-    #[test]
-    fn combine_new_overrides_same_number() {
-        let existing = vec![ch(1, "old")];
-        let new = vec![ch(1, "fresh")];
-        let merged = combine(existing, new);
-        assert_eq!(merged.len(), 1);
-        assert_eq!(merged[0].body, "fresh");
-    }
 
     #[test]
     fn normalize_titles_fixes_markers() {

@@ -10,12 +10,9 @@ use super::parser::Chapter;
 /// A part of a chapter sent as a single request.
 #[derive(Debug, Clone)]
 pub struct Chunk {
-    /// Index of the chapter this chunk belongs to.
-    pub chapter_index: usize,
-    /// Ordinal number of the chunk within the chapter (0-based).
+    /// Ordinal number of the chunk within the chapter (0-based); the first chunk
+    /// carries the title, and the orchestrator rejoins parts with a blank line.
     pub part: usize,
-    /// Total number of chunks in the chapter (for later reassembly).
-    pub total_parts: usize,
     /// Chunk text.
     pub text: String,
 }
@@ -29,34 +26,18 @@ pub struct Chunk {
 pub fn split_chapter(chapter: &Chapter, max_chunk_chars: usize) -> Vec<Chunk> {
     let body = chapter.body.trim();
     if body.is_empty() {
-        return vec![Chunk {
-            chapter_index: chapter.index,
-            part: 0,
-            total_parts: 1,
-            text: String::new(),
-        }];
+        return vec![Chunk { part: 0, text: String::new() }];
     }
     if max_chunk_chars == 0 || char_len(body) <= max_chunk_chars {
-        return vec![Chunk {
-            chapter_index: chapter.index,
-            part: 0,
-            total_parts: 1,
-            text: body.to_string(),
-        }];
+        return vec![Chunk { part: 0, text: body.to_string() }];
     }
 
     let paragraphs = split_paragraphs(body);
     let texts = pack_paragraphs(&paragraphs, max_chunk_chars);
-    let total_parts = texts.len();
     texts
         .into_iter()
         .enumerate()
-        .map(|(part, text)| Chunk {
-            chapter_index: chapter.index,
-            part,
-            total_parts,
-            text,
-        })
+        .map(|(part, text)| Chunk { part, text })
         .collect()
 }
 
@@ -140,8 +121,6 @@ mod tests {
         let chunks = split_chapter(&ch("短正文。"), 100);
         assert_eq!(chunks.len(), 1);
         assert_eq!(chunks[0].part, 0);
-        assert_eq!(chunks[0].total_parts, 1);
-        assert_eq!(chunks[0].chapter_index, 7);
         assert_eq!(chunks[0].text, "短正文。");
     }
 
@@ -152,7 +131,6 @@ mod tests {
         // Each CJK paragraph is 4 chars; max 8 → two paras per chunk when packing,
         // but "第一段。\n\n第二段。" is 4+2+4 = 10 > 8, so one per chunk.
         assert!(chunks.len() >= 2);
-        assert!(chunks.iter().all(|c| c.total_parts == chunks.len()));
         let joined: String = chunks
             .iter()
             .map(|c| c.text.as_str())

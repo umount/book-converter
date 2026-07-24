@@ -108,6 +108,9 @@ export function useProjects(helpersRef: MutableRefObject<ProjectHelpers>) {
       h.setBusyFor(id, null);
       return; // parse failed (e.g. unreadable PDF): don't create a broken project
     }
+    // Surface book-quality issues detected at load (encoding / chapter numbering).
+    if (info.had_errors) h.addLogTo(id, h.t("log.warnEncoding", { encoding: info.encoding }));
+    if (info.missing > 0 || info.duplicates > 0) h.addLogTo(id, h.t("log.warnChapters", { missing: info.missing, duplicates: info.duplicates }));
     // Leave busy set; activateProject (via setActive) will refresh and clear it.
     const next = [...projects, { id, path, name: baseName(path) }];
     setProjects(next); setActive(next.length - 1);

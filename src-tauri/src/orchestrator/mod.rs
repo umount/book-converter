@@ -352,9 +352,6 @@ impl<'a> Orchestrator<'a> {
         Ok(())
     }
 
-    pub fn glossary(&self) -> &[Term] {
-        &self.glossary
-    }
 }
 
 fn split_title_body(full: &str, source_title: &str) -> (String, String) {

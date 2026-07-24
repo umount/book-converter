@@ -61,15 +61,6 @@ pub struct ParseReport {
     pub duplicate_numbers: Vec<usize>,
 }
 
-impl ParseReport {
-    /// True when the source is complete and free of duplicates.
-    pub fn is_clean(&self) -> bool {
-        self.missing_numbers.is_empty()
-            && self.duplicate_numbers.is_empty()
-            && self.declared.map_or(true, |d| d == self.parsed)
-    }
-}
-
 /// Normalize line endings: CRLF and lone CR both become `\n`.
 fn normalize_newlines(raw: &str) -> String {
     raw.replace("\r\n", "\n").replace('\r', "\n")
@@ -391,7 +382,7 @@ mod tests {
         assert_eq!(report.max_number, Some(10));
         assert_eq!(report.missing_numbers, vec![3, 4, 5, 6, 7, 8, 9]);
         assert!(report.duplicate_numbers.is_empty());
-        assert!(!report.is_clean());
+        assert!(!report.missing_numbers.is_empty());
     }
 
     #[test]

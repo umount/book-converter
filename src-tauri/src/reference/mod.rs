@@ -20,7 +20,6 @@ use anyhow::Result;
 
 use crate::book::{detect_format, load_book_text, read_book_file, BookMeta, Chapter, InputFormat};
 use crate::export::fb2::{extract_head, Fb2Head};
-use crate::export::TranslatedChapter;
 use crate::glossary::{self, Term};
 use crate::translator::DeepSeekClient;
 
@@ -91,38 +90,6 @@ pub fn align<'a>(
 /// Highest chapter number the reference translation covers.
 pub fn max_covered_number(reference: &Reference) -> Option<usize> {
     reference.chapters.iter().filter_map(|c| c.number).max()
-}
-
-/// Source chapters to translate in order to **continue** past the reference,
-/// i.e. those numbered beyond what the reference covers, up to `limit`.
-pub fn continue_from<'a>(
-    source: &'a [Chapter],
-    reference: &Reference,
-    limit: usize,
-) -> Vec<&'a Chapter> {
-    let after = max_covered_number(reference).unwrap_or(0);
-    let mut chosen: Vec<&Chapter> = source
-        .iter()
-        .filter(|c| c.number.map_or(false, |n| n > after))
-        .collect();
-    chosen.sort_by_key(|c| c.number.unwrap_or(usize::MAX));
-    chosen.truncate(limit);
-    chosen
-}
-
-/// The reference's chapters as export-ready `TranslatedChapter`s — the existing
-/// (human) translation to prepend when continuing a book.
-pub fn as_translated(reference: &Reference) -> Vec<TranslatedChapter> {
-    reference
-        .chapters
-        .iter()
-        .map(|c| TranslatedChapter {
-            index: c.index,
-            number: c.number,
-            title: c.title.clone(),
-            body: c.body.clone(),
-        })
-        .collect()
 }
 
 /// A short professional excerpt to use as a few-shot style reference in prompts.
@@ -204,20 +171,13 @@ mod tests {
     }
 
     #[test]
-    fn continue_from_picks_chapters_past_coverage() {
-        let source: Vec<Chapter> = (1..=10).map(|i| chapter(i, Some(i), "s")).collect();
-        // reference covers 1..=4
+    fn max_covered_is_highest_reference_number() {
         let reference = Reference {
             meta: BookMeta::default(),
             chapters: (1..=4).map(|i| chapter(i, Some(i), "r")).collect(),
             head: None,
         };
         assert_eq!(max_covered_number(&reference), Some(4));
-        let next = continue_from(&source, &reference, 3);
-        assert_eq!(
-            next.iter().map(|c| c.number.unwrap()).collect::<Vec<_>>(),
-            vec![5, 6, 7]
-        );
     }
 
     #[test]

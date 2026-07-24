@@ -119,6 +119,7 @@ pub async fn load_source(
         needs_delimiter: book.needs_delimiter,
         missing: book.report.missing_numbers.len(),
         duplicates: book.report.duplicate_numbers.len(),
+        had_errors: book.encoding_had_errors,
     })
 }
 
@@ -181,6 +182,7 @@ pub async fn open_project(
         needs_delimiter: false,
         missing: 0,
         duplicates: 0,
+        had_errors: false,
     })
 }
 

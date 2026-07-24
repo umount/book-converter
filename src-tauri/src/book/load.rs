@@ -32,6 +32,9 @@ pub struct LoadedBook {
     pub report: ParseReport,
     /// TXT only: no chapter pattern matched — needs a model-inferred delimiter.
     pub needs_delimiter: bool,
+    /// The decode produced replacement characters — the encoding guess is likely
+    /// wrong (garbled text). Only set by `load_book` (which owns the raw bytes).
+    pub encoding_had_errors: bool,
 }
 
 /// Detect the input format from the decoded text (content-based, not extension).
@@ -47,7 +50,9 @@ pub fn detect_format(text: &str) -> InputFormat {
 /// Read a file, decode it, detect the format, and parse into chapters.
 pub fn load_book(path: &Path) -> Result<LoadedBook> {
     let decoded = read_book_file(path)?;
-    load_book_text(&decoded.text, decoded.encoding)
+    let mut book = load_book_text(&decoded.text, decoded.encoding)?;
+    book.encoding_had_errors = decoded.had_errors;
+    Ok(book)
 }
 
 /// Parse already-decoded text (encoding is passed through for reporting).
@@ -64,6 +69,7 @@ pub fn load_book_text(text: &str, encoding: &str) -> Result<LoadedBook> {
                 chapters,
                 report,
                 needs_delimiter: false,
+                encoding_had_errors: false,
             }
         }
         InputFormat::Txt => {
@@ -78,6 +84,7 @@ pub fn load_book_text(text: &str, encoding: &str) -> Result<LoadedBook> {
                 chapters,
                 report,
                 needs_delimiter,
+                encoding_had_errors: false,
             }
         }
     };

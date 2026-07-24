@@ -14,6 +14,8 @@ pub struct BookInfo {
     pub needs_delimiter: bool,
     pub missing: usize,
     pub duplicates: usize,
+    /// Decoding produced replacement characters (likely wrong encoding).
+    pub had_errors: bool,
 }
 
 #[derive(Serialize)]
