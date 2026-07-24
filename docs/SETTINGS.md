@@ -30,25 +30,31 @@ Loaded by `Config::load()` via `dotenvy` (real env wins over `.env`).
 | `SOURCE_LANG` | (see settings DB / default Chinese) | Overrides source language |
 | `TARGET_LANG` | (see settings DB / default Russian) | Overrides target language |
 
-`Config` also holds `temperature`, `request_timeout_secs` (default 600),
-`max_chunk_chars` (10000), `max_output_tokens` (384000 — DeepSeek V4 max),
-`max_retries` (code defaults; not currently exposed in the UI). If a reply hits
-the output limit (`finish_reason=length`), the DeepSeek client continues the
-completion.
+`Config` also holds `request_timeout_secs` (default 600) and `max_output_tokens`
+(384000 — DeepSeek V4 max), which are not exposed in the UI. `model`, `base_url`,
+`temperature`, `max_chunk_chars`, and `max_retries` are exposed on the Settings
+page and stored in the settings DB (see below); env still wins for `model` /
+`base_url`. If a reply hits the output limit (`finish_reason=length`), the
+DeepSeek client continues the completion.
 
 ## Settings DB (`settings.db`)
 
 Key-value table via `settings::get` / `settings::set`. IPC: `get_setting` /
-`set_setting`.
+`set_setting`; `get_effective_config` returns the resolved non-secret config
+(and which keys an env var is pinning) for the Settings page.
 
 | Key | Purpose |
 |-----|---------|
 | `lang` | UI language (`ru` / `en` / `zh`) |
 | `source_lang` | Translation source language name for prompts |
 | `target_lang` | Translation target language name for prompts |
+| `model` | DeepSeek model id (env `DEEPSEEK_MODEL` wins) |
+| `base_url` | API base URL (env `DEEPSEEK_BASE_URL` wins) |
+| `temperature` | Sampling temperature (0-2) |
+| `max_chunk_chars` | Long-chapter split threshold (chars) |
+| `max_retries` | Retries on network errors / 429 / 5xx |
 
-`Config::load()` reads `source_lang` / `target_lang` from this DB, then applies
-env overrides.
+`Config::load()` reads these from this DB (defaults < settings DB < env).
 
 ## localStorage (frontend)
 
@@ -57,6 +63,7 @@ env overrides.
 | `bc.projects.v2` | Project list (`id`, `path`, `name`, `refPath?`) |
 | `bc.active.v2` | Active project index |
 | `bc.lang` (`LS_LANG`) | Instant UI-language cache (DB is durable source of truth) |
+| `bc.console.height` | Bottom console panel height (px) |
 
 ## Per-project meta (`progress.db`)
 

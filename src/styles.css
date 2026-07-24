@@ -263,8 +263,26 @@ tr.dirty td { background: color-mix(in srgb, var(--accent) 12%, transparent); }
 td button.ghost { white-space: nowrap; }
 tr.add-row input::placeholder { color: var(--fg-subtle); }
 
-.settings-page { max-width: 660px; }
+.settings-page { max-width: 900px; width: 100%; padding: 16px; display: flex; flex-direction: column; min-height: 0; height: 100%; }
 .settings-head { display: flex; align-items: center; justify-content: space-between; }
+.settings-search { margin: 10px 0 14px; }
+.settings-search input { width: 100%; max-width: 420px; }
+.settings-body { display: flex; gap: 22px; flex: 1; min-height: 0; }
+.settings-nav { width: 172px; flex: 0 0 auto; display: flex; flex-direction: column; gap: 2px; }
+.settings-nav button { text-align: left; background: transparent; color: var(--fg-muted); border: 0; padding: 7px 10px; border-radius: var(--r-md); cursor: pointer; font-weight: 500; }
+.settings-nav button:hover { background: var(--bg-hover); color: var(--fg); }
+.settings-nav button.active { background: var(--sel); color: var(--fg); }
+.settings-content { flex: 1; min-width: 0; overflow-y: auto; padding-right: 6px; }
+.settings-section-title { font-size: 11px; text-transform: uppercase; letter-spacing: .07em; color: var(--fg-subtle); margin: 14px 0 6px; }
+.settings-content section:first-child .settings-section-title { margin-top: 0; }
+.setting-row { display: flex; gap: 18px; align-items: flex-start; padding: 13px 0; border-bottom: 1px solid var(--border); }
+.setting-info { flex: 1; min-width: 0; }
+.setting-label { font-weight: 550; }
+.setting-desc { color: var(--fg-muted); font-size: 12px; margin-top: 3px; line-height: 1.45; max-width: 62ch; }
+.setting-locked { color: var(--warn); font-size: 11px; margin-top: 5px; }
+.setting-warn { color: var(--warn); }
+.setting-control { flex: 0 0 auto; width: 230px; display: flex; justify-content: flex-end; align-items: center; }
+.setting-control input, .setting-control select { width: 100%; }
 
 /* Glossary kind filter + colored tags */
 .kind-filter { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 12px; }

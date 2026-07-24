@@ -208,8 +208,11 @@ literals in components, matching the current convention. New key groups:
   kind tags (per-kind color tokens); reader deep-link filters the glossary to the
   clicked term. Overview gains a stat-tile strip (Chapters / Done / Pending /
   Failed). All existing actions preserved.
-- **P5 — Settings.** Section-nav settings page + search; advanced options wired to
-  the backend (§8); effective-config readback.
+- **P5 — Settings. [done]** Section-nav settings page + search (`SettingRow`);
+  advanced options (model, base_url, temperature, max_chunk_chars, max_retries)
+  persisted to the settings DB and read by `Config::load` (default < DB < env);
+  `get_effective_config` readback shows resolved values, env-locked keys, and API
+  key presence.
 - **P6 — Polish.** Status-bar wiring, i18n completion, performance pass, tooltips
   and empty states.
 

@@ -50,6 +50,13 @@ export type ChapterView = {
   prev_tail: string | null;
 };
 
+export type EffectiveConfig = {
+  model: string; base_url: string; source_lang: string; target_lang: string;
+  max_chunk_chars: number; max_retries: number; temperature: number;
+  request_timeout_secs: number; max_output_tokens: number;
+  has_key: boolean; env_locked: string[];
+};
+
 export type Project = { id: string; path: string; name: string; refPath?: string };
 export type ViewId = "overview" | "reader" | "glossary";
 

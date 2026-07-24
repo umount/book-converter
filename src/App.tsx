@@ -271,7 +271,7 @@ export default function App() {
           <div className="editor-region">
             {showSettings ? (
               <Settings
-                t={t} collapsed={collapsed} onToggle={toggle}
+                t={t} call={call}
                 lang={lang} setLang={setLang}
                 srcLang={srcLang} tgtLang={tgtLang}
                 onChangeSourceLang={changeSourceLang}

@@ -198,7 +198,8 @@ App data layout (see also `PROJECT_ISOLATION.md`):
 ### App settings
 | Command | Purpose |
 |---------|---------|
-| `get_setting` / `set_setting` | Durable app-wide KV (UI language, source/target lang) |
+| `get_setting` / `set_setting` | Durable app-wide KV (UI language, language pair, model/advanced) |
+| `get_effective_config` | Resolved non-secret config for the Settings page (env-locked keys, key presence) |
 
 ### Project I/O
 | Command | Purpose |

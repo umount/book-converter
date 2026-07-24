@@ -81,6 +81,37 @@ impl Config {
             }
         }
 
+        // Advanced generation settings, also chosen in the UI (Settings page).
+        if let Ok(Some(v)) = crate::settings::get(&sdb, "model") {
+            if !v.trim().is_empty() {
+                cfg.model = v;
+            }
+        }
+        if let Ok(Some(v)) = crate::settings::get(&sdb, "base_url") {
+            if !v.trim().is_empty() {
+                cfg.base_url = v;
+            }
+        }
+        if let Ok(Some(v)) = crate::settings::get(&sdb, "max_chunk_chars") {
+            if let Ok(n) = v.trim().parse::<usize>() {
+                if n > 0 {
+                    cfg.max_chunk_chars = n;
+                }
+            }
+        }
+        if let Ok(Some(v)) = crate::settings::get(&sdb, "max_retries") {
+            if let Ok(n) = v.trim().parse::<usize>() {
+                cfg.max_retries = n;
+            }
+        }
+        if let Ok(Some(v)) = crate::settings::get(&sdb, "temperature") {
+            if let Ok(f) = v.trim().parse::<f32>() {
+                if (0.0..=2.0).contains(&f) {
+                    cfg.temperature = f;
+                }
+            }
+        }
+
         // Environment variables (for power users / CI) take precedence.
         if let Ok(key) = std::env::var("DEEPSEEK_API_KEY") {
             cfg.api_key = key;

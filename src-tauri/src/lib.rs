@@ -90,6 +90,7 @@ pub fn run() {
             commands::set_chapter_context,
             commands::get_setting,
             commands::set_setting,
+            commands::get_effective_config,
             commands::delete_project,
             commands::export_project,
             commands::import_project,
