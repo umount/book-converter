@@ -123,6 +123,14 @@ export function useTranslationJob({
             parts.push(tr("log.eta", { eta: formatEta(p.eta_secs) }));
           }
           addLogToRef.current(p.project, parts.filter(Boolean).join(" · "));
+          // Live-update the explorer tree + tabs (title/status) as each chapter
+          // finishes, and refresh the open chapter if it is the one just done.
+          if (isActive(p.project)) {
+            void loadChaptersRef.current();
+            if (p.current_idx != null && p.current_idx === chapterIdxRef.current) {
+              void openChapterRef.current(p.current_idx);
+            }
+          }
         }
       }),
       listen<{ project: string }>("done", (e) => {
