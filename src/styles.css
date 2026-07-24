@@ -323,6 +323,48 @@ tr.add-row input::placeholder { color: var(--fg-subtle); }
 .statusbar .spinner { width: 11px; height: 11px; border-width: 2px; }
 
 /* ============================================================================
+   Explorer chapter tree
+   ========================================================================== */
+.tree.projects { flex: 0 0 auto; max-height: 34%; padding: 4px 0; }
+.explorer-chapters { flex: 1; min-height: 0; display: flex; flex-direction: column; border-top: 1px solid var(--border); }
+.sidebar-subhead { padding: 7px 12px 5px; font-size: 10px; text-transform: uppercase; letter-spacing: .07em; color: var(--fg-subtle); }
+.chtree { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.chtree-search { display: flex; align-items: center; gap: 6px; padding: 0 8px 6px; }
+.chtree-search input { flex: 1; min-width: 0; }
+.chtree-count { font-size: 11px; flex: 0 0 auto; }
+.chtree-list { flex: 1; min-height: 0; }
+.chtree-row { height: 26px; display: flex; align-items: center; gap: 7px; padding: 0 10px 0 12px; cursor: pointer; white-space: nowrap; font-size: 12px; }
+.chtree-row:hover { background: var(--bg-hover); }
+.chtree-row.active { background: var(--sel); }
+.chtree-glyph { width: 12px; text-align: center; color: var(--fg-subtle); flex: 0 0 auto; }
+.chtree-row.active .chtree-glyph { color: var(--accent-hover); }
+.chtree-num { color: var(--fg-subtle); flex: 0 0 auto; }
+.chtree-title { overflow: hidden; text-overflow: ellipsis; }
+
+/* --- Chapter tabs --- */
+.tab-num { color: var(--fg-subtle); }
+.tab-label { overflow: hidden; text-overflow: ellipsis; max-width: 220px; }
+.tab-close { background: transparent; border: 0; color: var(--fg-subtle); cursor: pointer; font-size: 14px; line-height: 1; padding: 0 2px; border-radius: 3px; }
+.tab-close:hover { color: var(--fg); background: var(--bg-hover); }
+
+/* ============================================================================
+   Command palette
+   ========================================================================== */
+.palette-backdrop { position: fixed; inset: 0; background: rgba(0, 0, 0, .35); z-index: 50; display: flex; justify-content: center; align-items: flex-start; padding-top: 12vh; }
+.palette { width: min(640px, 92vw); background: var(--bg-elevated); border: 1px solid var(--border-strong); border-radius: var(--r-lg); box-shadow: var(--shadow); overflow: hidden; display: flex; flex-direction: column; max-height: 60vh; }
+.palette-input { border: 0; border-radius: 0; border-bottom: 1px solid var(--border); background: transparent; padding: 12px 14px; font-size: 14px; }
+.palette-input:focus { outline: none; box-shadow: none; border-color: var(--border); }
+.palette-list { overflow-y: auto; padding: 5px; }
+.palette-row { display: flex; align-items: center; gap: 9px; padding: 7px 10px; border-radius: var(--r-sm); cursor: pointer; }
+.palette-row.active { background: var(--accent); color: var(--accent-fg); }
+.palette-num { color: var(--fg-subtle); flex: 0 0 auto; }
+.palette-row.active .palette-num { color: var(--accent-fg); }
+.palette-label { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.palette-hint { font-size: 11px; color: var(--fg-subtle); flex: 0 0 auto; }
+.palette-row.active .palette-hint { color: color-mix(in srgb, var(--accent-fg) 80%, transparent); }
+.palette-empty { padding: 14px; text-align: center; color: var(--fg-subtle); }
+
+/* ============================================================================
    Notifications / errors
    ========================================================================== */
 .error { background: color-mix(in srgb, var(--error) 20%, transparent); color: var(--error); border-radius: var(--r-md); padding: 8px 12px; margin-bottom: 12px; cursor: pointer; flex: 0 0 auto; }

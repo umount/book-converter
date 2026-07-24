@@ -187,8 +187,12 @@ literals in components, matching the current convention. New key groups:
   Reader / Glossary slotted in unchanged. Sidebar reduced to the project list
   (view navigation moved to the tab bar). Shared `lib/format.ts` (formatEta,
   langAbbr). App stays fully working (`tsc` + `vite build` clean).
-- **P1 — Navigation.** Virtualized chapter tree + filter in Explorer; tabs open
-  chapters; command palette (⌘P) with chapter quick-open; hotkeys.
+- **P1 — Navigation. [done]** Virtualized chapter tree + filter in Explorer
+  (`VirtualList`, `ChapterTree`); editor tabs for open chapters (`useTabs`,
+  extended `TabBar`); command palette `⌘P` (`CommandPalette`) over chapters +
+  actions; global hotkeys (`useHotkeys`: ⌘P/⌘B/⌘J/⌘,/Alt+↑↓/⌘Enter). Shared
+  `lib/chapters.ts` (glyph, label, match). The reader's chapter `<select>` stays
+  until the P2 reader rework replaces it.
 - **P2 — Editor.** Gutter line numbers; pane-mode segmented control; new tokenized
   occurrence highlight + popover + jump-to-glossary + cross-pane linking.
 - **P3 — Find & replace.** ⌘F / ⌘H in-chapter; book-wide via the backend command.

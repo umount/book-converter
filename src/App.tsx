@@ -12,6 +12,9 @@ import { ActivityBar } from "./components/shell/ActivityBar";
 import { BottomPanel } from "./components/shell/BottomPanel";
 import { StatusBar } from "./components/shell/StatusBar";
 import { TabBar } from "./components/shell/TabBar";
+import { CommandPalette, type Command } from "./components/CommandPalette";
+import { useHotkeys } from "./hooks/useHotkeys";
+import { useTabs } from "./hooks/useTabs";
 import { useBookWorkspace } from "./hooks/useBookWorkspace";
 import { useGlossary } from "./hooks/useGlossary";
 import { useProjects, type ProjectHelpers } from "./hooks/useProjects";
@@ -36,6 +39,7 @@ export default function App() {
   const [limit, setLimit] = useState<number | "">("");
   const [sidebar, setSidebar] = useState(true);
   const [showConsole, setShowConsole] = useState(true);
+  const [paletteOpen, setPaletteOpen] = useState(false);
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
   const toggle = (k: string) => setCollapsed((c) => ({ ...c, [k]: !c[k] }));
 
@@ -94,6 +98,19 @@ export default function App() {
 
   logApiRef.current = { addLog: job.addLog, addLogTo: job.addLogTo };
 
+  const tabs = useTabs({
+    view, setView,
+    chapterIdx: book.chapterIdx, setChapterIdx: book.setChapterIdx,
+    activeId,
+  });
+
+  function stepChapter(delta: number) {
+    const cs = book.chapters;
+    const i = cs.findIndex((c) => c.idx === book.chapterIdx);
+    const j = i + delta;
+    if (i >= 0 && j >= 0 && j < cs.length) tabs.openChapter(cs[j].idx);
+  }
+
   helpersRef.current = {
     call, t, setBusyFor, setBusyById, setError, logError,
     addLog: job.addLog, addLogTo: job.addLogTo,
@@ -120,6 +137,26 @@ export default function App() {
     null;
   const { progress, log, progressById } = job;
   const canExport = !!progress && progress.done > 0;
+
+  const paletteCommands: Command[] = [
+    { id: "overview", label: t("palette.goOverview"), run: () => setView("overview") },
+    { id: "glossary", label: t("palette.goGlossary"), run: () => setView("glossary") },
+    ...(activeProject
+      ? [
+          { id: "translate", label: t("palette.translateChapter"), run: () => { if (book.chapterIdx != null) job.translateChapter(book.chapterIdx); } },
+          { id: "start", label: t("palette.start"), run: () => job.start() },
+          { id: "pause", label: t("palette.pause"), run: () => job.pause() },
+          { id: "toggleOriginal", label: t("palette.toggleOriginal"), run: () => book.setPanes((p) => ({ ...p, orig: !p.orig })) },
+          { id: "reference", label: t("palette.openReference"), run: () => openReference() },
+          { id: "export-fb2", label: t("palette.exportAs", { fmt: "FB2" }), run: () => exportAs("fb2") },
+          { id: "export-epub", label: t("palette.exportAs", { fmt: "EPUB" }), run: () => exportAs("epub") },
+          { id: "export-pdf", label: t("palette.exportAs", { fmt: "PDF" }), run: () => exportAs("pdf") },
+          { id: "export-txt", label: t("palette.exportAs", { fmt: "TXT" }), run: () => exportAs("txt") },
+        ]
+      : []),
+    { id: "settings", label: t("palette.settings"), run: () => setShowSettings(true) },
+    { id: "toggleConsole", label: t("palette.toggleConsole"), run: () => setShowConsole((s) => !s) },
+  ];
 
   // Language: localStorage is an instant cache to avoid a flash on load; the DB
   // is the durable source of truth (survives restarts). Load DB once on mount,
@@ -152,6 +189,27 @@ export default function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [view]);
 
+  // Load the chapter tree whenever a project becomes active (for the explorer).
+  useEffect(() => {
+    if (activeId) void book.loadChapters();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeId]);
+
+  useHotkeys({
+    "mod+p": (e) => { e.preventDefault(); setPaletteOpen((o) => !o); },
+    "mod+b": (e) => { e.preventDefault(); setSidebar((s) => !s); },
+    "mod+j": (e) => { e.preventDefault(); setShowConsole((s) => !s); },
+    "mod+,": (e) => { e.preventDefault(); setShowSettings((s) => !s); },
+    "alt+arrowdown": (e) => { if (view === "reader") { e.preventDefault(); stepChapter(1); } },
+    "alt+arrowup": (e) => { if (view === "reader") { e.preventDefault(); stepChapter(-1); } },
+    "mod+enter": (e) => {
+      if (view === "reader" && book.chapterIdx != null && !progress?.running) {
+        e.preventDefault();
+        job.translateChapter(book.chapterIdx);
+      }
+    },
+  });
+
   return (
     <div className="ide">
       <Menubar
@@ -181,6 +239,9 @@ export default function App() {
           t={t} sidebar={sidebar}
           projects={projects} active={active} setActive={setActive}
           progressById={progressById} busyById={busyById}
+          chapters={book.chapters}
+          activeChapterIdx={view === "reader" ? book.chapterIdx : null}
+          onOpenChapter={tabs.openChapter}
           error={error} setError={setError}
           onRemove={removeProject} onOpenBook={openBook}
         />
@@ -200,7 +261,14 @@ export default function App() {
               <Welcome t={t} onOpenBook={openBook} />
             ) : (
               <>
-                <TabBar t={t} view={view} setView={setView} glossaryCount={glossary.glossary.length} />
+                <TabBar
+                  t={t} view={view}
+                  chapters={book.chapters} openChapters={tabs.openChapters}
+                  chapterIdx={book.chapterIdx} glossaryCount={glossary.glossary.length}
+                  onSelectView={setView}
+                  onSelectChapter={tabs.openChapter}
+                  onCloseChapter={tabs.closeChapter}
+                />
                 <main className="workarea">
                   <div className="workhead">
                     <div className="worktitle">{book.details?.title_translated || book.details?.title || activeProject.name}</div>
@@ -293,6 +361,12 @@ export default function App() {
         glossaryCount={glossary.glossary.length}
         srcLang={srcLang} tgtLang={tgtLang} busy={busy}
         onToggleConsole={() => setShowConsole((s) => !s)}
+      />
+
+      <CommandPalette
+        t={t} open={paletteOpen} onClose={() => setPaletteOpen(false)}
+        commands={paletteCommands} chapters={book.chapters}
+        onOpenChapter={tabs.openChapter}
       />
     </div>
   );

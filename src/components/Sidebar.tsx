@@ -1,4 +1,5 @@
-import type { Progress, Project } from "../types";
+import type { ChapterRow, Progress, Project } from "../types";
+import { ChapterTree } from "./shell/ChapterTree";
 
 type Props = {
   t: (key: string, vars?: Record<string, string | number>) => string;
@@ -8,22 +9,26 @@ type Props = {
   setActive: (i: number) => void;
   progressById: Record<string, Progress>;
   busyById: Record<string, string | null>;
+  chapters: ChapterRow[];
+  activeChapterIdx: number | null;
+  onOpenChapter: (idx: number) => void;
   error: string | null;
   setError: (e: string | null) => void;
   onRemove: (idx: number) => void;
   onOpenBook: () => void;
 };
 
-/** Explorer: the list of open projects. View navigation lives in the tab bar. */
+/** Explorer: open projects, plus the active project's chapter tree. */
 export function Sidebar({
-  t, sidebar, projects, active, setActive,
-  progressById, busyById, error, setError, onRemove, onOpenBook,
+  t, sidebar, projects, active, setActive, progressById, busyById,
+  chapters, activeChapterIdx, onOpenChapter, error, setError, onRemove, onOpenBook,
 }: Props) {
   if (!sidebar) return null;
+  const hasActive = active >= 0 && !!projects[active];
   return (
     <aside className="sidebar">
       <div className="sidebar-head"><span>{t("sidebar.projects")}</span></div>
-      <ul className="tree">
+      <ul className="tree projects">
         {projects.map((p, i) => {
           const running = !!progressById[p.id]?.running;
           const busy = !!busyById[p.id];
@@ -40,6 +45,14 @@ export function Sidebar({
         })}
         {projects.length === 0 && <li className="empty">{t("sidebar.noProjects")}</li>}
       </ul>
+
+      {hasActive && (
+        <div className="explorer-chapters">
+          <div className="sidebar-subhead">{t("explorer.chapters")}</div>
+          <ChapterTree t={t} chapters={chapters} activeIdx={activeChapterIdx} onOpen={onOpenChapter} />
+        </div>
+      )}
+
       <button className="add" onClick={onOpenBook}>{t("sidebar.openBook")}</button>
       {error && (
         <div className="notif" role="alert">
