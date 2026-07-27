@@ -77,6 +77,7 @@ pub fn run() {
             commands::translate_chapter,
             commands::update_chapter_translation,
             commands::replace_in_book,
+            commands::search_book,
             commands::get_progress,
             commands::get_glossary,
             commands::update_term,

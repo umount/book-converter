@@ -88,6 +88,26 @@ pub struct ChapterRow {
     pub origin: Option<String>,
 }
 
+/// One matching line of a book-wide search, with its position in the chapter.
+#[derive(Serialize)]
+pub struct SearchHit {
+    /// 1-based line number within the searched text.
+    pub line: usize,
+    /// The line, trimmed and clipped around the match for display.
+    pub preview: String,
+}
+
+/// Search results grouped per chapter, the way an IDE groups them per file.
+#[derive(Serialize)]
+pub struct SearchChapter {
+    pub idx: usize,
+    pub number: Option<usize>,
+    pub title: String,
+    /// Total matches in this chapter (may exceed `hits` when clipped).
+    pub count: usize,
+    pub hits: Vec<SearchHit>,
+}
+
 /// Full chapter view: original + translation.
 #[derive(Serialize)]
 pub struct ChapterView {

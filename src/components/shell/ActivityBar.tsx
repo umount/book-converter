@@ -4,6 +4,9 @@ type Props = {
   t: (key: string, vars?: Record<string, string | number>) => string;
   sidebarOpen: boolean;
   onToggleSidebar: () => void;
+  /** Which panel the sidebar shows. */
+  sidebarView: "explorer" | "search";
+  onShowSearch: () => void;
   settingsOpen: boolean;
   onToggleSettings: () => void;
   consoleOpen: boolean;
@@ -22,13 +25,20 @@ function IconBtn({
 
 /** Far-left icon rail: toggles the explorer, console, and settings. */
 export function ActivityBar({
-  t, sidebarOpen, onToggleSidebar, settingsOpen, onToggleSettings, consoleOpen, onToggleConsole,
+  t, sidebarOpen, onToggleSidebar, sidebarView, onShowSearch,
+  settingsOpen, onToggleSettings, consoleOpen, onToggleConsole,
 }: Props) {
   return (
     <nav className="activitybar">
-      <IconBtn active={sidebarOpen && !settingsOpen} title={t("activity.explorer")} onClick={onToggleSidebar}>
+      <IconBtn active={sidebarOpen && sidebarView === "explorer" && !settingsOpen} title={t("activity.explorer")} onClick={onToggleSidebar}>
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
           <path d="M3 5.5A1.5 1.5 0 0 1 4.5 4h4l2 2.5h7A1.5 1.5 0 0 1 19 8v9.5A1.5 1.5 0 0 1 17.5 19h-13A1.5 1.5 0 0 1 3 17.5z" />
+        </svg>
+      </IconBtn>
+      <IconBtn active={sidebarOpen && sidebarView === "search" && !settingsOpen} title={t("activity.search")} onClick={onShowSearch}>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
+          <circle cx="10.5" cy="10.5" r="6" />
+          <path d="M15 15l4.5 4.5" />
         </svg>
       </IconBtn>
       <IconBtn active={consoleOpen} title={t("activity.console")} onClick={onToggleConsole}>

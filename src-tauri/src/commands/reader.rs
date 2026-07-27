@@ -3,7 +3,7 @@
 use tauri::State;
 
 use crate::config::Config;
-use crate::dto::{err, BookDetails, ChapterRow, ChapterView};
+use crate::dto::{err, BookDetails, ChapterRow, ChapterView, SearchChapter, SearchHit};
 use crate::export::fb2::Cover;
 use crate::session::AppState;
 use crate::state::Store;
@@ -100,6 +100,83 @@ pub async fn replace_in_book(
         .map_err(err)?;
     let store = Store::open(&db).map_err(err)?;
     store.replace_in_translations(&re, &replace, regex).map_err(err)
+}
+
+/// Book-wide search, grouped per chapter like an IDE's search view. Searches the
+/// translation by default, the original with `in_source`. Results are clipped
+/// (see the constants below) so a common word cannot flood the UI.
+#[tauri::command]
+pub async fn search_book(
+    project_id: String,
+    query: String,
+    match_case: bool,
+    whole_word: bool,
+    regex: bool,
+    in_source: bool,
+    state: State<'_, AppState>,
+) -> Result<Vec<SearchChapter>, String> {
+    /// Matching lines kept per chapter.
+    const MAX_HITS_PER_CHAPTER: usize = 30;
+    /// Chapters reported, at most.
+    const MAX_CHAPTERS: usize = 300;
+    /// Characters kept around a match in the preview.
+    const PREVIEW: usize = 160;
+
+    if query.trim().is_empty() {
+        return Ok(Vec::new());
+    }
+    let db = state
+        .with(&project_id, |s| s.db_path.clone())
+        .ok_or("no_source")?;
+    let mut pat = if regex { query.clone() } else { regex::escape(&query) };
+    if whole_word {
+        pat = format!(r"\b{pat}\b");
+    }
+    let re = regex::RegexBuilder::new(&pat)
+        .case_insensitive(!match_case)
+        .build()
+        .map_err(err)?;
+
+    let store = Store::open(&db).map_err(err)?;
+    let mut out = Vec::new();
+    for (idx, number, title, text) in store.searchable_chapters(in_source).map_err(err)? {
+        let mut hits = Vec::new();
+        let mut count = 0usize;
+        for (n, line) in text.lines().enumerate() {
+            let Some(m) = re.find(line) else { continue };
+            count += re.find_iter(line).count();
+            if hits.len() < MAX_HITS_PER_CHAPTER {
+                hits.push(SearchHit {
+                    line: n + 1,
+                    preview: clip_around(line, m.start(), PREVIEW),
+                });
+            }
+        }
+        if count > 0 {
+            out.push(SearchChapter { idx, number, title, count, hits });
+            if out.len() >= MAX_CHAPTERS {
+                break;
+            }
+        }
+    }
+    Ok(out)
+}
+
+/// Keep `width` characters around `at`, on character boundaries, with ellipses
+/// where the line was cut.
+fn clip_around(line: &str, at: usize, width: usize) -> String {
+    let line = line.trim();
+    if line.chars().count() <= width {
+        return line.to_string();
+    }
+    // Character index of the match (byte offsets shift once the line is trimmed,
+    // so locate it by counting characters up to `at` in the untrimmed line).
+    let head = line.char_indices().take_while(|(i, _)| *i < at).count();
+    let start = head.saturating_sub(width / 3);
+    let clipped: String = line.chars().skip(start).take(width).collect();
+    let prefix = if start > 0 { "…" } else { "" };
+    let suffix = if start + width < line.chars().count() { "…" } else { "" };
+    format!("{prefix}{clipped}{suffix}")
 }
 
 /// Set or clear the per-chapter user instruction (empty string clears it).

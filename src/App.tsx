@@ -7,6 +7,7 @@ import { Menubar, type MenuId } from "./components/Menubar";
 import { Overview } from "./components/Overview";
 import { Reader } from "./components/Reader";
 import { Settings } from "./components/Settings";
+import { SearchPanel } from "./components/SearchPanel";
 import { Sidebar } from "./components/Sidebar";
 import { Welcome } from "./components/Welcome";
 import { ActivityBar } from "./components/shell/ActivityBar";
@@ -45,6 +46,9 @@ export default function App() {
   const [showAbout, setShowAbout] = useState(false);
   const [limit, setLimit] = useState<number | "">("");
   const [sidebar, setSidebar] = useState(true);
+  // Which panel the sidebar shows, VS Code style: the file tree or search.
+  const [sidebarView, setSidebarView] = useState<"explorer" | "search">("explorer");
+  const [searchFocus, setSearchFocus] = useState(0);
   const [showConsole, setShowConsole] = useState(true);
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
@@ -109,6 +113,27 @@ export default function App() {
   // Find/replace lives here (not in Reader) so the Edit menu, the command
   // palette and the shortcuts can open it even from another view.
   const find = useFindReplace();
+
+  /** ⌘⇧F: book-wide search in the sidebar, focused even if it is already open. */
+  function openBookSearch() {
+    if (!activeProject) return;
+    setShowSettings(false);
+    setSidebar(true);
+    setSidebarView("search");
+    setSearchFocus((n) => n + 1);
+  }
+
+  /** Jump from a search result to the chapter, with the query armed in the bar. */
+  function openSearchHit(idx: number, query: string, opts: FindOpts) {
+    tabs.openChapter(idx);
+    find.setQuery(query);
+    find.setMatchCase(opts.matchCase);
+    find.setWholeWord(opts.wholeWord);
+    find.setRegex(!!opts.regex);
+    find.setCurrent(0);
+    find.setOpen(true);
+  }
+
   function openFind(mode: "find" | "replace") {
     if (!activeProject) return;
     setView("reader");
@@ -187,6 +212,7 @@ export default function App() {
           { id: "pause", label: t("palette.pause"), run: () => job.pause() },
           { id: "toggleOriginal", label: t("palette.toggleOriginal"), run: () => book.setPanes((p) => ({ ...p, orig: !p.orig })) },
           { id: "find", label: t("palette.find"), hint: "⌘F", run: () => openFind("find") },
+          { id: "searchBook", label: t("palette.searchBook"), hint: "⌘⇧F", run: () => openBookSearch() },
           { id: "replace", label: t("palette.replace"), hint: "⌘H", run: () => openFind("replace") },
           { id: "reference", label: t("palette.openReference"), run: () => openReference() },
           { id: "export-fb2", label: t("palette.exportAs", { fmt: "FB2" }), run: () => exportAs("fb2") },
@@ -244,6 +270,7 @@ export default function App() {
     "alt+arrowdown": (e) => { if (view === "reader") { e.preventDefault(); stepChapter(1); } },
     "alt+arrowup": (e) => { if (view === "reader") { e.preventDefault(); stepChapter(-1); } },
     "mod+f": (e) => { if (activeProject) { e.preventDefault(); openFind("find"); } },
+    "mod+shift+f": (e) => { if (activeProject) { e.preventDefault(); openBookSearch(); } },
     "mod+h": (e) => { if (activeProject) { e.preventDefault(); openFind("replace"); } },
     "mod+enter": (e) => {
       if (view === "reader" && book.chapterIdx != null && !progress?.running) {
@@ -268,6 +295,7 @@ export default function App() {
         onOpenCommandPalette={() => setPaletteOpen(true)}
         onFind={() => { openFind("find"); setMenu(null); }}
         onReplace={() => { openFind("replace"); setMenu(null); }}
+        onSearchBook={() => { openBookSearch(); setMenu(null); }}
         onOpenSettings={() => { setShowSettings(true); setMenu(null); }}
         onOpenAbout={() => setShowAbout(true)}
       />
@@ -276,12 +304,25 @@ export default function App() {
         <ActivityBar
           t={t}
           sidebarOpen={sidebar}
-          onToggleSidebar={() => setSidebar((s) => !s)}
+          onToggleSidebar={() => {
+            if (sidebar && sidebarView === "explorer") setSidebar(false);
+            else { setSidebar(true); setSidebarView("explorer"); }
+          }}
+          sidebarView={sidebarView}
+          onShowSearch={openBookSearch}
           settingsOpen={showSettings}
           onToggleSettings={() => setShowSettings((s) => !s)}
           consoleOpen={showConsole}
           onToggleConsole={() => setShowConsole((s) => !s)}
         />
+        {sidebar && sidebarView === "search" ? (
+          <aside className="sidebar">
+            <SearchPanel
+              t={t} call={call} activeId={activeId}
+              focusToken={searchFocus} onOpenHit={openSearchHit}
+            />
+          </aside>
+        ) : (
         <Sidebar
           t={t} sidebar={sidebar}
           projects={projects} active={active} setActive={setActive}
@@ -293,6 +334,7 @@ export default function App() {
           error={error} setError={setError}
           onRemove={removeProject} onOpenBook={openBook}
         />
+        )}
 
         <div className="rightcol">
           <div className="editor-region">

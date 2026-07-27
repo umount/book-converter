@@ -235,7 +235,8 @@ App data layout (see also `PROJECT_ISOLATION.md`):
 | Command | Purpose |
 |---------|---------|
 | `list_chapters` / `get_chapter` | Reader |
-| `replace_in_book` | Literal find/replace across all stored translations |
+| `replace_in_book` | Find/replace across all stored translations (literal or regex) |
+| `search_book` | Book-wide search, grouped per chapter (sidebar search panel) |
 | `get_book_details` | Cover, summary, translated title/author |
 | `translate_title` / `set_summary` / `generate_summary` / `set_cover` | Metadata |
 

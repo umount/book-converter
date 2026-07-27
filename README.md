@@ -18,7 +18,8 @@ a single model request.
 | **Per chapter** | Translate one chapter from the reader · **custom chapter prompt** (e.g. “господин, not госпожа”) without touching the glossary · retranslate with that prompt · manual edit of title/body |
 | **Projects** | Each book is an isolated project (own DB, glossary, progress, console) · parallel runs · portable `.bcproj` (manifest + DB) |
 | **Output** | FB2, EPUB, PDF, TXT · optional zip for text formats · cover, title, author, annotation |
-| **UI** | IDE-like: sidebar, overview, dual-pane reader (original ↔ translation + glossary highlight), glossary table, console, settings (UI + language pair) |
+| **UI** | IDE-like: sidebar, overview, dual-pane reader with a draggable split (original ↔ translation + glossary highlight), glossary table, console, settings (UI + language pair) |
+| **Search** | Find / replace in a chapter (⌘F / ⌘H, literal or regex) and book-wide search grouped per chapter (⌘⇧F), over the translation or the original |
 
 ## Highlights
 
@@ -103,7 +104,15 @@ version, commit, date, Tauri and platform.
 2. Untranslated chapter → **Translate this chapter**.
 3. **Prompt** chip → per-chapter instruction (not the glossary), e.g. how to render
    a character’s gender/title. **Save prompt** or **Retranslate with prompt**.
-4. Done chapter → **Edit** title/body manually (marked as edited).
+4. The translation pane is **always editable** — type straight into the text
+   (highlighting stays live) and edits autosave; the chapter is marked as edited.
+
+### Search
+
+1. **⌘F / ⌘H** — find / replace inside the open chapter: literal or regex (`.*`),
+   match case, whole word, `$1` capture groups, replace here or across the book.
+2. **⌘⇧F** — search the whole book from the sidebar, results grouped per chapter;
+   click a line to jump to it. Toggle between the translation and the original.
 
 ### Glossary
 

@@ -508,6 +508,33 @@ tr.add-row input::placeholder { color: var(--fg-subtle); }
 .notif .icon { flex: 0 0 auto; }
 
 /* ============================================================================
+   Search panel (book-wide search in the sidebar)
+   ========================================================================== */
+.searchpanel { display: flex; flex-direction: column; min-height: 0; height: 100%; }
+.searchpanel-form { padding: 0 10px 8px; display: flex; flex-direction: column; gap: 6px; flex: 0 0 auto; }
+.searchpanel-input { width: 100%; }
+.searchpanel-input.invalid { border-color: var(--error); box-shadow: 0 0 0 2px color-mix(in srgb, var(--error) 22%, transparent); }
+.searchpanel-opts { display: flex; align-items: center; gap: 4px; }
+.searchpanel-opts .chip { padding: 2px 6px; font-family: var(--font-mono); font-size: 11px; }
+.searchpanel-opts .chip[data-on="true"] { background: var(--accent); color: var(--accent-fg); border-color: var(--accent); }
+.searchpanel-summary { font-size: 11px; }
+.searchpanel-results { flex: 1; min-height: 0; }
+
+.search-chapter, .search-hit {
+  height: 24px; display: flex; align-items: center; gap: 6px; cursor: pointer;
+  font-size: 12px; white-space: nowrap; padding: 0 10px;
+}
+.search-chapter:hover, .search-hit:hover { background: var(--bg-hover); }
+.search-chapter { color: var(--fg); font-weight: 550; }
+.search-chapter-title { overflow: hidden; text-overflow: ellipsis; }
+.search-count { margin-left: auto; color: var(--fg-subtle); font-size: 11px; flex: 0 0 auto; }
+.search-hit { padding-left: 24px; color: var(--fg-muted); }
+.search-line { color: var(--fg-subtle); font-family: var(--font-mono); font-size: 10px; min-width: 26px; flex: 0 0 auto; }
+.search-preview { overflow: hidden; text-overflow: ellipsis; }
+.search-preview mark { background: color-mix(in srgb, var(--warn) 38%, transparent); color: var(--fg); border-radius: 2px; }
+.searchpanel .chevron { color: var(--fg-subtle); font-size: 10px; flex: 0 0 auto; }
+
+/* ============================================================================
    About dialog
    ========================================================================== */
 /* Centred with flexbox, not `translate(-50%, -50%)`: a half-pixel offset from

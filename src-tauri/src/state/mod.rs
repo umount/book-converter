@@ -89,6 +89,9 @@ CREATE TABLE IF NOT EXISTS glossary (
 );
 "#;
 
+/// A chapter's searchable text: `(idx, number, display title, text)`.
+pub type SearchableChapter = (usize, Option<usize>, String, String);
+
 /// Progress store on top of SQLite.
 pub struct Store {
     conn: Connection,
@@ -538,6 +541,29 @@ impl Store {
                     r.get::<_, Option<String>>(3)?,
                     r.get::<_, String>(4)?,
                     r.get::<_, Option<String>>(5)?,
+                ))
+            })?
+            .collect::<rusqlite::Result<Vec<_>>>()?;
+        Ok(rows)
+    }
+
+    /// Chapters with their searchable text, in reading order. `in_source` picks
+    /// the original instead of the translation; chapters with no text are skipped.
+    pub fn searchable_chapters(&self, in_source: bool) -> Result<Vec<SearchableChapter>> {
+        let sql = if in_source {
+            "SELECT idx, number, title, source FROM chapters ORDER BY idx"
+        } else {
+            "SELECT idx, number, COALESCE(translated_title, title), translated
+             FROM chapters WHERE translated IS NOT NULL ORDER BY idx"
+        };
+        let mut stmt = self.conn.prepare(sql)?;
+        let rows = stmt
+            .query_map([], |r| {
+                Ok((
+                    r.get::<_, i64>(0)? as usize,
+                    r.get::<_, Option<i64>>(1)?.map(|n| n as usize),
+                    r.get::<_, String>(2)?,
+                    r.get::<_, String>(3)?,
                 ))
             })?
             .collect::<rusqlite::Result<Vec<_>>>()?;

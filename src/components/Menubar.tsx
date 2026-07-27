@@ -16,6 +16,7 @@ type Props = {
   onExport: (fmt: "fb2" | "epub" | "pdf" | "txt") => void;
   onFind: () => void;
   onReplace: () => void;
+  onSearchBook: () => void;
   onToggleSidebar: () => void;
   onShowBothPanes: () => void;
   onToggleHighlight: () => void;
@@ -27,7 +28,7 @@ type Props = {
 
 export function Menubar({
   t, menu, setMenu, busy, canExport, hasActive,
-  onOpenBook, onOpenReference, onOpenProject, onSaveProject, onExport, onFind, onReplace,
+  onOpenBook, onOpenReference, onOpenProject, onSaveProject, onExport, onFind, onReplace, onSearchBook,
   onToggleSidebar, onShowBothPanes, onToggleHighlight, onToggleConsole,
   onOpenCommandPalette, onOpenSettings, onOpenAbout,
 }: Props) {
@@ -62,6 +63,10 @@ export function Menubar({
               </div>
               <div className={`mi ${!hasActive ? "disabled" : ""}`} onClick={() => hasActive && onReplace()}>
                 {t("edit.replace")}<span className="mi-key">⌘H</span>
+              </div>
+              <div className="sep" />
+              <div className={`mi ${!hasActive ? "disabled" : ""}`} onClick={() => hasActive && onSearchBook()}>
+                {t("edit.searchBook")}<span className="mi-key">⌘⇧F</span>
               </div>
             </div>
           )}

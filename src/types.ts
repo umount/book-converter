@@ -58,6 +58,13 @@ export type EffectiveConfig = {
   has_key: boolean; env_locked: string[];
 };
 
+/** One matching line of a book-wide search. */
+export type SearchHit = { line: number; preview: string };
+/** Search results for one chapter (`count` may exceed the returned `hits`). */
+export type SearchChapter = {
+  idx: number; number: number | null; title: string; count: number; hits: SearchHit[];
+};
+
 /** Build provenance for the About dialog. */
 export type AppInfo = {
   name: string; version: string; commit: string; commit_date: string;
