@@ -80,6 +80,8 @@ pub async fn replace_in_book(
     replace: String,
     match_case: bool,
     whole_word: bool,
+    // The find bar's regex mode: the query is a pattern, not a literal.
+    regex: bool,
     state: State<'_, AppState>,
 ) -> Result<usize, String> {
     if find.is_empty() {
@@ -88,7 +90,7 @@ pub async fn replace_in_book(
     let db = state
         .with(&project_id, |s| s.db_path.clone())
         .ok_or("no_source")?;
-    let mut pat = regex::escape(&find);
+    let mut pat = if regex { find.clone() } else { regex::escape(&find) };
     if whole_word {
         pat = format!(r"\b{pat}\b");
     }
@@ -97,7 +99,7 @@ pub async fn replace_in_book(
         .build()
         .map_err(err)?;
     let store = Store::open(&db).map_err(err)?;
-    store.replace_in_translations(&re, &replace).map_err(err)
+    store.replace_in_translations(&re, &replace, regex).map_err(err)
 }
 
 /// Set or clear the per-chapter user instruction (empty string clears it).

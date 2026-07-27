@@ -14,6 +14,7 @@ import { BottomPanel } from "./components/shell/BottomPanel";
 import { StatusBar } from "./components/shell/StatusBar";
 import { TabBar } from "./components/shell/TabBar";
 import { CommandPalette, type Command } from "./components/CommandPalette";
+import { useFindReplace } from "./hooks/useFindReplace";
 import { useHotkeys } from "./hooks/useHotkeys";
 import { useTabs } from "./hooks/useTabs";
 import type { FindOpts } from "./lib/find";
@@ -105,6 +106,16 @@ export default function App() {
 
   logApiRef.current = { addLog: job.addLog, addLogTo: job.addLogTo };
 
+  // Find/replace lives here (not in Reader) so the Edit menu, the command
+  // palette and the shortcuts can open it even from another view.
+  const find = useFindReplace();
+  function openFind(mode: "find" | "replace") {
+    if (!activeProject) return;
+    setView("reader");
+    setShowSettings(false);
+    find.openBar(mode);
+  }
+
   const tabs = useTabs({
     view, setView,
     chapterIdx: book.chapterIdx, setChapterIdx: book.setChapterIdx,
@@ -128,7 +139,7 @@ export default function App() {
   async function replaceInBook(findStr: string, replaceStr: string, opts: FindOpts): Promise<number> {
     const n = await call<number>("replace_in_book", {
       projectId: activeId, find: findStr, replace: replaceStr,
-      matchCase: opts.matchCase, wholeWord: opts.wholeWord,
+      matchCase: opts.matchCase, wholeWord: opts.wholeWord, regex: !!opts.regex,
     });
     if (n != null) {
       job.addLog(t("log.replacedInBook", { n }));
@@ -175,6 +186,8 @@ export default function App() {
           { id: "start", label: t("palette.start"), run: () => job.start() },
           { id: "pause", label: t("palette.pause"), run: () => job.pause() },
           { id: "toggleOriginal", label: t("palette.toggleOriginal"), run: () => book.setPanes((p) => ({ ...p, orig: !p.orig })) },
+          { id: "find", label: t("palette.find"), hint: "⌘F", run: () => openFind("find") },
+          { id: "replace", label: t("palette.replace"), hint: "⌘H", run: () => openFind("replace") },
           { id: "reference", label: t("palette.openReference"), run: () => openReference() },
           { id: "export-fb2", label: t("palette.exportAs", { fmt: "FB2" }), run: () => exportAs("fb2") },
           { id: "export-epub", label: t("palette.exportAs", { fmt: "EPUB" }), run: () => exportAs("epub") },
@@ -230,6 +243,8 @@ export default function App() {
     "mod+,": (e) => { e.preventDefault(); setShowSettings((s) => !s); },
     "alt+arrowdown": (e) => { if (view === "reader") { e.preventDefault(); stepChapter(1); } },
     "alt+arrowup": (e) => { if (view === "reader") { e.preventDefault(); stepChapter(-1); } },
+    "mod+f": (e) => { if (activeProject) { e.preventDefault(); openFind("find"); } },
+    "mod+h": (e) => { if (activeProject) { e.preventDefault(); openFind("replace"); } },
     "mod+enter": (e) => {
       if (view === "reader" && book.chapterIdx != null && !progress?.running) {
         e.preventDefault();
@@ -251,6 +266,8 @@ export default function App() {
         onToggleHighlight={() => changeHighlight(!hl)}
         onToggleConsole={() => setShowConsole((s) => !s)}
         onOpenCommandPalette={() => setPaletteOpen(true)}
+        onFind={() => { openFind("find"); setMenu(null); }}
+        onReplace={() => { openFind("replace"); setMenu(null); }}
         onOpenSettings={() => { setShowSettings(true); setMenu(null); }}
         onOpenAbout={() => setShowAbout(true)}
       />
@@ -361,7 +378,7 @@ export default function App() {
                       chapter={book.chapter}
                       chapterLoading={book.chapterLoading}
                       panes={book.panes} setPanes={book.setPanes}
-                      hl={hl}
+                      hl={hl} find={find}
                       terms={glossary.glossary}
                       onOpenGlossaryTerm={openGlossaryTerm}
                       onReplaceInBook={replaceInBook}

@@ -1,6 +1,6 @@
 import { AppIcon } from "./common/AppIcon";
 
-export type MenuId = "file" | "view" | "help";
+export type MenuId = "file" | "edit" | "view" | "help";
 
 type Props = {
   t: (key: string, vars?: Record<string, string | number>) => string;
@@ -14,6 +14,8 @@ type Props = {
   onOpenProject: () => void;
   onSaveProject: () => void;
   onExport: (fmt: "fb2" | "epub" | "pdf" | "txt") => void;
+  onFind: () => void;
+  onReplace: () => void;
   onToggleSidebar: () => void;
   onShowBothPanes: () => void;
   onToggleHighlight: () => void;
@@ -25,7 +27,7 @@ type Props = {
 
 export function Menubar({
   t, menu, setMenu, busy, canExport, hasActive,
-  onOpenBook, onOpenReference, onOpenProject, onSaveProject, onExport,
+  onOpenBook, onOpenReference, onOpenProject, onSaveProject, onExport, onFind, onReplace,
   onToggleSidebar, onShowBothPanes, onToggleHighlight, onToggleConsole,
   onOpenCommandPalette, onOpenSettings, onOpenAbout,
 }: Props) {
@@ -48,6 +50,19 @@ export function Menubar({
               <div className={`mi ${!canExport ? "disabled" : ""}`} onClick={() => canExport && onExport("epub")}>EPUB</div>
               <div className={`mi ${!canExport ? "disabled" : ""}`} onClick={() => canExport && onExport("pdf")}>PDF</div>
               <div className={`mi ${!canExport ? "disabled" : ""}`} onClick={() => canExport && onExport("txt")}>TXT</div>
+            </div>
+          )}
+        </div>
+        <div className="menuitem" onClick={() => setMenu(menu === "edit" ? null : "edit")}>
+          {t("menu.edit")}
+          {menu === "edit" && (
+            <div className="dropdown" onClick={(e) => e.stopPropagation()}>
+              <div className={`mi ${!hasActive ? "disabled" : ""}`} onClick={() => hasActive && onFind()}>
+                {t("edit.find")}<span className="mi-key">⌘F</span>
+              </div>
+              <div className={`mi ${!hasActive ? "disabled" : ""}`} onClick={() => hasActive && onReplace()}>
+                {t("edit.replace")}<span className="mi-key">⌘H</span>
+              </div>
             </div>
           )}
         </div>

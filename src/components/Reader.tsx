@@ -1,8 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type Dispatch, type SetStateAction } from "react";
-import { countMatches, replaceAllText, replaceNth, type FindOpts } from "../lib/find";
+import { countMatches, isBadPattern, replaceAllText, replaceNth, selectedText, type FindOpts } from "../lib/find";
 import { tokenizeLines } from "../lib/highlight";
-import { useFindReplace } from "../hooks/useFindReplace";
-import { useHotkeys } from "../hooks/useHotkeys";
+import type { FindApi } from "../hooks/useFindReplace";
 import type { ChapterRow, ChapterView, Term } from "../types";
 import { ResizeHandle } from "./common/ResizeHandle";
 import { EditorSurface } from "./reader/EditorSurface";
@@ -22,6 +21,8 @@ type Props = {
   setPanes: Dispatch<SetStateAction<PaneState>>;
   /** Glossary highlighting (a setting, toggled from Settings / the View menu). */
   hl: boolean;
+  /** Find/replace state, owned by App so the menu and palette can open it. */
+  find: FindApi;
   /** Full glossary (source, target, kind) for highlighting + the term popover. */
   terms: Term[];
   /** Jump to a term's entry in the glossary view. */
@@ -65,7 +66,7 @@ function PaneToggle({
 
 export function Reader({
   t, chapters, chapterIdx, setChapterIdx, chapter, chapterLoading,
-  panes, setPanes, hl, terms, onOpenGlossaryTerm, onReplaceInBook,
+  panes, setPanes, hl, find, terms, onOpenGlossaryTerm, onReplaceInBook,
   translating, onTranslateChapter, onSaveTranslation,
   onSaveChapterPrompt, onSaveChapterContext, onRetranslateWithPrompt,
 }: Props) {
@@ -166,14 +167,14 @@ export function Reader({
   const srcMatches = useMemo(() => terms.map((tm) => ({ match: tm.source, key: tm.source })), [terms]);
   const tgtMatches = useMemo(() => terms.map((tm) => ({ match: tm.target, key: tm.source })), [terms]);
 
-  const find = useFindReplace();
   const [replaceBusy, setReplaceBusy] = useState(false);
   // Search and highlighting run on the draft, so they follow what is on screen.
   const translation = bodyDraft;
   const findOpts = useMemo<FindOpts>(
-    () => ({ matchCase: find.matchCase, wholeWord: find.wholeWord }),
-    [find.matchCase, find.wholeWord],
+    () => ({ matchCase: find.matchCase, wholeWord: find.wholeWord, regex: find.regex }),
+    [find.matchCase, find.wholeWord, find.regex],
   );
+  const badPattern = isBadPattern(find.query, findOpts);
   const searchSpec = useMemo(
     () => (find.open && find.query ? { query: find.query, opts: findOpts } : null),
     [find.open, find.query, findOpts],
@@ -200,12 +201,13 @@ export function Reader({
   useEffect(() => {
     find.setCurrent(0);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [find.query, find.matchCase, find.wholeWord, chapterIdx]);
+  }, [find.query, find.matchCase, find.wholeWord, find.regex, chapterIdx]);
 
-  useHotkeys({
-    "mod+f": (e) => { if (chapter) { e.preventDefault(); find.openBar("find"); } },
-    "mod+h": (e) => { if (chapter) { e.preventDefault(); find.openBar("replace"); } },
-  });
+  // Seed the query from what is selected in the editor, the way ⌘F does in an IDE.
+  const setSeeder = find.setSeeder;
+  useEffect(() => {
+    setSeeder(selectedText);
+  }, [setSeeder]);
 
   function findNext() { if (matchCount) find.setCurrent((find.current + 1) % matchCount); }
   function findPrev() { if (matchCount) find.setCurrent((find.current - 1 + matchCount) % matchCount); }
@@ -327,16 +329,9 @@ export function Reader({
 
       {find.open && chapter && (
         <FindReplaceBar
-          t={t} mode={find.mode} setMode={find.setMode}
-          query={find.query} setQuery={find.setQuery}
-          replacement={find.replacement} setReplacement={find.setReplacement}
-          matchCase={find.matchCase} setMatchCase={find.setMatchCase}
-          wholeWord={find.wholeWord} setWholeWord={find.setWholeWord}
-          scope={find.scope} setScope={find.setScope}
-          count={matchCount} current={find.current} busy={replaceBusy}
+          t={t} find={find} count={matchCount} badPattern={badPattern} busy={replaceBusy}
           onPrev={findPrev} onNext={findNext}
           onReplaceOne={() => void replaceOne()} onReplaceAll={() => void replaceAll()}
-          onClose={find.close}
         />
       )}
 

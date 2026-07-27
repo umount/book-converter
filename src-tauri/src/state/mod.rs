@@ -637,10 +637,19 @@ impl Store {
         Ok(rows)
     }
 
-    /// Literal find/replace across every stored translation (title + body).
-    /// Returns the number of chapters actually changed. Status and origin are
-    /// left untouched (this is a text edit, not a re-translation).
-    pub fn replace_in_translations(&self, re: &regex::Regex, replacement: &str) -> Result<usize> {
+    /// Find/replace across every stored translation (title + body). Returns the
+    /// number of chapters actually changed. Status and origin are left untouched
+    /// (this is a text edit, not a re-translation).
+    ///
+    /// `expand` mirrors the find bar's regex mode: with it, `$1` in `replacement`
+    /// refers to a capture group; without it the replacement is inserted verbatim,
+    /// so a literal `$` in the text stays a `$`.
+    pub fn replace_in_translations(
+        &self,
+        re: &regex::Regex,
+        replacement: &str,
+        expand: bool,
+    ) -> Result<usize> {
         let mut stmt = self.conn.prepare(
             "SELECT idx, translated_title, translated FROM chapters WHERE translated IS NOT NULL",
         )?;
@@ -654,10 +663,18 @@ impl Store {
             })?
             .collect::<rusqlite::Result<Vec<_>>>()?;
 
+        let apply = |s: &str| {
+            if expand {
+                re.replace_all(s, replacement).into_owned()
+            } else {
+                re.replace_all(s, regex::NoExpand(replacement)).into_owned()
+            }
+        };
+
         let mut changed = 0usize;
         for (idx, title, body) in rows {
-            let new_body = re.replace_all(&body, replacement).into_owned();
-            let new_title = title.as_ref().map(|t| re.replace_all(t, replacement).into_owned());
+            let new_body = apply(&body);
+            let new_title = title.as_ref().map(|t| apply(t));
             if new_body != body || new_title.as_deref() != title.as_deref() {
                 self.conn.execute(
                     "UPDATE chapters

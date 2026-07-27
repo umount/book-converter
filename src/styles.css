@@ -383,6 +383,9 @@ tr.add-row input::placeholder { color: var(--fg-subtle); }
 .findbar-count { font-size: 11px; color: var(--fg-muted); flex: 0 0 auto; min-width: 68px; text-align: right; }
 .findbar .chip { padding: 3px 7px; font-family: var(--font-mono); }
 .findbar .chip[data-on="true"] { background: var(--accent); color: var(--accent-fg); border-color: var(--accent); }
+/* Regex mode with a half-typed pattern: flag it instead of silently finding nothing. */
+.findbar-input.invalid { border-color: var(--error); box-shadow: 0 0 0 2px color-mix(in srgb, var(--error) 22%, transparent); }
+.findbar-count.invalid { color: var(--error); }
 .ch-empty { display: flex; align-items: center; justify-content: center; min-height: 120px; }
 /* Inline editing: the body is edited through a transparent textarea laid over
    the highlighted lines - the surface never switches into an "edit mode". */
