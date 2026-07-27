@@ -109,6 +109,93 @@ fn word_aware_tail(text: &str, max_chars: usize) -> String {
     chars[start..].iter().collect::<String>().trim_start().to_string()
 }
 
+
+/// Writing system a language is expected to be written in. Used to catch text
+/// the model left in the wrong language.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Script {
+    Latin,
+    Cyrillic,
+    Han,
+}
+
+/// The script a translation into `lang` should be written in, or `None` for
+/// languages this check cannot judge (mixed writing systems such as Japanese).
+pub fn expected_script(lang: &str) -> Option<Script> {
+    match lang.trim().to_ascii_lowercase().as_str() {
+        "russian" | "ukrainian" | "belarusian" | "bulgarian" | "serbian" => Some(Script::Cyrillic),
+        "english" | "german" | "french" | "spanish" | "italian" | "portuguese" | "dutch"
+        | "polish" | "czech" | "turkish" | "vietnamese" | "indonesian" => Some(Script::Latin),
+        "chinese" => Some(Script::Han),
+        // Japanese and Korean mix scripts (kana + kanji, hangul + hanja); Arabic,
+        // Hebrew, Greek and friends are simply not modelled here.
+        _ => None,
+    }
+}
+
+fn script_of(c: char) -> Option<Script> {
+    match c {
+        'a'..='z' | 'A'..='Z' | 'À'..='ÿ' => Some(Script::Latin),
+        'А'..='я' | 'Ё' | 'ё' | 'Ї' | 'ї' | 'І' | 'і' | 'Є' | 'є' | 'Ґ' | 'ґ' => Some(Script::Cyrillic),
+        '\u{3400}'..='\u{9fff}' | '\u{f900}'..='\u{faff}' => Some(Script::Han),
+        _ => None,
+    }
+}
+
+/// Runs of text in a script other than `expected`, i.e. words the model failed to
+/// translate (source-script names) or pulled in from a third language.
+///
+/// A run is reported when it is at least `min_len` characters long, so stray
+/// single letters (a unit, an initial) do not trip it. Anything that appears
+/// verbatim in `source` is allowed: if the original itself carried a Latin word,
+/// keeping it is correct.
+pub fn foreign_fragments(
+    text: &str,
+    expected: Script,
+    source: &str,
+    min_len: usize,
+) -> Vec<String> {
+    let mut out: Vec<String> = Vec::new();
+    let mut run = String::new();
+    let mut run_script: Option<Script> = None;
+
+    let flush = |run: &mut String, script: Option<Script>, out: &mut Vec<String>| {
+        let word = run.trim().to_string();
+        run.clear();
+        let Some(script) = script else { return };
+        if script == expected || word.is_empty() {
+            return;
+        }
+        // Han in a non-Han target is untranslated source text, however short and
+        // even though it does appear in the original - that is exactly the point.
+        let is_source_script = script == Script::Han;
+        let long_enough = is_source_script || word.chars().count() >= min_len;
+        let carried_over = !is_source_script && source.contains(&word);
+        if long_enough && !carried_over && !out.contains(&word) {
+            out.push(word);
+        }
+    };
+
+    for c in text.chars() {
+        match script_of(c) {
+            Some(s) if Some(s) == run_script => run.push(c),
+            Some(s) => {
+                flush(&mut run, run_script, &mut out);
+                run_script = Some(s);
+                run.push(c);
+            }
+            // Apostrophes and hyphens stay inside a word ("Bai'er", "Wang-shi").
+            None if !run.is_empty() && matches!(c, '\'' | '’' | '-') => run.push(c),
+            None => {
+                flush(&mut run, run_script, &mut out);
+                run_script = None;
+            }
+        }
+    }
+    flush(&mut run, run_script, &mut out);
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -153,5 +240,38 @@ mod tests {
         let out = closing_excerpt(&text, 40);
         assert!(out.chars().count() <= 45);
         assert!(!out.starts_with("лово")); // not mid "слово"
+    }
+
+    #[test]
+    fn flags_untranslated_han_and_latin_in_russian() {
+        let out = foreign_fragments(
+            "Он посмотрел на 王林 и сказал cultivation.",
+            Script::Cyrillic,
+            "他看着王林",
+            2,
+        );
+        assert!(out.contains(&"cultivation".to_string()), "got: {out:?}");
+        // 王林 is in the source, but Han is never acceptable in a Cyrillic target.
+        assert!(out.contains(&"王林".to_string()), "got: {out:?}");
+    }
+
+    #[test]
+    fn allows_latin_that_was_in_the_source() {
+        let out = foreign_fragments("Он включил Wi-Fi.", Script::Cyrillic, "他打开了 Wi-Fi。", 2);
+        assert!(out.is_empty(), "got: {out:?}");
+    }
+
+    #[test]
+    fn ignores_single_letters_and_clean_text() {
+        assert!(foreign_fragments("Чистый русский текст.", Script::Cyrillic, "", 2).is_empty());
+        assert!(foreign_fragments("Пункт a) первый", Script::Cyrillic, "", 2).is_empty());
+    }
+
+    #[test]
+    fn expected_script_maps_known_languages() {
+        assert_eq!(expected_script("Russian"), Some(Script::Cyrillic));
+        assert_eq!(expected_script("english"), Some(Script::Latin));
+        assert_eq!(expected_script("Chinese"), Some(Script::Han));
+        assert_eq!(expected_script("Japanese"), None);
     }
 }

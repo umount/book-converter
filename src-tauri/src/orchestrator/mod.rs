@@ -22,7 +22,12 @@ use crate::book::{split_chapter, Chapter};
 use crate::config::Config;
 use crate::glossary::{self, Term};
 use crate::state::{Stats, Status, Store};
+use crate::textutil;
 use crate::translator::{prompt, DeepSeekClient};
+
+/// Shortest run of unexpected-script letters treated as a leftover foreign word.
+/// Single letters (an initial, a unit) are ignored; Han is always reported.
+const MIN_FOREIGN_RUN: usize = 2;
 
 /// Live progress callback payload for the UI / console.
 #[derive(Debug, Clone)]
@@ -50,6 +55,16 @@ pub struct Orchestrator<'a> {
     style: Option<String>,
     summary: String,
     prev_tail: Option<String>,
+    /// Title / author of the book, injected into every chapter prompt.
+    book: BookIdentity,
+}
+
+/// Owned counterpart of `prompt::BookRef`, read once from the project's meta.
+#[derive(Default)]
+struct BookIdentity {
+    title: Option<String>,
+    author: Option<String>,
+    title_translated: Option<String>,
 }
 
 impl<'a> Orchestrator<'a> {
@@ -63,6 +78,7 @@ impl<'a> Orchestrator<'a> {
     ) -> Result<Self> {
         let glossary = store.load_glossary()?;
         let summary = store.get_meta("running_summary")?.unwrap_or_default();
+        let meta = |k: &str| store.get_meta(k).ok().flatten().filter(|v| !v.trim().is_empty());
         Ok(Self {
             client,
             store,
@@ -71,6 +87,11 @@ impl<'a> Orchestrator<'a> {
             style,
             summary,
             prev_tail: None,
+            book: BookIdentity {
+                title: meta("title"),
+                author: meta("author"),
+                title_translated: meta("title_translated"),
+            },
         })
     }
 
@@ -264,6 +285,7 @@ impl<'a> Orchestrator<'a> {
         let started = Instant::now();
         match self.translate_one(&title, &source, user_note.as_deref()).await {
             Ok(full) => {
+                let full = self.enforce_target_language(&full, &source).await;
                 let (t_title, t_body) = split_title_body(&full, &title);
                 let ms = started.elapsed().as_millis() as u64;
                 self.store
@@ -323,6 +345,11 @@ impl<'a> Orchestrator<'a> {
             prev_tail: self.prev_tail.as_deref(),
             style: self.style.as_deref(),
             user_note,
+            book: Some(prompt::BookRef {
+                title: self.book.title.as_deref(),
+                author: self.book.author.as_deref(),
+                title_translated: self.book.title_translated.as_deref(),
+            }),
         };
         let system = prompt::system_prompt(self.config);
 
@@ -338,6 +365,45 @@ impl<'a> Orchestrator<'a> {
             parts.push(out);
         }
         Ok(parts.join("\n\n"))
+    }
+
+    /// Catch words the model left in the source language (or pulled in from a
+    /// third one) and ask it to redo just those. One repair pass: it is cheap
+    /// relative to the chapter, and a second one rarely helps. Whatever survives
+    /// is logged, so a human can find the chapter.
+    async fn enforce_target_language(&self, translation: &str, source: &str) -> String {
+        let Some(expected) = textutil::expected_script(&self.config.target_lang) else {
+            return translation.to_string();
+        };
+        let bad = textutil::foreign_fragments(translation, expected, source, MIN_FOREIGN_RUN);
+        if bad.is_empty() {
+            return translation.to_string();
+        }
+        tracing::info!(fragments = ?bad, "translation kept foreign words; repairing");
+
+        let (system, user) =
+            prompt::build_language_fix_prompt(self.config, &bad, translation);
+        let fixed = match self.client.translate(&system, &user).await {
+            Ok(fixed) if !fixed.trim().is_empty() => fixed,
+            Ok(_) => return translation.to_string(),
+            Err(e) => {
+                tracing::warn!("language repair failed: {e:#}");
+                return translation.to_string();
+            }
+        };
+
+        // Only accept the repair if it actually removed fragments without
+        // mangling the text (a model that "fixes" by summarising is worse).
+        let still = textutil::foreign_fragments(&fixed, expected, source, MIN_FOREIGN_RUN);
+        let shrunk = fixed.chars().count() * 4 < translation.chars().count() * 3;
+        if shrunk {
+            tracing::warn!("language repair returned a much shorter text; keeping the original");
+            return translation.to_string();
+        }
+        if !still.is_empty() {
+            tracing::warn!(fragments = ?still, "foreign words remain after repair");
+        }
+        fixed
     }
 
     async fn update_summary(&self, translation: &str) -> Result<String> {

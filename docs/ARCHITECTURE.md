@@ -97,9 +97,9 @@ thing the frontend knows about; session/job helpers sit beside it.
 | **reference** | Optional reference translation: load, align, bootstrap pinned glossary + style exemplar |
 | **glossary** | Consistency: store terms, inject into prompt, auto-extract, merge with conflict resolution |
 | **retarget** | Propagate a glossary rename into translated text + rolling context (inflection-aware) |
-| **translator::prompt** | System/user prompts: glossary + rolling summary + style |
+| **translator::prompt** | System/user prompts: book identity + glossary + rolling summary + style; strict target-language rules; repair prompt |
 | **translator::deepseek** | DeepSeek HTTP client, retry + backoff, continue on output truncation |
-| **orchestrator** | Sequential translation loop (glossary + summary + enrich) |
+| **orchestrator** | Sequential translation loop (glossary + summary + enrich + target-language check) |
 | **state** | Persist progress and glossary in per-project SQLite |
 | **settings** | App-wide key-value settings DB |
 | **export::txt** / **fb2** / **epub** / **pdf** | Assemble output formats |
@@ -123,10 +123,11 @@ SEQUENTIAL loop
    │  2. running summary + prev chapter tail
    │  3. chunker if body > max_chunk_chars (paragraph boundaries)
    │  4. deepseek.translate() ── retry ──>
-   │  5. save_translation (join chunks if split)
-   │  6. update running_summary
-   │  7. glossary extract + merge
-   │  8. emit("progress", { project, … })
+   │  5. target-language check → one repair pass if foreign words remain
+   │  6. save_translation (join chunks if split)
+   │  7. update running_summary
+   │  8. glossary extract + merge
+   │  9. emit("progress", { project, … })
    ▼
 export::{txt,fb2,epub,pdf}
 ```

@@ -24,15 +24,62 @@ pub struct PromptContext<'a> {
     pub style: Option<&'a str>,
     /// Optional user instruction for this chapter only (not the glossary).
     pub user_note: Option<&'a str>,
+    /// The book this chapter belongs to (original title, author, known
+    /// translated title). Models often know the work, and naming it helps them
+    /// place names and setting terminology.
+    pub book: Option<BookRef<'a>>,
+}
+
+/// Identity of the book being translated, as far as it is known.
+#[derive(Default, Clone, Copy)]
+pub struct BookRef<'a> {
+    pub title: Option<&'a str>,
+    pub author: Option<&'a str>,
+    /// Title in the target language, when one is already known.
+    pub title_translated: Option<&'a str>,
+}
+
+impl BookRef<'_> {
+    fn is_empty(&self) -> bool {
+        [self.title, self.author, self.title_translated]
+            .iter()
+            .all(|v| v.map(|s| s.trim().is_empty()).unwrap_or(true))
+    }
 }
 
 /// System prompt: role and general translation rules.
+///
+/// The language rules are deliberately blunt: models drift into leaving source
+/// script in place for names and terms it is unsure about, or into borrowing an
+/// English romanization of them. Both are checked for after translation
+/// (`textutil::foreign_fragments`).
 pub fn system_prompt(config: &Config) -> String {
     format!(
         "You are a professional literary translator from {src} to {tgt}. \
          Translate in a natural, coherent, literary style, preserving voice and \
          paragraph structure. Keep the chapter title. Do not add explanations, \
-         notes, or the original text — output the translation only.",
+         notes, or the original text — output the translation only.\n\
+         \n\
+         Language rules (strict):\n\
+         - Write the entire output in {tgt}. Not a single word, name or \
+           interjection may remain in {src} or appear in any third language.\n\
+         - Personal names are transliterated by sound into {tgt}, using the \
+           transcription conventional for the {src}-{tgt} pair, and are never \
+           translated by meaning: \"Harry Potter\" becomes the {tgt} spelling of \
+           \"Harry Potter\", not a rendering of what \"potter\" means. The same holds \
+           for {src} names: transliterate how the name sounds, do not translate \
+           what its characters mean.\n\
+         - Place names, sects, techniques and artefacts usually carry meaning in \
+           this genre, and that meaning is part of the story: translate it \
+           (\"Blood Lake\", \"Valley of Sorrow\", \"Heavenly Sword Sect\"). \
+           Transliterate such a name only when it has no transparent meaning, or \
+           when it is a real-world place with an established {tgt} name.\n\
+         - Whichever way a name is rendered, render it that way everywhere.\n\
+         - Never leave a name in the original script, and never fall back on an \
+           English romanization of it.\n\
+         - A term you are unsure about is still translated or transliterated — \
+           leaving the original word in is never an acceptable fallback.\n\
+         - Keep numbers, and punctuation appropriate for {tgt}.",
         src = config.source_lang,
         tgt = config.target_lang,
     )
@@ -41,6 +88,25 @@ pub fn system_prompt(config: &Config) -> String {
 /// User prompt: dictionary + style + rolling context + the text to translate.
 pub fn user_prompt(ctx: &PromptContext, text: &str) -> String {
     let mut out = String::new();
+
+    if let Some(book) = ctx.book.filter(|b| !b.is_empty()) {
+        out.push_str("This chapter is from the following work");
+        if let Some(t) = book.title.filter(|s| !s.trim().is_empty()) {
+            let _ = write!(out, ", titled \"{}\"", t.trim());
+        }
+        if let Some(a) = book.author.filter(|s| !s.trim().is_empty()) {
+            let _ = write!(out, ", by {}", a.trim());
+        }
+        if let Some(tt) = book.title_translated.filter(|s| !s.trim().is_empty()) {
+            let _ = write!(out, " (published in translation as \"{}\")", tt.trim());
+        }
+        out.push_str(
+            ". If you know this work, use that knowledge for names, lore and setting \
+             terminology. The chapter text and the dictionary below always take \
+             precedence over your recollection; never import plot details that are \
+             not in the text.\n\n",
+        );
+    }
 
     if !ctx.terms.is_empty() {
         out.push_str(
@@ -94,6 +160,34 @@ pub fn user_prompt(ctx: &PromptContext, text: &str) -> String {
     out.push_str("Translate the following text:\n\n");
     out.push_str(text);
     out
+}
+
+/// Build a (system, user) prompt asking the model to repair a translation that
+/// still carries words in the wrong language: the fragments are named explicitly,
+/// and everything else must come back untouched.
+pub fn build_language_fix_prompt(
+    config: &Config,
+    fragments: &[String],
+    text: &str,
+) -> (String, String) {
+    let system = format!(
+        "You clean up a {tgt} literary translation. The text below still contains \
+         words that are not in {tgt}. Replace every one of them with proper {tgt}: \
+         personal names are transliterated by sound (never translated by meaning); \
+         place, sect and technique names are translated by meaning when they carry \
+         one, transliterated otherwise; everything else is translated. Never leave \
+         a word in the original script or in an English romanization. \
+         Change nothing else — keep \
+         wording, paragraphs and punctuation exactly as they are. Output only the \
+         corrected text.",
+        tgt = config.target_lang,
+    );
+    let mut user = String::from("Fragments that must not remain:\n");
+    for f in fragments {
+        let _ = writeln!(user, "- {f}");
+    }
+    let _ = write!(user, "\nText:\n{text}");
+    (system, user)
 }
 
 /// Build a (system, user) prompt to fold a freshly translated chapter into the
@@ -185,5 +279,45 @@ mod tests {
         let (_s, u) = build_summary_prompt(&cfg, "", "Chapter text.");
         assert!(u.contains("(none yet)"));
         assert!(u.contains("Chapter text."));
+    }
+
+    #[test]
+    fn includes_book_identity() {
+        let ctx = PromptContext {
+            book: Some(BookRef {
+                title: Some("光阴之外"),
+                author: Some("耳根"),
+                title_translated: Some("За гранью времени"),
+            }),
+            ..Default::default()
+        };
+        let p = user_prompt(&ctx, "text");
+        assert!(p.contains("光阴之外"));
+        assert!(p.contains("耳根"));
+        assert!(p.contains("За гранью времени"));
+    }
+
+    #[test]
+    fn no_book_section_when_unknown() {
+        let ctx = PromptContext { book: Some(BookRef::default()), ..Default::default() };
+        assert!(!user_prompt(&ctx, "text").contains("This chapter is from"));
+    }
+
+    #[test]
+    fn system_prompt_states_the_language_rules() {
+        let cfg = Config::default();
+        let s = system_prompt(&cfg);
+        assert!(s.contains("entire output in Russian"));
+        assert!(s.contains("transliterated by sound"));
+        assert!(s.contains("Valley of Sorrow"));
+    }
+
+    #[test]
+    fn language_fix_prompt_lists_fragments() {
+        let cfg = Config::default();
+        let (_s, u) = build_language_fix_prompt(&cfg, &["王林".into(), "cultivation".into()], "Текст");
+        assert!(u.contains("- 王林"));
+        assert!(u.contains("- cultivation"));
+        assert!(u.trim_end().ends_with("Текст"));
     }
 }

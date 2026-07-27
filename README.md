@@ -14,6 +14,7 @@ a single model request.
 | **Input** | TXT, FB2, PDF, ZIP · encoding auto-detected (UTF-8 / GBK / GB18030 / Big5) · chapter patterns + model-inferred delimiter / PDF TOC fallback |
 | **Translation** | Sequential by chapter · rolling story summary + previous-chapter tail · per-chapter context persisted in SQLite · pause / resume · optional limit (“next N”) · long chapters split on paragraph boundaries |
 | **Consistency** | Auto-growing glossary (person / location / organization / term) · pin & edit in UI · propagate renames into existing text (retarget) |
+| **Output language** | Book title + author named in every chapter prompt (models often know the work) · strict target-language rules (personal names transliterated by sound, meaningful place/sect names translated) · leftover source-script or third-language words are detected and repaired automatically |
 | **Reference** | Load a professional translation · bootstrap pinned glossary + style exemplar · seed covered chapters and continue from where it ends |
 | **Per chapter** | Translate one chapter from the reader · **custom chapter prompt** (e.g. “господин, not госпожа”) without touching the glossary · retranslate with that prompt · manual edit of title/body |
 | **Projects** | Each book is an isolated project (own DB, glossary, progress, console) · parallel runs · portable `.bcproj` (manifest + DB) |
