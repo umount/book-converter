@@ -58,6 +58,12 @@ export type EffectiveConfig = {
   has_key: boolean; env_locked: string[];
 };
 
+/** Build provenance for the About dialog. */
+export type AppInfo = {
+  name: string; version: string; commit: string; commit_date: string;
+  tauri: string; os: string; arch: string;
+};
+
 export type Project = { id: string; path: string; name: string; refPath?: string };
 export type ViewId = "overview" | "reader" | "glossary";
 

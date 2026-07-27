@@ -23,6 +23,8 @@ help:
 	@echo "  make fmt         format (cargo fmt)"
 	@echo "  make lint        cargo clippy"
 	@echo "  make test        cargo test"
+	@echo "  make version V=x.y.z  set the release version everywhere"
+	@echo "  make show-version     show declared version + build stamp"
 	@echo "  make clean       clean build artifacts"
 
 # --- Dependencies ---
@@ -89,6 +91,26 @@ lint:
 test:
 	@cd $(TAURI_DIR) && cargo test
 
+# --- Version ---
+
+# Set the release version in the three places that declare it, so the About
+# dialog, the bundle and npm never disagree: make version V=0.2.0
+version:
+	@test -n "$(V)" || { echo "usage: make version V=x.y.z"; exit 1; }
+	@echo "$(V)" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$$' || { echo "version must be x.y.z"; exit 1; }
+	@sed -i 's/^version = ".*"/version = "$(V)"/' $(TAURI_DIR)/Cargo.toml
+	@sed -i 's/"version": "[^"]*"/"version": "$(V)"/' $(TAURI_DIR)/tauri.conf.json
+	@npm pkg set version=$(V) >/dev/null
+	@cd $(TAURI_DIR) && cargo update -p book-converter --quiet 2>/dev/null || true
+	@echo "version set to $(V) (Cargo.toml, tauri.conf.json, package.json)"
+
+# Show the version currently declared, and the build stamp About would report
+show-version:
+	@printf 'cargo:      %s\n' "$$(sed -n 's/^version = "\(.*\)"/\1/p' $(TAURI_DIR)/Cargo.toml | head -1)"
+	@printf 'tauri.conf: %s\n' "$$(sed -n 's/.*"version": "\([^"]*\)".*/\1/p' $(TAURI_DIR)/tauri.conf.json | head -1)"
+	@printf 'package:    %s\n' "$$(node -p "require('./package.json').version")"
+	@printf 'commit:     %s (%s)\n' "$$(git rev-parse --short=9 HEAD)" "$$(git log -1 --format=%cs)"
+
 # --- Cleanup ---
 
 clean:
@@ -96,4 +118,4 @@ clean:
 	@cd $(TAURI_DIR) && cargo clean
 	@rm -rf dist node_modules
 
-.PHONY: help install deps-linux dev binary bundle run check fmt lint test clean
+.PHONY: help install deps-linux dev binary bundle run check fmt lint test version show-version clean

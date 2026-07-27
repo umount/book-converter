@@ -57,6 +57,35 @@ pub async fn get_effective_config() -> Result<EffectiveConfig, String> {
     })
 }
 
+/// Build provenance shown in the About dialog: which version, from which
+/// sources, on which platform.
+#[derive(serde::Serialize)]
+pub struct AppInfo {
+    /// Full product name for display.
+    pub name: String,
+    pub version: String,
+    /// Short git hash the binary was built from ("unknown" outside a checkout).
+    pub commit: String,
+    pub commit_date: String,
+    pub tauri: String,
+    pub os: String,
+    pub arch: String,
+}
+
+/// Name / version / build stamp for the About dialog.
+#[tauri::command]
+pub async fn get_app_info() -> Result<AppInfo, String> {
+    Ok(AppInfo {
+        name: crate::APP_NAME.to_string(),
+        version: env!("CARGO_PKG_VERSION").to_string(),
+        commit: env!("BC_COMMIT").to_string(),
+        commit_date: env!("BC_COMMIT_DATE").to_string(),
+        tauri: tauri::VERSION.to_string(),
+        os: std::env::consts::OS.to_string(),
+        arch: std::env::consts::ARCH.to_string(),
+    })
+}
+
 /// Read a persisted app setting (e.g. the UI language).
 #[tauri::command]
 pub async fn get_setting(key: String) -> Result<Option<String>, String> {

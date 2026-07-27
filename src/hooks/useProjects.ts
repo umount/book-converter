@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type MutableRefObject } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { open, save } from "@tauri-apps/plugin-dialog";
 import type { CallFn } from "../api";
+import type { MenuId } from "../components/Menubar";
 import {
   LS_ACTIVE, LS_PROJECTS, baseName, newId,
   type BookInfo, type Project, type RefInfo, type Term, type ViewId,
@@ -32,7 +33,7 @@ export type ProjectHelpers = {
   chapterIdxRef: MutableRefObject<number | null>;
   clearProjectJobState: (id: string) => void;
   setView: (v: ViewId) => void;
-  setMenu: (m: "file" | "view" | null) => void;
+  setMenu: (m: MenuId | null) => void;
   errText: (raw: string) => string;
 };
 

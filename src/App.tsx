@@ -2,7 +2,8 @@ import { useEffect, useRef, useState } from "react";
 import { makeCall } from "./api";
 import { Console } from "./components/Console";
 import { GlossaryView } from "./components/GlossaryView";
-import { Menubar } from "./components/Menubar";
+import { About } from "./components/About";
+import { Menubar, type MenuId } from "./components/Menubar";
 import { Overview } from "./components/Overview";
 import { Reader } from "./components/Reader";
 import { Settings } from "./components/Settings";
@@ -39,7 +40,8 @@ export default function App() {
   const setBusyFor = (id: string, msg: string | null) =>
     setBusyById((all) => ({ ...all, [id]: msg }));
 
-  const [menu, setMenu] = useState<"file" | "view" | null>(null);
+  const [menu, setMenu] = useState<MenuId | null>(null);
+  const [showAbout, setShowAbout] = useState(false);
   const [limit, setLimit] = useState<number | "">("");
   const [sidebar, setSidebar] = useState(true);
   const [showConsole, setShowConsole] = useState(true);
@@ -250,6 +252,7 @@ export default function App() {
         onToggleConsole={() => setShowConsole((s) => !s)}
         onOpenCommandPalette={() => setPaletteOpen(true)}
         onOpenSettings={() => { setShowSettings(true); setMenu(null); }}
+        onOpenAbout={() => setShowAbout(true)}
       />
 
       <div className="body">
@@ -398,6 +401,8 @@ export default function App() {
         commands={paletteCommands} chapters={book.chapters}
         onOpenChapter={tabs.openChapter}
       />
+
+      {showAbout && <About t={t} call={call} onClose={() => setShowAbout(false)} />}
     </div>
   );
 }

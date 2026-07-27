@@ -200,6 +200,7 @@ App data layout (see also `PROJECT_ISOLATION.md`):
 |---------|---------|
 | `get_setting` / `set_setting` | Durable app-wide KV (UI language, language pair, model/advanced) |
 | `get_effective_config` | Resolved non-secret config for the Settings page (env-locked keys, key presence) |
+| `get_app_info` | Product name, version, git commit/date, Tauri and platform (About dialog) |
 
 ### Project I/O
 | Command | Purpose |

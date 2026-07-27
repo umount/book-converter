@@ -1,7 +1,11 @@
+import { AppIcon } from "./common/AppIcon";
+
+export type MenuId = "file" | "view" | "help";
+
 type Props = {
   t: (key: string, vars?: Record<string, string | number>) => string;
-  menu: "file" | "view" | null;
-  setMenu: (m: "file" | "view" | null) => void;
+  menu: MenuId | null;
+  setMenu: (m: MenuId | null) => void;
   busy: string | null;
   canExport: boolean;
   hasActive: boolean;
@@ -16,18 +20,19 @@ type Props = {
   onToggleConsole: () => void;
   onOpenCommandPalette: () => void;
   onOpenSettings: () => void;
+  onOpenAbout: () => void;
 };
 
 export function Menubar({
   t, menu, setMenu, busy, canExport, hasActive,
   onOpenBook, onOpenReference, onOpenProject, onSaveProject, onExport,
   onToggleSidebar, onShowBothPanes, onToggleHighlight, onToggleConsole,
-  onOpenCommandPalette, onOpenSettings,
+  onOpenCommandPalette, onOpenSettings, onOpenAbout,
 }: Props) {
   return (
     <>
       <header className="menubar">
-        <span className="brand">book-converter</span>
+        <AppIcon className="brand-mark" />
         <div className="menuitem" onClick={() => setMenu(menu === "file" ? null : "file")}>
           {t("menu.file")}
           {menu === "file" && (
@@ -60,6 +65,14 @@ export function Menubar({
           )}
         </div>
         <div className="menuitem" onClick={onOpenSettings}>{t("menu.settings")}</div>
+        <div className="menuitem" onClick={() => setMenu(menu === "help" ? null : "help")}>
+          {t("menu.help")}
+          {menu === "help" && (
+            <div className="dropdown" onClick={(e) => e.stopPropagation()}>
+              <div className="mi" onClick={() => { onOpenAbout(); setMenu(null); }}>{t("help.about")}</div>
+            </div>
+          )}
+        </div>
         <div className="menu-spacer" />
         {busy && <span className="busy-inline">{busy}</span>}
       </header>

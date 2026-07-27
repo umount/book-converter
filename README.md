@@ -71,6 +71,13 @@ make check      # cargo check + tsc
 make test       # Rust unit tests
 ```
 
+### Version
+
+The release version is declared in `src-tauri/Cargo.toml`, `src-tauri/tauri.conf.json`
+and `package.json`; `make version V=x.y.z` sets all three at once. Builds are also
+stamped with the git commit and its date (`build.rs`), and **Help → About** reports
+version, commit, date, Tauri and platform.
+
 ## Using the app
 
 ### Projects

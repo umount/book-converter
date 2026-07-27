@@ -22,6 +22,10 @@ mod state;
 mod textutil;
 mod translator;
 
+/// Full product name, shown in the window title and the About dialog. The
+/// package/bundle id stays `book-converter`; this is the human-facing name.
+pub const APP_NAME: &str = "Book Converter";
+
 /// Build and run the Tauri application.
 pub fn run() {
     tracing_subscriber::fmt()
@@ -91,6 +95,7 @@ pub fn run() {
             commands::get_setting,
             commands::set_setting,
             commands::get_effective_config,
+            commands::get_app_info,
             commands::delete_project,
             commands::export_project,
             commands::import_project,
