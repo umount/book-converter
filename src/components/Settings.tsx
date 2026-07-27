@@ -12,6 +12,9 @@ type Props = {
   tgtLang: string;
   onChangeSourceLang: (v: string) => void;
   onChangeTargetLang: (v: string) => void;
+  /** Glossary highlighting in the reader (persisted preference). */
+  highlight: boolean;
+  onChangeHighlight: (v: boolean) => void;
   onClose: () => void;
   call: CallFn;
 };
@@ -20,7 +23,8 @@ type SectionId = "interface" | "translation" | "model" | "advanced";
 type Row = { id: string; section: SectionId; label: string; desc: string; lockedKey?: string; el: ReactNode };
 
 export function Settings({
-  t, lang, setLang, srcLang, tgtLang, onChangeSourceLang, onChangeTargetLang, onClose, call,
+  t, lang, setLang, srcLang, tgtLang, onChangeSourceLang, onChangeTargetLang,
+  highlight, onChangeHighlight, onClose, call,
 }: Props) {
   const [query, setQuery] = useState("");
   const [section, setSection] = useState<SectionId>("interface");
@@ -63,6 +67,15 @@ export function Settings({
         <select value={lang} onChange={(e) => setLang(normalizeLang(e.target.value))}>
           {LANGS.map((l) => <option key={l.code} value={l.code}>{l.label}</option>)}
         </select>
+      ),
+    },
+    {
+      id: "highlight", section: "interface", label: t("settings.highlightTerms"), desc: t("settings.highlightTermsHint"),
+      el: (
+        <label className="check">
+          <input type="checkbox" checked={highlight} onChange={(e) => onChangeHighlight(e.target.checked)} />
+          {t("settings.highlightTermsOn")}
+        </label>
       ),
     },
     {
@@ -111,7 +124,7 @@ export function Settings({
   const shown = useMemo(
     () => (q ? rows.filter((r) => r.label.toLowerCase().includes(q) || r.desc.toLowerCase().includes(q)) : rows.filter((r) => r.section === section)),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [q, section, lang, srcLang, tgtLang, model, baseUrl, temperature, chunk, retries, eff],
+    [q, section, lang, srcLang, tgtLang, highlight, model, baseUrl, temperature, chunk, retries, eff],
   );
 
   return (

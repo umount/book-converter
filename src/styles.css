@@ -323,16 +323,26 @@ tr.add-row input::placeholder { color: var(--fg-subtle); }
 .reader { display: flex; flex-direction: column; flex: 1; min-height: 0; }
 .reader-toolbar { display: flex; align-items: center; gap: 8px; padding: 8px; background: var(--bg-panel); border: 1px solid var(--border); border-radius: var(--r-lg); margin-bottom: 10px; flex: 0 0 auto; }
 .reader-toolbar select { flex: 1; min-width: 0; }
-.panes { display: flex; gap: 10px; flex: 1; min-height: 0; }
+/* The gap between panes is the draggable splitter itself, so no flex gap here. */
+.panes { display: flex; flex: 1; min-height: 0; }
 .pane { flex: 1; min-width: 0; display: flex; flex-direction: column; background: var(--bg-panel); border: 1px solid var(--border); border-radius: var(--r-lg); overflow: hidden; }
 .pane-head { display: flex; align-items: center; gap: 8px; justify-content: space-between; padding: 7px 11px; background: var(--bg-app); color: var(--fg-muted); font-size: 12px; flex: 0 0 auto; border-bottom: 1px solid var(--border); }
 .ref-badge { flex: 0 0 auto; padding: 1px 7px; border-radius: 10px; font-size: 11px; letter-spacing: .03em;
   color: var(--accent-hover); background: var(--accent-soft);
   border: 1px solid color-mix(in srgb, var(--accent) 40%, transparent); text-transform: uppercase; }
 .pane-body { overflow-y: auto; padding: 16px; flex: 1; }
-.chtitle { font-weight: 650; margin-bottom: 12px; }
-.reader-chtitle { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 38%; }
-.pane-modes { display: inline-flex; gap: 4px; }
+/* The chapter title lives in the pane header (it is the pane's identity). */
+.pane-title { flex: 1; min-width: 0; font-weight: 600; color: var(--fg); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pane-title-input {
+  padding: 0; background: transparent; border: 0; border-radius: 0;
+  font: inherit; font-weight: 600; color: var(--fg);
+}
+.pane-title-input:focus { outline: none; box-shadow: none; border: 0; border-bottom: 1px solid var(--accent); }
+/* Reuses the activity-bar icon button, minus its rail indicator. */
+.pane-toggle { width: 27px; height: 25px; }
+.pane-toggle svg { width: 17px; height: 17px; }
+.pane-toggle.active { color: var(--accent); background: var(--accent-soft); }
+.pane-toggle.active::before { display: none; }
 
 /* Editor surface: line-number gutter + tokenized text */
 .editor-surface { position: relative; font-size: 14px; line-height: 1.7; }
@@ -369,14 +379,8 @@ tr.add-row input::placeholder { color: var(--fg-subtle); }
 .findbar .chip { padding: 3px 7px; font-family: var(--font-mono); }
 .findbar .chip[data-on="true"] { background: var(--accent); color: var(--accent-fg); border-color: var(--accent); }
 .ch-empty { display: flex; align-items: center; justify-content: center; min-height: 120px; }
-/* Inline editing: the translated title is an input that looks like the heading,
-   and the body is edited through a transparent textarea laid over the
-   highlighted lines - the surface never switches into an "edit mode". */
-.chtitle-input {
-  width: 100%; padding: 0; background: transparent; border: 0; border-radius: 0;
-  font: inherit; font-size: inherit; font-weight: 650; color: var(--fg);
-}
-.chtitle-input:focus { outline: none; box-shadow: none; border: 0; border-bottom: 1px solid var(--accent); }
+/* Inline editing: the body is edited through a transparent textarea laid over
+   the highlighted lines - the surface never switches into an "edit mode". */
 .ed-input {
   position: absolute; inset: 0; width: 100%; height: 100%;
   margin: 0; padding: 0 0 0 56px; /* clears the 42px gutter + its 14px gap */
@@ -407,7 +411,14 @@ tr.add-row input::placeholder { color: var(--fg-subtle); }
    Bottom panel (console host, resizable)
    ========================================================================== */
 .bottompanel { flex: 0 0 auto; display: flex; flex-direction: column; min-height: 0; border-top: 1px solid var(--border); position: relative; }
-.resize-handle { height: 5px; margin-top: -3px; cursor: ns-resize; flex: 0 0 auto; position: relative; z-index: 5; }
+.resize-handle { flex: 0 0 auto; position: relative; z-index: 5; }
+.resize-handle.horizontal { height: 5px; margin-top: -3px; cursor: ns-resize; }
+.resize-handle.vertical { width: 9px; align-self: stretch; cursor: col-resize; }
+/* Hairline in the middle of the vertical splitter, so the gap reads as a divider. */
+.resize-handle.vertical::before {
+  content: ""; position: absolute; top: 0; bottom: 0; left: 50%; width: 1px;
+  background: var(--border); transform: translateX(-50%);
+}
 .resize-handle:hover, .resize-handle.dragging { background: var(--accent-soft); }
 
 .console { flex: 1; display: flex; flex-direction: column; background: var(--bg-panel); min-height: 0; }
@@ -490,6 +501,10 @@ tr.add-row input::placeholder { color: var(--fg-subtle); }
 
 @media (max-width: 760px) {
   .sidebar { position: absolute; z-index: 15; height: calc(100vh - var(--h-menubar)); left: var(--w-activitybar); }
-  .panes { flex-direction: column; }
+  /* Stacked panes: the horizontal split (and its inline flex-basis) makes no
+     sense here, so the divider is dropped and both panes share the height. */
+  .panes { flex-direction: column; gap: 10px; }
+  .panes .pane { flex: 1 1 0 !important; }
+  .resize-handle.vertical { display: none; }
   .book-details { flex-direction: column; }
 }

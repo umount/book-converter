@@ -4,12 +4,12 @@ import { tokenizeLines } from "../lib/highlight";
 import { useFindReplace } from "../hooks/useFindReplace";
 import { useHotkeys } from "../hooks/useHotkeys";
 import type { ChapterRow, ChapterView, Term } from "../types";
+import { ResizeHandle } from "./common/ResizeHandle";
 import { EditorSurface } from "./reader/EditorSurface";
 import { FindReplaceBar } from "./reader/FindReplaceBar";
 import { TermPopover } from "./reader/TermPopover";
 
 type PaneState = { orig: boolean; transl: boolean };
-type PaneMode = "split" | "orig" | "transl";
 
 type Props = {
   t: (key: string, vars?: Record<string, string | number>) => string;
@@ -20,8 +20,8 @@ type Props = {
   chapterLoading: boolean;
   panes: PaneState;
   setPanes: Dispatch<SetStateAction<PaneState>>;
+  /** Glossary highlighting (a setting, toggled from Settings / the View menu). */
   hl: boolean;
-  setHl: Dispatch<SetStateAction<boolean>>;
   /** Full glossary (source, target, kind) for highlighting + the term popover. */
   terms: Term[];
   /** Jump to a term's entry in the glossary view. */
@@ -40,9 +40,32 @@ type Props = {
 /** Idle time after the last keystroke before the translation is persisted. */
 const AUTOSAVE_MS = 900;
 
+/** Horizontal share of the original pane when both are open. */
+const LS_SPLIT = "bc.reader.split";
+const MIN_SHARE = 0.15;
+const MAX_SHARE = 0.85;
+
+/**
+ * Pane visibility toggle, IDE style: each pane is closed by its own × and
+ * brought back from here, instead of switching between layout presets.
+ */
+function PaneToggle({
+  side, on, title, onToggle,
+}: { side: "left" | "right"; on: boolean; title: string; onToggle: () => void }) {
+  return (
+    <button className={`act-btn pane-toggle ${on ? "active" : ""}`} title={title} onClick={onToggle}>
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinejoin="round">
+        {on && <rect x={side === "left" ? 4 : 12} y="5.5" width="8" height="13" fill="currentColor" stroke="none" />}
+        <rect x="4" y="5.5" width="16" height="13" rx="1.5" />
+        <path d="M12 5.5v13" />
+      </svg>
+    </button>
+  );
+}
+
 export function Reader({
   t, chapters, chapterIdx, setChapterIdx, chapter, chapterLoading,
-  panes, setPanes, hl, setHl, terms, onOpenGlossaryTerm, onReplaceInBook,
+  panes, setPanes, hl, terms, onOpenGlossaryTerm, onReplaceInBook,
   translating, onTranslateChapter, onSaveTranslation,
   onSaveChapterPrompt, onSaveChapterContext, onRetranslateWithPrompt,
 }: Props) {
@@ -254,30 +277,44 @@ export function Reader({
     if (pos >= 0 && j >= 0 && j < chapters.length) setChapterIdx(chapters[j].idx);
   };
 
-  const mode: PaneMode = panes.orig && panes.transl ? "split" : panes.transl ? "transl" : "orig";
-  const setMode = (m: PaneMode) =>
-    setPanes(m === "split" ? { orig: true, transl: true } : m === "orig" ? { orig: true, transl: false } : { orig: false, transl: true });
+  // Split position: the original pane's share of the row, dragged from the
+  // divider and remembered across sessions.
+  const both = panes.orig && panes.transl;
+  const panesRef = useRef<HTMLDivElement>(null);
+  const [share, setShare] = useState(() => {
+    const v = Number(localStorage.getItem(LS_SPLIT));
+    return v >= MIN_SHARE && v <= MAX_SHARE ? v : 0.5;
+  });
+  const shareStart = useRef(share);
+  function dragSplit(dx: number) {
+    const w = panesRef.current?.clientWidth ?? 0;
+    if (!w) return;
+    setShare(Math.min(MAX_SHARE, Math.max(MIN_SHARE, shareStart.current + dx / w)));
+  }
+  // Closing a pane must not leave the other one pinned to a fraction of the row.
+  const origStyle = both ? { flex: `0 0 calc(${(share * 100).toFixed(2)}% - 5px)` } : undefined;
+
 
   const hasTranslation = !!(chapter?.translated && chapter.status === "done");
   const canTranslate = !!chapter && chapterIdx != null && !translating;
   const canRegenerate = canTranslate && !promptBusy;
   const hasPrompt = !!(promptDraft.trim() || chapter?.user_prompt);
   const hasContext = !!(summaryDraft.trim() || tailDraft.trim() || chapter?.rolling_summary || chapter?.prev_tail);
-  const headTitle = chapter ? `${chapter.number != null ? `#${chapter.number} ` : ""}${chapter.translated_title?.trim() || chapter.source_title}` : "";
 
   return (
     <div className="reader">
       <div className="reader-toolbar">
         <button className="ghost" disabled={pos <= 0} onClick={() => gotoRel(-1)} title={t("reader.prev")}>‹</button>
         <button className="ghost" disabled={pos < 0 || pos >= chapters.length - 1} onClick={() => gotoRel(1)} title={t("reader.next")}>›</button>
-        <div className="reader-chtitle" title={headTitle}>{headTitle}</div>
         <div className="menu-spacer" />
-        <div className="pane-modes">
-          <button className={`chip ${mode === "split" ? "on" : ""}`} onClick={() => setMode("split")}>{t("reader.paneSplit")}</button>
-          <button className={`chip ${mode === "orig" ? "on" : ""}`} onClick={() => setMode("orig")}>{t("reader.original")}</button>
-          <button className={`chip ${mode === "transl" ? "on" : ""}`} onClick={() => setMode("transl")}>{t("reader.translation")}</button>
-        </div>
-        <label className="check"><input type="checkbox" checked={hl} onChange={(e) => setHl(e.target.checked)} /> {t("reader.highlight")}</label>
+        <PaneToggle
+          side="left" on={panes.orig} title={t("reader.showOriginal")}
+          onToggle={() => setPanes((p) => ({ ...p, orig: !p.orig }))}
+        />
+        <PaneToggle
+          side="right" on={panes.transl} title={t("reader.showTranslation")}
+          onToggle={() => setPanes((p) => ({ ...p, transl: !p.transl }))}
+        />
         <button className={`chip ${promptOpen || hasPrompt ? "on" : ""}`} title={t("reader.promptTip")} disabled={!chapter}
           onClick={() => { setPromptOpen((o) => !o); if (!promptOpen) setContextOpen(false); }}>
           {t("reader.prompt")}{hasPrompt ? " ·" : ""}
@@ -348,28 +385,47 @@ export function Reader({
         </div>
       )}
 
-      <div className="panes">
+      <div className="panes" ref={panesRef}>
         {panes.orig && (
-          <div className="pane">
+          <div className="pane" style={origStyle}>
             <div className="pane-head">
-              <span>{t("reader.original")} {chapter?.number != null && `· #${chapter.number}`}</span>
+              <span className="pane-title" title={`${t("reader.original")}: ${chapter?.source_title ?? ""}`}>
+                {chapter?.source_title}
+              </span>
               <button className="icon" onClick={() => setPanes((p) => ({ ...p, orig: false }))}>×</button>
             </div>
             <div className="pane-body">
-              {chapterLoading ? <div className="loading"><span className="spinner" /> {t("reader.loading")}</div> : <>
-                <div className="chtitle">{chapter?.source_title}</div>
+              {chapterLoading ? <div className="loading"><span className="spinner" /> {t("reader.loading")}</div> : (
                 <EditorSurface lines={sourceLines} activeKey={activeTerm} onTermClick={onTermClick} />
-              </>}
+              )}
             </div>
           </div>
+        )}
+        {both && (
+          <ResizeHandle
+            axis="x"
+            onStart={() => { shareStart.current = share; }}
+            onDrag={dragSplit}
+            onEnd={() => localStorage.setItem(LS_SPLIT, String(share))}
+          />
         )}
         {panes.transl && (
           <div className="pane">
             <div className="pane-head">
-              <span>{t("reader.translation")} {chapter?.status !== "done" && `· ${t("reader.notTranslated")}`}</span>
+              {hasTranslation ? (
+                <input
+                  className="pane-title pane-title-input" value={titleDraft}
+                  onChange={(e) => setTitleDraft(e.target.value)}
+                  placeholder={t("reader.editTitlePlaceholder")}
+                  title={`${t("reader.translation")}: ${titleDraft}`}
+                />
+              ) : (
+                <span className="pane-title" title={t("reader.translation")}>
+                  {chapter?.translated_title || t("reader.notTranslated")}
+                </span>
+              )}
               {chapter?.origin === "reference" && <span className="ref-badge" title={t("reader.fromReferenceTip")}>{t("reader.fromReference")}</span>}
               {chapter?.origin === "manual" && <span className="ref-badge" title={t("reader.manualTip")}>{t("reader.manual")}</span>}
-              <div className="menu-spacer" />
               {hasTranslation && (
                 <>
                   <span className={`save-state ${saving ? "busy" : dirty ? "dirty" : ""}`} title={t("reader.autosaveTip")}>
@@ -383,30 +439,19 @@ export function Reader({
               <button className="icon" onClick={() => setPanes((p) => ({ ...p, transl: false }))}>×</button>
             </div>
             <div className="pane-body">
-              {chapterLoading ? <div className="loading"><span className="spinner" /> {t("reader.loading")}</div> : <>
-                {hasTranslation ? (
-                  <input
-                    className="chtitle chtitle-input" value={titleDraft}
-                    onChange={(e) => setTitleDraft(e.target.value)}
-                    placeholder={t("reader.editTitlePlaceholder")}
-                  />
-                ) : (
-                  <div className="chtitle">{chapter?.translated_title}</div>
-                )}
-                {hasTranslation ? (
-                  <EditorSurface
-                    lines={translLines} activeKey={activeTerm} onTermClick={onTermClick}
-                    currentSearch={searchSpec ? find.current : undefined}
-                    editable value={bodyDraft} onChange={setBodyDraft}
-                  />
-                ) : (
-                  <div className="ch-empty">
-                    <button disabled={!canTranslate} onClick={() => chapterIdx != null && onTranslateChapter(chapterIdx)}>
-                      {translating ? t("reader.translating") : t("reader.translateChapter")}
-                    </button>
-                  </div>
-                )}
-              </>}
+              {chapterLoading ? <div className="loading"><span className="spinner" /> {t("reader.loading")}</div> : hasTranslation ? (
+                <EditorSurface
+                  lines={translLines} activeKey={activeTerm} onTermClick={onTermClick}
+                  currentSearch={searchSpec ? find.current : undefined}
+                  editable value={bodyDraft} onChange={setBodyDraft}
+                />
+              ) : (
+                <div className="ch-empty">
+                  <button disabled={!canTranslate} onClick={() => chapterIdx != null && onTranslateChapter(chapterIdx)}>
+                    {translating ? t("reader.translating") : t("reader.translateChapter")}
+                  </button>
+                </div>
+              )}
             </div>
           </div>
         )}

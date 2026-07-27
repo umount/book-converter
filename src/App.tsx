@@ -28,6 +28,9 @@ export default function App() {
   const [lang, setLang] = useState<Lang>(() => normalizeLang(localStorage.getItem(LS_LANG)));
   const [srcLang, setSrcLang] = useState("Chinese");
   const [tgtLang, setTgtLang] = useState("Russian");
+  // Glossary highlighting is a preference, not a per-book state: it lives in the
+  // settings DB and is toggled from Settings (or the View menu).
+  const [hl, setHl] = useState(true);
   const [showSettings, setShowSettings] = useState(false);
   const t = (key: string, vars?: Record<string, string | number>) => translate(lang, key, vars);
 
@@ -193,12 +196,15 @@ export default function App() {
       if (s) setSrcLang(s);
       const g = await call<string | null>("get_setting", { key: "target_lang" });
       if (g) setTgtLang(g);
+      const h = await call<string | null>("get_setting", { key: "highlight_terms" });
+      if (h) setHl(h !== "false");
       langLoaded.current = true;
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   function changeSourceLang(v: string) { setSrcLang(v); void call("set_setting", { key: "source_lang", value: v }); }
   function changeTargetLang(v: string) { setTgtLang(v); void call("set_setting", { key: "target_lang", value: v }); }
+  function changeHighlight(v: boolean) { setHl(v); void call("set_setting", { key: "highlight_terms", value: String(v) }); }
   useEffect(() => {
     localStorage.setItem(LS_LANG, lang);
     document.documentElement.lang = lang;
@@ -240,7 +246,7 @@ export default function App() {
         onExport={exportAs}
         onToggleSidebar={() => setSidebar((s) => !s)}
         onShowBothPanes={() => book.setPanes({ orig: true, transl: true })}
-        onToggleHighlight={() => book.setHl((h) => !h)}
+        onToggleHighlight={() => changeHighlight(!hl)}
         onToggleConsole={() => setShowConsole((s) => !s)}
         onOpenCommandPalette={() => setPaletteOpen(true)}
         onOpenSettings={() => { setShowSettings(true); setMenu(null); }}
@@ -277,6 +283,7 @@ export default function App() {
                 srcLang={srcLang} tgtLang={tgtLang}
                 onChangeSourceLang={changeSourceLang}
                 onChangeTargetLang={changeTargetLang}
+                highlight={hl} onChangeHighlight={changeHighlight}
                 onClose={() => setShowSettings(false)}
               />
             ) : !activeProject ? (
@@ -351,7 +358,7 @@ export default function App() {
                       chapter={book.chapter}
                       chapterLoading={book.chapterLoading}
                       panes={book.panes} setPanes={book.setPanes}
-                      hl={book.hl} setHl={book.setHl}
+                      hl={hl}
                       terms={glossary.glossary}
                       onOpenGlossaryTerm={openGlossaryTerm}
                       onReplaceInBook={replaceInBook}

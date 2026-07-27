@@ -20,7 +20,6 @@ export function useBookWorkspace({ call, activeId }: Opts) {
   const [chapter, setChapter] = useState<ChapterView | null>(null);
   const [chapterLoading, setChapterLoading] = useState(false);
   const [panes, setPanes] = useState({ orig: true, transl: true });
-  const [hl, setHl] = useState(true);
 
   // Live refs: async loads must be checked against the project/list that is
   // current when they resolve, not the one captured when they started.
@@ -117,7 +116,6 @@ export function useBookWorkspace({ call, activeId }: Opts) {
     chapter, setChapter,
     chapterLoading,
     panes, setPanes,
-    hl, setHl,
     clearWorkspace,
     applyChapterEdit,
     refreshDetails,
