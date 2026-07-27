@@ -73,6 +73,15 @@ DB — a project is opened with `open_project(project_id)`, which reads everythi
 also reads chapter numbers from the DB, so a project stays fully usable even without
 the original book present.
 
+### Activation order
+
+`open_project` is what registers the in-memory session (it holds the DB path), and
+every other per-project command resolves its DB through that session — so a command
+issued **before** `open_project` resolves fails with `no_source`. The frontend
+therefore activates a project strictly in sequence: `open_project` → `list_chapters`
+→ details / progress / glossary. Nothing per-project may be fired in parallel with
+`open_project` (e.g. from an effect keyed on the active project id).
+
 ## Save / open a project archive (`.bcproj`)
 
 Because the DB is self-contained, the archive is just the manifest + the database

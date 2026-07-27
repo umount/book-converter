@@ -138,6 +138,7 @@ export default function App() {
     clearWorkspace: book.clearWorkspace,
     setBook: book.setBook, setRef: book.setRef,
     setGlossary: glossary.setGlossary, setPending: glossary.setPending,
+    setChaptersLoading: book.setChaptersLoading,
     refreshDetails: book.refreshDetails,
     refreshProgressFor: job.refreshProgressFor,
     refreshProgress: job.refreshProgress,
@@ -205,16 +206,13 @@ export default function App() {
   }, [lang]);
   useEffect(() => logRef.current?.scrollTo(0, logRef.current.scrollHeight), [log]);
 
+  // Refresh on entering the reader. The initial load happens during project
+  // activation (see useProjects): list_chapters needs the backend session that
+  // open_project registers, so it cannot run in parallel with it.
   useEffect(() => {
     if (view === "reader") void book.loadChapters();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [view]);
-
-  // Load the chapter tree whenever a project becomes active (for the explorer).
-  useEffect(() => {
-    if (activeId) void book.loadChapters();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeId]);
 
   useHotkeys({
     "mod+p": (e) => { e.preventDefault(); setPaletteOpen((o) => !o); },
@@ -262,6 +260,7 @@ export default function App() {
           projects={projects} active={active} setActive={setActive}
           progressById={progressById} busyById={busyById}
           chapters={book.chapters}
+          chaptersLoading={book.chaptersLoading}
           activeChapterIdx={view === "reader" ? book.chapterIdx : null}
           onOpenChapter={tabs.openChapter}
           error={error} setError={setError}

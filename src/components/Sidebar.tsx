@@ -10,6 +10,7 @@ type Props = {
   progressById: Record<string, Progress>;
   busyById: Record<string, string | null>;
   chapters: ChapterRow[];
+  chaptersLoading: boolean;
   activeChapterIdx: number | null;
   onOpenChapter: (idx: number) => void;
   error: string | null;
@@ -21,7 +22,7 @@ type Props = {
 /** Explorer: open projects, plus the active project's chapter tree. */
 export function Sidebar({
   t, sidebar, projects, active, setActive, progressById, busyById,
-  chapters, activeChapterIdx, onOpenChapter, error, setError, onRemove, onOpenBook,
+  chapters, chaptersLoading, activeChapterIdx, onOpenChapter, error, setError, onRemove, onOpenBook,
 }: Props) {
   if (!sidebar) return null;
   const hasActive = active >= 0 && !!projects[active];
@@ -49,7 +50,10 @@ export function Sidebar({
       {hasActive && (
         <div className="explorer-chapters">
           <div className="sidebar-subhead">{t("explorer.chapters")}</div>
-          <ChapterTree t={t} chapters={chapters} activeIdx={activeChapterIdx} onOpen={onOpenChapter} />
+          <ChapterTree
+            t={t} chapters={chapters} loading={chaptersLoading}
+            activeIdx={activeChapterIdx} onOpen={onOpenChapter}
+          />
         </div>
       )}
 

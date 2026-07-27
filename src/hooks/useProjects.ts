@@ -26,7 +26,8 @@ export type ProjectHelpers = {
   refreshProgress: () => Promise<void>;
   refreshGlossary: () => void | Promise<void>;
   translateTitle: () => Promise<void>;
-  loadChapters: () => Promise<void>;
+  loadChapters: (projectId?: string) => Promise<void>;
+  setChaptersLoading: (v: boolean) => void;
   openChapter: (idx: number) => void | Promise<void>;
   chapterIdxRef: MutableRefObject<number | null>;
   clearProjectJobState: (id: string) => void;
@@ -61,11 +62,17 @@ export function useProjects(helpersRef: MutableRefObject<ProjectHelpers>) {
     h.clearWorkspace();
     h.setGlossary([]);
     h.setPending({});
+    // The explorer shows a preloader for the whole activation, not just the
+    // list_chapters call, so it never flashes "no chapters" while opening.
+    h.setChaptersLoading(true);
     // The frontend works only with the database: a project is always opened from
     // its own DB (the source file was parsed into it once, at add time).
     const info = await h.call<BookInfo>("open_project", { projectId: p.id }, { critical: true });
     if (info) {
       h.setBook(info);
+      // Chapters can only be listed once open_project has registered the
+      // session (it holds the DB path), hence after the await, not in parallel.
+      await h.loadChapters(p.id);
       h.addLogTo(p.id, h.t("log.loaded", { name: p.name, n: info.total_chapters, format: info.format, encoding: info.encoding }));
       // Re-attach the reference for canon/style if its file is still available.
       if (p.refPath) {
@@ -80,6 +87,8 @@ export function useProjects(helpersRef: MutableRefObject<ProjectHelpers>) {
       await h.refreshProgressFor(p.id);
       await h.refreshGlossary();
       void h.translateTitle();
+    } else {
+      h.setChaptersLoading(false); // open failed: stop the explorer preloader
     }
     h.setBusyFor(p.id, null);
   }

@@ -112,6 +112,20 @@ body { background: var(--bg-app); color: var(--fg); overflow: hidden; }
 @keyframes spin { to { transform: rotate(360deg); } }
 .loading { color: var(--fg-muted); display: flex; align-items: center; gap: 8px; padding: 20px 0; }
 
+/* shimmering placeholder rows while a list loads (see components/common/Skeleton) */
+.skeleton-list { overflow: hidden; }
+.skeleton-row { display: flex; align-items: center; padding: 0 10px 0 12px; }
+.skeleton-bar {
+  height: 9px; border-radius: 3px; background: var(--border);
+  background-image: linear-gradient(90deg, transparent, var(--bg-hover), transparent);
+  background-size: 180px 100%; background-repeat: no-repeat;
+  animation: shimmer 1.3s infinite linear;
+}
+@keyframes shimmer { 0% { background-position: -180px 0; } 100% { background-position: calc(100% + 180px) 0; } }
+@media (prefers-reduced-motion: reduce) {
+  .skeleton-bar { animation: none; }
+}
+
 /* ============================================================================
    Body layout: activity bar + sidebar + right column
    ========================================================================== */
@@ -418,6 +432,7 @@ tr.add-row input::placeholder { color: var(--fg-subtle); }
 .chtree-row.active .chtree-glyph { color: var(--accent-hover); }
 .chtree-num { color: var(--fg-subtle); flex: 0 0 auto; }
 .chtree-title { overflow: hidden; text-overflow: ellipsis; }
+.chtree-loading { padding: 2px 12px 6px; font-size: 11px; }
 
 /* --- Chapter tabs --- */
 .tab-num { color: var(--fg-subtle); }
