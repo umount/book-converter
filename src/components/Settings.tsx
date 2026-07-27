@@ -20,7 +20,10 @@ type Props = {
 };
 
 type SectionId = "interface" | "translation" | "model" | "advanced";
-type Row = { id: string; section: SectionId; label: string; desc: string; lockedKey?: string; el: ReactNode };
+type Row = {
+  id: string; section: SectionId; label: string; desc: string;
+  lockedKey?: string; centered?: boolean; el: ReactNode;
+};
 
 export function Settings({
   t, lang, setLang, srcLang, tgtLang, onChangeSourceLang, onChangeTargetLang,
@@ -71,6 +74,7 @@ export function Settings({
     },
     {
       id: "highlight", section: "interface", label: t("settings.highlightTerms"), desc: t("settings.highlightTermsHint"),
+      centered: true,
       el: <input type="checkbox" checked={highlight} onChange={(e) => onChangeHighlight(e.target.checked)} />,
     },
     {
@@ -150,7 +154,10 @@ export function Settings({
               <section key={s.id}>
                 <div className="settings-section-title">{s.label}</div>
                 {secRows.map((r) => (
-                  <SettingRow key={r.id} label={r.label} desc={r.desc} locked={!!r.lockedKey && locked(r.lockedKey)} lockedNote={t("settings.envLocked")}>
+                  <SettingRow
+                    key={r.id} label={r.label} desc={r.desc} centered={r.centered}
+                    locked={!!r.lockedKey && locked(r.lockedKey)} lockedNote={t("settings.envLocked")}
+                  >
                     {r.el}
                   </SettingRow>
                 ))}
