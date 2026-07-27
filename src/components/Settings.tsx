@@ -71,12 +71,7 @@ export function Settings({
     },
     {
       id: "highlight", section: "interface", label: t("settings.highlightTerms"), desc: t("settings.highlightTermsHint"),
-      el: (
-        <label className="check">
-          <input type="checkbox" checked={highlight} onChange={(e) => onChangeHighlight(e.target.checked)} />
-          {t("settings.highlightTermsOn")}
-        </label>
-      ),
+      el: <input type="checkbox" checked={highlight} onChange={(e) => onChangeHighlight(e.target.checked)} />,
     },
     {
       id: "src", section: "translation", label: t("settings.sourceLang"), desc: t("settings.translationHint"), lockedKey: "source_lang",
@@ -131,7 +126,7 @@ export function Settings({
     <div className="settings-page">
       <div className="workhead settings-head">
         <div className="worktitle">{t("settings.title")}</div>
-        <button className="ghost" onClick={onClose}>{t("settings.close")}</button>
+        <button className="icon" title={t("settings.close")} onClick={onClose}>×</button>
       </div>
 
       <div className="settings-search">

@@ -279,7 +279,7 @@ tr.dirty td { background: color-mix(in srgb, var(--accent) 12%, transparent); }
 td button.ghost { white-space: nowrap; }
 tr.add-row input::placeholder { color: var(--fg-subtle); }
 
-.settings-page { max-width: 900px; width: 100%; padding: 16px; display: flex; flex-direction: column; min-height: 0; height: 100%; }
+.settings-page { width: 100%; padding: 16px; display: flex; flex-direction: column; min-height: 0; height: 100%; }
 .settings-head { display: flex; align-items: center; justify-content: space-between; }
 .settings-search { margin: 10px 0 14px; }
 .settings-search input { width: 100%; max-width: 420px; }
@@ -299,6 +299,8 @@ tr.add-row input::placeholder { color: var(--fg-subtle); }
 .setting-warn { color: var(--warn); }
 .setting-control { flex: 0 0 auto; width: 230px; display: flex; justify-content: flex-end; align-items: center; }
 .setting-control input, .setting-control select { width: 100%; }
+/* A checkbox is not a field: stretching it to the control column overflowed the row. */
+.setting-control input[type="checkbox"] { width: auto; margin: 0; }
 
 /* Glossary kind filter + colored tags */
 .kind-filter { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 12px; }
