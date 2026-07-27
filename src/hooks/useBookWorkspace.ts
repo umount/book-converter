@@ -67,6 +67,23 @@ export function useBookWorkspace({ call, activeId }: Opts) {
       if (first && activeIdRef.current === projectId) setChaptersLoading(false);
     }
   }
+  /**
+   * Reflect a saved manual edit in the loaded chapter and in the tree, instead
+   * of refetching: the translation pane is edited in place, and a refetch would
+   * swap the editor for a loading spinner on every autosave. The backend trims
+   * what it stores, so the local copy is trimmed the same way.
+   */
+  function applyChapterEdit(idx: number, title: string, body: string) {
+    const t = title.trim();
+    const b = body.trim();
+    setChapter((c) => (c && c.idx === idx
+      ? { ...c, translated_title: t, translated: b, status: "done", origin: "manual" }
+      : c));
+    setChapters((cs) => cs.map((c) => (c.idx === idx
+      ? { ...c, translated_title: t, status: "done", origin: "manual" }
+      : c)));
+  }
+
   async function openChapter(idx: number) {
     setChapterLoading(true);
     const c = await call<ChapterView>("get_chapter", { projectId: activeId, index: idx });
@@ -102,6 +119,7 @@ export function useBookWorkspace({ call, activeId }: Opts) {
     panes, setPanes,
     hl, setHl,
     clearWorkspace,
+    applyChapterEdit,
     refreshDetails,
     translateTitle,
     loadChapters,

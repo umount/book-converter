@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type Dispatch, type SetStateAction } from "react";
+import { useEffect, useMemo, useRef, useState, type Dispatch, type SetStateAction } from "react";
 import { countMatches, replaceAllText, replaceNth, type FindOpts } from "../lib/find";
 import { tokenizeLines } from "../lib/highlight";
 import { useFindReplace } from "../hooks/useFindReplace";
@@ -37,15 +37,19 @@ type Props = {
   onRetranslateWithPrompt: (idx: number, prompt: string) => Promise<void>;
 };
 
+/** Idle time after the last keystroke before the translation is persisted. */
+const AUTOSAVE_MS = 900;
+
 export function Reader({
   t, chapters, chapterIdx, setChapterIdx, chapter, chapterLoading,
   panes, setPanes, hl, setHl, terms, onOpenGlossaryTerm, onReplaceInBook,
   translating, onTranslateChapter, onSaveTranslation,
   onSaveChapterPrompt, onSaveChapterContext, onRetranslateWithPrompt,
 }: Props) {
-  const [editing, setEditing] = useState(false);
-  const [editTitle, setEditTitle] = useState("");
-  const [editBody, setEditBody] = useState("");
+  // The translation pane is always editable (no edit mode): the text lives in a
+  // draft that is autosaved, and flushed when leaving the chapter.
+  const [titleDraft, setTitleDraft] = useState("");
+  const [bodyDraft, setBodyDraft] = useState("");
   const [saving, setSaving] = useState(false);
   const [promptOpen, setPromptOpen] = useState(false);
   const [promptDraft, setPromptDraft] = useState("");
@@ -61,7 +65,6 @@ export function Reader({
 
   // Sync drafts on chapter change. Context panel always closes (opt-in only).
   useEffect(() => {
-    setEditing(false);
     setSaving(false);
     setPromptDraft(chapter?.user_prompt ?? "");
     setSummaryDraft(chapter?.rolling_summary ?? "");
@@ -73,13 +76,77 @@ export function Reader({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [chapterIdx, chapter?.user_prompt, chapter?.rolling_summary, chapter?.prev_tail]);
 
+  // --- Inline editing of the translation ---------------------------------
+  //
+  // Adopt the stored translation into the drafts, except when it is the echo of
+  // our own save coming back: that would clobber keystrokes typed while the save
+  // was in flight. Anything else (a regenerate, a book-wide replace) wins.
+  const lastSentRef = useRef<{ title: string; body: string } | null>(null);
+  useEffect(() => {
+    const body = chapter?.translated ?? "";
+    const title = chapter?.translated_title ?? "";
+    const sent = lastSentRef.current;
+    if (sent && sent.body === body.trim() && sent.title === title.trim()) return;
+    lastSentRef.current = null;
+    setBodyDraft(body);
+    setTitleDraft(title);
+  }, [chapterIdx, chapter?.translated, chapter?.translated_title]);
+
+  // Compared trimmed, because that is what the backend stores: otherwise a
+  // trailing newline would look dirty forever and autosave in a loop.
+  const dirty =
+    chapter?.status === "done" &&
+    (bodyDraft.trim() !== (chapter?.translated ?? "").trim() ||
+      titleDraft.trim() !== (chapter?.translated_title ?? "").trim());
+
+  // Live handles for the flush that runs on chapter change / unmount, where the
+  // rendered values are already gone.
+  const pendingRef = useRef<{ idx: number; title: string; body: string } | null>(null);
+  const saveRef = useRef(onSaveTranslation);
+  saveRef.current = onSaveTranslation;
+  useEffect(() => {
+    pendingRef.current = dirty && chapterIdx != null ? { idx: chapterIdx, title: titleDraft, body: bodyDraft } : null;
+  });
+
+  async function flushEdits() {
+    const p = pendingRef.current;
+    if (!p) return;
+    pendingRef.current = null;
+    lastSentRef.current = { title: p.title.trim(), body: p.body.trim() };
+    setSaving(true);
+    try {
+      await saveRef.current(p.idx, p.title, p.body);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  useEffect(() => {
+    if (!dirty) return;
+    const id = setTimeout(() => void flushEdits(), AUTOSAVE_MS);
+    return () => clearTimeout(id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dirty, bodyDraft, titleDraft]);
+
+  // Leaving the chapter (or the reader) must not drop unsaved keystrokes.
+  useEffect(
+    () => () => {
+      const p = pendingRef.current;
+      if (!p) return;
+      pendingRef.current = null;
+      void saveRef.current(p.idx, p.title, p.body);
+    },
+    [chapterIdx],
+  );
+
   const termMap = useMemo(() => new Map(terms.map((tm) => [tm.source, tm])), [terms]);
   const srcMatches = useMemo(() => terms.map((tm) => ({ match: tm.source, key: tm.source })), [terms]);
   const tgtMatches = useMemo(() => terms.map((tm) => ({ match: tm.target, key: tm.source })), [terms]);
 
   const find = useFindReplace();
   const [replaceBusy, setReplaceBusy] = useState(false);
-  const translation = chapter?.translated ?? "";
+  // Search and highlighting run on the draft, so they follow what is on screen.
+  const translation = bodyDraft;
   const findOpts = useMemo<FindOpts>(
     () => ({ matchCase: find.matchCase, wholeWord: find.wholeWord }),
     [find.matchCase, find.wholeWord],
@@ -123,7 +190,7 @@ export function Reader({
   async function replaceOne() {
     if (chapterIdx == null || !find.query || matchCount === 0) return;
     const next = replaceNth(translation, find.query, find.replacement, findOpts, find.current);
-    if (next !== translation) await onSaveTranslation(chapterIdx, chapter?.translated_title ?? "", next);
+    if (next !== translation) setBodyDraft(next); // autosaved like any other edit
   }
   async function replaceAll() {
     if (!find.query) return;
@@ -136,7 +203,7 @@ export function Reader({
     }
     if (chapterIdx == null) return;
     const { text: next, count } = replaceAllText(translation, find.query, find.replacement, findOpts);
-    if (count > 0) await onSaveTranslation(chapterIdx, chapter?.translated_title ?? "", next);
+    if (count > 0) setBodyDraft(next);
   }
 
   function onTermClick(key: string, rect: DOMRect) {
@@ -150,22 +217,6 @@ export function Reader({
     setActiveTerm(null);
   }
 
-  function startEdit() {
-    if (!chapter) return;
-    setEditTitle(chapter.translated_title ?? "");
-    setEditBody(chapter.translated ?? "");
-    setEditing(true);
-  }
-  async function saveEdit() {
-    if (chapterIdx == null) return;
-    setSaving(true);
-    try {
-      await onSaveTranslation(chapterIdx, editTitle, editBody);
-      setEditing(false);
-    } finally {
-      setSaving(false);
-    }
-  }
   async function savePromptOnly() {
     if (chapterIdx == null) return;
     setPromptBusy(true);
@@ -185,7 +236,10 @@ export function Reader({
     }
   }
   async function regenerate() {
-    if (chapterIdx == null || translating || editing) return;
+    if (chapterIdx == null || translating) return;
+    // A fresh translation overwrites the text anyway: drop pending edits so a
+    // late autosave cannot land on top of the new translation.
+    pendingRef.current = null;
     setPromptBusy(true);
     try {
       await onRetranslateWithPrompt(chapterIdx, promptDraft);
@@ -206,7 +260,7 @@ export function Reader({
 
   const hasTranslation = !!(chapter?.translated && chapter.status === "done");
   const canTranslate = !!chapter && chapterIdx != null && !translating;
-  const canRegenerate = canTranslate && !editing && !promptBusy;
+  const canRegenerate = canTranslate && !promptBusy;
   const hasPrompt = !!(promptDraft.trim() || chapter?.user_prompt);
   const hasContext = !!(summaryDraft.trim() || tailDraft.trim() || chapter?.rolling_summary || chapter?.prev_tail);
   const headTitle = chapter ? `${chapter.number != null ? `#${chapter.number} ` : ""}${chapter.translated_title?.trim() || chapter.source_title}` : "";
@@ -316,32 +370,35 @@ export function Reader({
               {chapter?.origin === "reference" && <span className="ref-badge" title={t("reader.fromReferenceTip")}>{t("reader.fromReference")}</span>}
               {chapter?.origin === "manual" && <span className="ref-badge" title={t("reader.manualTip")}>{t("reader.manual")}</span>}
               <div className="menu-spacer" />
-              {hasTranslation && !editing && (
+              {hasTranslation && (
                 <>
-                  <button className="ghost" onClick={startEdit}>{t("reader.edit")}</button>
+                  <span className={`save-state ${saving ? "busy" : dirty ? "dirty" : ""}`} title={t("reader.autosaveTip")}>
+                    {saving ? t("reader.saving") : dirty ? t("reader.unsaved") : t("reader.saved")}
+                  </span>
                   <button className="ghost" disabled={!canRegenerate} onClick={() => void regenerate()} title={t("reader.regenerateTip")}>
                     {promptBusy || translating ? t("reader.translating") : t("reader.regenerate")}
                   </button>
                 </>
               )}
-              {editing && (
-                <>
-                  <button className="ghost" disabled={saving} onClick={() => setEditing(false)}>{t("reader.cancelEdit")}</button>
-                  <button disabled={saving} onClick={() => void saveEdit()}>{saving ? t("reader.saving") : t("reader.saveEdit")}</button>
-                </>
-              )}
               <button className="icon" onClick={() => setPanes((p) => ({ ...p, transl: false }))}>×</button>
             </div>
             <div className="pane-body">
-              {chapterLoading ? <div className="loading"><span className="spinner" /> {t("reader.loading")}</div> : editing ? (
-                <div className="ch-edit">
-                  <input className="ch-edit-title" value={editTitle} onChange={(e) => setEditTitle(e.target.value)} placeholder={t("reader.editTitlePlaceholder")} />
-                  <textarea className="ch-edit-body" value={editBody} onChange={(e) => setEditBody(e.target.value)} placeholder={t("reader.editBodyPlaceholder")} />
-                </div>
-              ) : <>
-                <div className="chtitle">{chapter?.translated_title}</div>
+              {chapterLoading ? <div className="loading"><span className="spinner" /> {t("reader.loading")}</div> : <>
                 {hasTranslation ? (
-                  <EditorSurface lines={translLines} activeKey={activeTerm} onTermClick={onTermClick} currentSearch={searchSpec ? find.current : undefined} />
+                  <input
+                    className="chtitle chtitle-input" value={titleDraft}
+                    onChange={(e) => setTitleDraft(e.target.value)}
+                    placeholder={t("reader.editTitlePlaceholder")}
+                  />
+                ) : (
+                  <div className="chtitle">{chapter?.translated_title}</div>
+                )}
+                {hasTranslation ? (
+                  <EditorSurface
+                    lines={translLines} activeKey={activeTerm} onTermClick={onTermClick}
+                    currentSearch={searchSpec ? find.current : undefined}
+                    editable value={bodyDraft} onChange={setBodyDraft}
+                  />
                 ) : (
                   <div className="ch-empty">
                     <button disabled={!canTranslate} onClick={() => chapterIdx != null && onTranslateChapter(chapterIdx)}>

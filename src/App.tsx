@@ -94,6 +94,7 @@ export default function App() {
     refreshGlossary: glossary.refreshGlossary,
     openChapter: book.openChapter,
     loadChapters: book.loadChapters,
+    applyChapterEdit: book.applyChapterEdit,
     errText, limit,
   });
 

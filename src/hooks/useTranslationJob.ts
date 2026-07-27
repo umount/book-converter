@@ -30,6 +30,8 @@ type TranslateOpts = {
   refreshGlossary: () => void | Promise<void>;
   openChapter: (idx: number) => void | Promise<void>;
   loadChapters: () => void | Promise<void>;
+  /** Apply a saved manual edit locally (no refetch, keeps the editor mounted). */
+  applyChapterEdit: (idx: number, title: string, body: string) => void;
   errText: (raw: string) => string;
   limit: number | "";
 };
@@ -37,7 +39,8 @@ type TranslateOpts = {
 /** Progress/logs, translation job controls, and backend event listeners. */
 export function useTranslationJob({
   call, activeId, book, t, tRef, activeIdRef, chapterIdxRef,
-  setBusyFor, setError, setPending, refreshGlossary, openChapter, loadChapters, errText, limit,
+  setBusyFor, setError, setPending, refreshGlossary, openChapter, loadChapters,
+  applyChapterEdit, errText, limit,
 }: TranslateOpts) {
   // Progress and console log are per project (keyed by id) so background/parallel
   // runs keep updating even while another project is in the foreground.
@@ -259,6 +262,11 @@ export function useTranslationJob({
     await call("translate_chapter", { projectId: activeId, index: idx });
   }
 
+  /**
+   * Persist an edit made directly in the translation pane. Kept deliberately
+   * cheap (one IPC call, then a local patch): it runs on every autosave while
+   * the user is typing, so it must not reload the chapter or the whole tree.
+   */
   async function saveChapterTranslation(idx: number, title: string, body: string) {
     await call("update_chapter_translation", {
       projectId: activeId,
@@ -266,10 +274,7 @@ export function useTranslationJob({
       translatedTitle: title,
       translated: body,
     });
-    addLog(t("log.chapterSaved"));
-    await loadChapters();
-    await openChapter(idx);
-    await refreshProgress();
+    applyChapterEdit(idx, title, body);
   }
 
   // Reset chapters to pending for a fresh run with the current glossary. `pos` is
