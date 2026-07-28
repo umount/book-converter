@@ -107,6 +107,8 @@ export default function App() {
     openChapter: book.openChapter,
     loadChapters: book.loadChapters,
     applyChapterEdit: book.applyChapterEdit,
+    // Logs speak in book chapter numbers, never reading-order indices.
+    chapterNumberOf: (idx) => book.chapters.find((c) => c.idx === idx)?.number ?? null,
     errText, limit,
   });
 

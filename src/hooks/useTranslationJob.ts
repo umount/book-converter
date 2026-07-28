@@ -29,6 +29,8 @@ type TranslateOpts = {
   setPending: React.Dispatch<React.SetStateAction<Record<string, { old: string; new: string; kind: string }>>>;
   refreshGlossary: () => void | Promise<void>;
   openChapter: (idx: number) => void | Promise<void>;
+  /** Book chapter number (`第N章`) for a reading-order index, when known. */
+  chapterNumberOf: (idx: number) => number | null;
   loadChapters: () => void | Promise<void>;
   /** Apply a saved manual edit locally (no refetch, keeps the editor mounted). */
   applyChapterEdit: (idx: number, title: string, body: string) => void;
@@ -40,7 +42,7 @@ type TranslateOpts = {
 export function useTranslationJob({
   call, activeId, book, t, tRef, activeIdRef, chapterIdxRef,
   setBusyFor, setError, setPending, refreshGlossary, openChapter, loadChapters,
-  applyChapterEdit, errText, limit,
+  chapterNumberOf, applyChapterEdit, errText, limit,
 }: TranslateOpts) {
   // Progress and console log are per project (keyed by id) so background/parallel
   // runs keep updating even while another project is in the foreground.
@@ -232,7 +234,7 @@ export function useTranslationJob({
   async function translateChapter(idx: number) {
     if (progress?.running) return;
     setBusyFor(activeId, t("busy.translatingChapter"));
-    addLog(t("log.chapterStarted", { n: idx }));
+    addLog(t("log.chapterStarted", { n: chapterNumberOf(idx) ?? idx }));
     await call("translate_chapter", { projectId: activeId, index: idx });
   }
 
@@ -258,7 +260,7 @@ export function useTranslationJob({
     if (progress?.running) return;
     await call("set_chapter_prompt", { projectId: activeId, index: idx, prompt });
     setBusyFor(activeId, t("busy.translatingChapter"));
-    addLog(t("log.chapterRetranslate", { n: idx }));
+    addLog(t("log.chapterRetranslate", { n: chapterNumberOf(idx) ?? idx }));
     await call("translate_chapter", { projectId: activeId, index: idx });
   }
 
