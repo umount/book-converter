@@ -467,6 +467,10 @@ tr.add-row input::placeholder { color: var(--fg-subtle); }
 .chtree-row:hover { background: var(--bg-hover); }
 .chtree-row.active { background: var(--sel); }
 .chtree-glyph { width: 12px; text-align: center; color: var(--fg-subtle); flex: 0 0 auto; }
+/* Chapters that failed or kept foreign words stand out in a 1350-row tree. */
+.chtree-row.flagged .chtree-glyph { color: var(--warn); }
+.ref-badge.state-failed { color: var(--error); border-color: color-mix(in srgb, var(--error) 45%, transparent); }
+.ref-badge.state-issues { color: var(--warn); border-color: color-mix(in srgb, var(--warn) 45%, transparent); }
 .chtree-row.active .chtree-glyph { color: var(--accent-hover); }
 .chtree-num { color: var(--fg-subtle); flex: 0 0 auto; }
 .chtree-title { overflow: hidden; text-overflow: ellipsis; }

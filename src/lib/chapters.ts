@@ -4,11 +4,22 @@ import type { ChapterRow } from "../types";
 
 /** Status/origin glyph shown before a chapter label. */
 export function chapterGlyph(c: ChapterRow): string {
+  // Problems outrank provenance: a failed chapter, or one whose translation kept
+  // foreign words, is what the reader needs to spot in a 1350-row tree.
+  if (c.status === "failed") return "✕";
+  if (c.lang_issues) return "⚠";
+  if (c.status === "in_progress") return "◌";
   if (c.origin === "reference") return "◆";
   if (c.origin === "manual") return "✎";
   if (c.status === "done") return "✓";
-  if (c.status === "failed") return "✕";
   return "·";
+}
+
+/** Why a chapter is flagged in the tree, for its tooltip. */
+export function chapterIssue(c: ChapterRow): string | null {
+  if (c.status === "failed") return "failed";
+  if (c.lang_issues) return c.lang_issues;
+  return null;
 }
 
 /** Preferred display title: translated title if present, else the source title. */

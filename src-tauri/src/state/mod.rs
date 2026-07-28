@@ -78,6 +78,8 @@ CREATE TABLE IF NOT EXISTS chapters (
     prev_tail        TEXT,
     user_prompt      TEXT,
     translate_ms     INTEGER,
+    -- Words left in the wrong language after the repair passes, comma-separated.
+    lang_issues      TEXT,
     updated_at       TEXT NOT NULL DEFAULT (datetime('now'))
 );
 CREATE TABLE IF NOT EXISTS glossary (
@@ -88,6 +90,18 @@ CREATE TABLE IF NOT EXISTS glossary (
     pinned    INTEGER NOT NULL DEFAULT 0
 );
 "#;
+
+/// A chapter row for the list: `(idx, number, title, translated title, status,
+/// origin, language issues)`.
+pub type ChapterListRow = (
+    usize,
+    Option<usize>,
+    String,
+    Option<String>,
+    String,
+    Option<String>,
+    Option<String>,
+);
 
 /// A chapter's searchable text: `(idx, number, display title, text)`.
 pub type SearchableChapter = (usize, Option<usize>, String, String);
@@ -116,6 +130,7 @@ impl Store {
         self.ensure_column("chapters", "prev_tail", "TEXT")?;
         self.ensure_column("chapters", "user_prompt", "TEXT")?;
         self.ensure_column("chapters", "translate_ms", "INTEGER")?;
+        self.ensure_column("chapters", "lang_issues", "TEXT")?;
         Ok(())
     }
 
@@ -287,6 +302,17 @@ impl Store {
                 translated_body,
                 translate_ms.map(|m| m as i64),
             ],
+        )?;
+        Ok(())
+    }
+
+    /// Record (or clear, with an empty list) the words a chapter kept in the wrong
+    /// language, so the UI can flag it and a human can go fix it.
+    pub fn set_language_issues(&self, index: usize, issues: &[String]) -> Result<()> {
+        let value = (!issues.is_empty()).then(|| issues.join(", "));
+        self.conn.execute(
+            "UPDATE chapters SET lang_issues = ?2 WHERE idx = ?1",
+            params![index as i64, value],
         )?;
         Ok(())
     }
@@ -524,13 +550,12 @@ impl Store {
     }
 
     /// List chapters for the UI:
-    /// `(idx, number, title, translated_title, status, origin)` in order.
+    /// `(idx, number, title, translated_title, status, origin, lang_issues)` in order.
     #[allow(clippy::type_complexity)]
-    pub fn list_chapters(
-        &self,
-    ) -> Result<Vec<(usize, Option<usize>, String, Option<String>, String, Option<String>)>> {
+    pub fn list_chapters(&self) -> Result<Vec<ChapterListRow>> {
         let mut stmt = self.conn.prepare(
-            "SELECT idx, number, title, translated_title, status, origin FROM chapters ORDER BY idx",
+            "SELECT idx, number, title, translated_title, status, origin, lang_issues
+             FROM chapters ORDER BY idx",
         )?;
         let rows = stmt
             .query_map([], |r| {
@@ -541,6 +566,7 @@ impl Store {
                     r.get::<_, Option<String>>(3)?,
                     r.get::<_, String>(4)?,
                     r.get::<_, Option<String>>(5)?,
+                    r.get::<_, Option<String>>(6)?,
                 ))
             })?
             .collect::<rusqlite::Result<Vec<_>>>()?;

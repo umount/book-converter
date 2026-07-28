@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { chapterGlyph, chapterLabel, chapterMatches } from "../../lib/chapters";
+import { chapterGlyph, chapterIssue, chapterLabel, chapterMatches } from "../../lib/chapters";
 import type { ChapterRow } from "../../types";
 import { SkeletonList } from "../common/Skeleton";
 import { VirtualList } from "../common/VirtualList";
@@ -47,9 +47,9 @@ export function ChapterTree({ t, chapters, loading, activeIdx, onOpen }: Props) 
           renderRow={(c) => (
             <div
               key={c.idx}
-              className={`chtree-row ${c.idx === activeIdx ? "active" : ""}`}
+              className={`chtree-row ${c.idx === activeIdx ? "active" : ""} ${chapterIssue(c) ? "flagged" : ""}`}
               onClick={() => onOpen(c.idx)}
-              title={chapterLabel(c)}
+              title={chapterIssue(c) ? `${chapterLabel(c)} — ${chapterIssue(c)}` : chapterLabel(c)}
             >
               <span className="chtree-glyph">{chapterGlyph(c)}</span>
               {c.number != null && <span className="chtree-num">#{c.number}</span>}

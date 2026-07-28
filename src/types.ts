@@ -39,6 +39,8 @@ export type BookDetails = {
 export type ChapterRow = {
   idx: number; number: number | null; title: string;
   translated_title: string | null; status: string; origin: string | null;
+  /** Words the translation kept in the wrong language, comma-separated. */
+  lang_issues: string | null;
 };
 export type ChapterView = {
   idx: number; number: number | null; source_title: string; source: string;

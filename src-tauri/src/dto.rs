@@ -86,6 +86,8 @@ pub struct ChapterRow {
     pub status: String,
     /// Where the translation came from: `"reference"`, `"model"`, or none.
     pub origin: Option<String>,
+    /// Words the translation kept in the wrong language, if any survived repair.
+    pub lang_issues: Option<String>,
 }
 
 /// One matching line of a book-wide search, with its position in the chapter.

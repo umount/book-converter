@@ -288,11 +288,13 @@ impl<'a> Orchestrator<'a> {
         let started = Instant::now();
         match self.translate_one(&title, &source, user_note.as_deref()).await {
             Ok(full) => {
-                let full = self.enforce_target_language(idx, &full, &source).await;
+                let (full, lang_issues) = self.enforce_target_language(idx, &full, &source).await;
                 let (t_title, t_body) = split_title_body(&full, &title);
                 let ms = started.elapsed().as_millis() as u64;
                 self.store
                     .save_translation_timed(idx, &t_title, &t_body, Some(ms))?;
+                // Flag (or clear) the chapter so leftovers are findable in the UI.
+                let _ = self.store.set_language_issues(idx, &lang_issues);
                 let chapter_tail = crate::textutil::closing_excerpt(&t_body, 400);
                 self.prev_tail = Some(chapter_tail.clone());
 
@@ -376,9 +378,14 @@ impl<'a> Orchestrator<'a> {
     /// most of a chapter and the second finishes the stubborn genre jargon
     /// ("cultivation"). Whatever survives is logged with the chapter, so it can
     /// be found afterwards.
-    async fn enforce_target_language(&self, idx: usize, translation: &str, source: &str) -> String {
+    async fn enforce_target_language(
+        &self,
+        idx: usize,
+        translation: &str,
+        source: &str,
+    ) -> (String, Vec<String>) {
         let Some(expected) = textutil::expected_script(&self.config.target_lang) else {
-            return translation.to_string();
+            return (translation.to_string(), Vec::new());
         };
 
         let mut text = translation.to_string();
@@ -427,7 +434,7 @@ impl<'a> Orchestrator<'a> {
         if !bad.is_empty() {
             tracing::warn!(chapter = idx, fragments = ?bad, "foreign words remain after repair");
         }
-        text
+        (text, bad)
     }
 
     async fn update_summary(&self, translation: &str) -> Result<String> {

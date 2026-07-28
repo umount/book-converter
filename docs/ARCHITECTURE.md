@@ -235,7 +235,7 @@ App data layout (see also `PROJECT_ISOLATION.md`):
 ### Reader / metadata
 | Command | Purpose |
 |---------|---------|
-| `list_chapters` / `get_chapter` | Reader |
+| `list_chapters` / `get_chapter` | Reader (rows carry status, origin and any leftover foreign words) |
 | `replace_in_book` | Find/replace across all stored translations (literal or regex) |
 | `search_book` | Book-wide search, grouped per chapter (sidebar search panel) |
 | `get_book_details` | Cover, summary, translated title/author |

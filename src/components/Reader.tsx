@@ -116,10 +116,21 @@ export function Reader({
     setTitleDraft(title);
   }, [chapterIdx, chapter?.translated, chapter?.translated_title]);
 
+  // A chapter can hold a translation while not being `done`: a failed run, a
+  // reset queued for re-translation, or one being translated right now. Hiding
+  // the stored text in those states loses work the search can still find, so the
+  // text is shown whenever it exists, and the state is stated in the header.
+  const hasTranslation = !!chapter?.translated?.trim();
+  const chapterBusy = chapter?.status === "in_progress";
+  // The backend refuses edits to a chapter mid-translation (`chapter_busy`).
+  const canEdit = hasTranslation && !chapterBusy;
+  // Words the run could not get out of the translation (flagged in the tree too).
+  const langIssues = chapters.find((c) => c.idx === chapterIdx)?.lang_issues ?? null;
+
   // Compared trimmed, because that is what the backend stores: otherwise a
   // trailing newline would look dirty forever and autosave in a loop.
   const dirty =
-    chapter?.status === "done" &&
+    canEdit &&
     (bodyDraft.trim() !== (chapter?.translated ?? "").trim() ||
       titleDraft.trim() !== (chapter?.translated_title ?? "").trim());
 
@@ -297,7 +308,6 @@ export function Reader({
   const origStyle = both ? { flex: `0 0 calc(${(share * 100).toFixed(2)}% - 5px)` } : undefined;
 
 
-  const hasTranslation = !!(chapter?.translated && chapter.status === "done");
   const canTranslate = !!chapter && chapterIdx != null && !translating;
   const canRegenerate = canTranslate && !promptBusy;
   const hasPrompt = !!(promptDraft.trim() || chapter?.user_prompt);
@@ -407,7 +417,7 @@ export function Reader({
         {panes.transl && (
           <div className="pane">
             <div className="pane-head">
-              {hasTranslation ? (
+              {canEdit ? (
                 <input
                   className="pane-title pane-title-input" value={titleDraft}
                   onChange={(e) => setTitleDraft(e.target.value)}
@@ -419,9 +429,19 @@ export function Reader({
                   {chapter?.translated_title || t("reader.notTranslated")}
                 </span>
               )}
+              {chapter && chapter.status !== "done" && (
+                <span className={`ref-badge state-${chapter.status}`} title={t(`chapterState.${chapter.status}Tip`)}>
+                  {t(`chapterState.${chapter.status}`)}
+                </span>
+              )}
+              {langIssues && (
+                <span className="ref-badge state-issues" title={t("reader.langIssuesTip", { words: langIssues })}>
+                  {t("reader.langIssues")}
+                </span>
+              )}
               {chapter?.origin === "reference" && <span className="ref-badge" title={t("reader.fromReferenceTip")}>{t("reader.fromReference")}</span>}
               {chapter?.origin === "manual" && <span className="ref-badge" title={t("reader.manualTip")}>{t("reader.manual")}</span>}
-              {hasTranslation && (
+              {canEdit && (
                 <>
                   <span className={`save-state ${saving ? "busy" : dirty ? "dirty" : ""}`} title={t("reader.autosaveTip")}>
                     {saving ? t("reader.saving") : dirty ? t("reader.unsaved") : t("reader.saved")}
@@ -438,7 +458,7 @@ export function Reader({
                 <EditorSurface
                   lines={translLines} activeKey={activeTerm} onTermClick={onTermClick}
                   currentSearch={searchSpec ? find.current : undefined}
-                  editable value={bodyDraft} onChange={setBodyDraft}
+                  editable={canEdit} value={bodyDraft} onChange={setBodyDraft}
                 />
               ) : (
                 <div className="ch-empty">
