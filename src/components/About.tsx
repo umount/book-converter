@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import type { CallFn } from "../api";
 import type { AppInfo } from "../types";
 import { AppIcon } from "./common/AppIcon";
+import { Modal } from "./common/Modal";
 
 type Props = {
   t: (key: string, vars?: Record<string, string | number>) => string;
@@ -18,14 +19,6 @@ export function About({ t, call, onClose }: Props) {
     void (async () => setInfo((await call<AppInfo>("get_app_info")) ?? null))();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-
-  useEffect(() => {
-    function onKey(e: KeyboardEvent) {
-      if (e.key === "Escape") onClose();
-    }
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [onClose]);
 
   // The webview version is only known to the webview itself, not to the backend.
   const engine = navigator.userAgent.match(/(WebKit|Chrome|Gecko)\/([\d.]+)/i);
@@ -50,29 +43,27 @@ export function About({ t, call, onClose }: Props) {
   }
 
   return (
-    <div className="modal-backdrop" onClick={onClose}>
-      <div className="about" role="dialog" aria-modal="true" onClick={(e) => e.stopPropagation()}>
-        <AppIcon className="about-logo" />
-        <div className="about-name">{info?.name ?? t("about.title")}</div>
-        <div className="about-tagline">{t("about.tagline")}</div>
+    <Modal className="about" onClose={onClose}>
+    <AppIcon className="about-logo" />
+    <div className="about-name">{info?.name ?? t("about.title")}</div>
+    <div className="about-tagline">{t("about.tagline")}</div>
 
-        <dl className="about-rows">
-          {rows.map(([k, v]) => (
-            <div className="about-row" key={k}>
-              <dt>{k}</dt>
-              <dd>{v}</dd>
-            </div>
-          ))}
-          {!info && <div className="muted">{t("reader.loading")}</div>}
-        </dl>
-
-        <div className="about-actions">
-          <button className="ghost" disabled={!info} onClick={() => void copyAll()}>
-            {copied ? t("about.copied") : t("about.copy")}
-          </button>
-          <button onClick={onClose}>{t("about.close")}</button>
+    <dl className="about-rows">
+      {rows.map(([k, v]) => (
+        <div className="about-row" key={k}>
+          <dt>{k}</dt>
+          <dd>{v}</dd>
         </div>
-      </div>
+      ))}
+      {!info && <div className="muted">{t("reader.loading")}</div>}
+    </dl>
+
+    <div className="about-actions">
+      <button className="ghost" disabled={!info} onClick={() => void copyAll()}>
+        {copied ? t("about.copied") : t("about.copy")}
+      </button>
+      <button onClick={onClose}>{t("about.close")}</button>
     </div>
+    </Modal>
   );
 }

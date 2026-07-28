@@ -23,6 +23,7 @@ type Props = {
   onToggleConsole: () => void;
   onOpenCommandPalette: () => void;
   onOpenSettings: () => void;
+  onOpenLegend: () => void;
   onOpenAbout: () => void;
 };
 
@@ -30,7 +31,7 @@ export function Menubar({
   t, menu, setMenu, busy, canExport, hasActive,
   onOpenBook, onOpenReference, onOpenProject, onSaveProject, onExport, onFind, onReplace, onSearchBook,
   onToggleSidebar, onShowBothPanes, onToggleHighlight, onToggleConsole,
-  onOpenCommandPalette, onOpenSettings, onOpenAbout,
+  onOpenCommandPalette, onOpenSettings, onOpenLegend, onOpenAbout,
 }: Props) {
   return (
     <>
@@ -89,6 +90,8 @@ export function Menubar({
           {t("menu.help")}
           {menu === "help" && (
             <div className="dropdown" onClick={(e) => e.stopPropagation()}>
+              <div className="mi" onClick={() => { onOpenLegend(); setMenu(null); }}>{t("help.legend")}</div>
+              <div className="sep" />
               <div className="mi" onClick={() => { onOpenAbout(); setMenu(null); }}>{t("help.about")}</div>
             </div>
           )}

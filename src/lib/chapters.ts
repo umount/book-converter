@@ -2,17 +2,43 @@
 
 import type { ChapterRow } from "../types";
 
+/** What a chapter's marker in the tree means. */
+export type MarkerId =
+  | "failed" | "issues" | "in_progress" | "reference" | "manual" | "done" | "pending";
+
+export const MARKER_GLYPHS: Record<MarkerId, string> = {
+  failed: "✕",
+  issues: "⚠",
+  in_progress: "◌",
+  reference: "◆",
+  manual: "✎",
+  done: "✓",
+  pending: "·",
+};
+
+/** Legend order: problems first, then provenance, then plain progress. */
+export const MARKER_ORDER: MarkerId[] = [
+  "failed", "issues", "in_progress", "reference", "manual", "done", "pending",
+];
+
+/**
+ * Which marker a chapter gets. Problems outrank provenance: a failed chapter, or
+ * one whose translation kept foreign words, is what has to stand out in a
+ * 1350-row tree.
+ */
+export function chapterMarker(c: ChapterRow): MarkerId {
+  if (c.status === "failed") return "failed";
+  if (c.lang_issues) return "issues";
+  if (c.status === "in_progress") return "in_progress";
+  if (c.origin === "reference") return "reference";
+  if (c.origin === "manual") return "manual";
+  if (c.status === "done") return "done";
+  return "pending";
+}
+
 /** Status/origin glyph shown before a chapter label. */
 export function chapterGlyph(c: ChapterRow): string {
-  // Problems outrank provenance: a failed chapter, or one whose translation kept
-  // foreign words, is what the reader needs to spot in a 1350-row tree.
-  if (c.status === "failed") return "✕";
-  if (c.lang_issues) return "⚠";
-  if (c.status === "in_progress") return "◌";
-  if (c.origin === "reference") return "◆";
-  if (c.origin === "manual") return "✎";
-  if (c.status === "done") return "✓";
-  return "·";
+  return MARKER_GLYPHS[chapterMarker(c)];
 }
 
 /** Why a chapter is flagged in the tree, for its tooltip. */

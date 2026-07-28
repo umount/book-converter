@@ -108,6 +108,10 @@ version, commit, date, Tauri and platform.
 4. The translation pane is **always editable** — type straight into the text
    (highlighting stays live) and edits autosave; the chapter is marked as edited.
 
+Chapters are marked in the tree — `✕` failed, `⚠` translation kept foreign
+words, `◌` translating, `◆` from the reference, `✎` hand-edited, `✓` done —
+with the full legend under **Help → Chapter markers**.
+
 ### Search
 
 1. **⌘F / ⌘H** — find / replace inside the open chapter: literal or regex (`.*`),

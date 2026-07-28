@@ -3,6 +3,7 @@ import { makeCall } from "./api";
 import { Console } from "./components/Console";
 import { GlossaryView } from "./components/GlossaryView";
 import { About } from "./components/About";
+import { Legend } from "./components/Legend";
 import { Menubar, type MenuId } from "./components/Menubar";
 import { Overview } from "./components/Overview";
 import { Reader } from "./components/Reader";
@@ -44,6 +45,7 @@ export default function App() {
 
   const [menu, setMenu] = useState<MenuId | null>(null);
   const [showAbout, setShowAbout] = useState(false);
+  const [showLegend, setShowLegend] = useState(false);
   const [limit, setLimit] = useState<number | "">("");
   const [sidebar, setSidebar] = useState(true);
   // Which panel the sidebar shows, VS Code style: the file tree or search.
@@ -221,6 +223,7 @@ export default function App() {
           { id: "export-txt", label: t("palette.exportAs", { fmt: "TXT" }), run: () => exportAs("txt") },
         ]
       : []),
+    { id: "legend", label: t("palette.legend"), run: () => setShowLegend(true) },
     { id: "settings", label: t("palette.settings"), hint: "⌘,", run: () => setShowSettings(true) },
     { id: "toggleConsole", label: t("palette.toggleConsole"), hint: "⌘J", run: () => setShowConsole((s) => !s) },
   ];
@@ -297,6 +300,7 @@ export default function App() {
         onReplace={() => { openFind("replace"); setMenu(null); }}
         onSearchBook={() => { openBookSearch(); setMenu(null); }}
         onOpenSettings={() => { setShowSettings(true); setMenu(null); }}
+        onOpenLegend={() => setShowLegend(true)}
         onOpenAbout={() => setShowAbout(true)}
       />
 
@@ -461,6 +465,7 @@ export default function App() {
         onOpenChapter={tabs.openChapter}
       />
 
+      {showLegend && <Legend t={t} onClose={() => setShowLegend(false)} />}
       {showAbout && <About t={t} call={call} onClose={() => setShowAbout(false)} />}
     </div>
   );

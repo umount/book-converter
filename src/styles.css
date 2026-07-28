@@ -539,6 +539,33 @@ tr.add-row input::placeholder { color: var(--fg-subtle); }
 .searchpanel .chevron { color: var(--fg-subtle); font-size: 10px; flex: 0 0 auto; }
 
 /* ============================================================================
+   Legend dialog (Help → chapter markers)
+   ========================================================================== */
+.legend {
+  position: relative; z-index: 49;
+  width: min(520px, 100%); max-height: min(80vh, 720px); overflow-y: auto;
+  padding: 18px 22px 22px;
+  background: var(--bg-elevated); border: 1px solid var(--border-strong);
+  border-radius: var(--r-lg); box-shadow: var(--shadow);
+}
+.legend-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; }
+.legend-section {
+  font-size: 10px; text-transform: uppercase; letter-spacing: .07em;
+  color: var(--fg-subtle); margin: 16px 0 6px;
+}
+.legend-rows { margin: 0; display: flex; flex-direction: column; gap: 8px; }
+.legend-row { display: flex; align-items: baseline; gap: 12px; }
+.legend-glyph {
+  flex: 0 0 20px; text-align: center; color: var(--fg-muted);
+  font-size: 13px; line-height: 1.4;
+}
+.legend-glyph.flagged { color: var(--warn); }
+.legend-badge { flex: 0 0 auto; min-width: 96px; }
+.legend-row dd { margin: 0; flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.legend-name { font-weight: 550; font-size: 12px; }
+.legend-desc { color: var(--fg-muted); font-size: 12px; line-height: 1.45; }
+
+/* ============================================================================
    About dialog
    ========================================================================== */
 /* Centred with flexbox, not `translate(-50%, -50%)`: a half-pixel offset from
