@@ -29,6 +29,9 @@ use crate::translator::{prompt, DeepSeekClient};
 /// Single letters (an initial, a unit) are ignored; Han is always reported.
 const MIN_FOREIGN_RUN: usize = 2;
 
+/// How many repair passes a chapter may get before the leftovers are just logged.
+const MAX_LANGUAGE_REPAIRS: usize = 2;
+
 /// Live progress callback payload for the UI / console.
 #[derive(Debug, Clone)]
 pub struct ProgressEvent {
@@ -285,7 +288,7 @@ impl<'a> Orchestrator<'a> {
         let started = Instant::now();
         match self.translate_one(&title, &source, user_note.as_deref()).await {
             Ok(full) => {
-                let full = self.enforce_target_language(&full, &source).await;
+                let full = self.enforce_target_language(idx, &full, &source).await;
                 let (t_title, t_body) = split_title_body(&full, &title);
                 let ms = started.elapsed().as_millis() as u64;
                 self.store
@@ -368,42 +371,63 @@ impl<'a> Orchestrator<'a> {
     }
 
     /// Catch words the model left in the source language (or pulled in from a
-    /// third one) and ask it to redo just those. One repair pass: it is cheap
-    /// relative to the chapter, and a second one rarely helps. Whatever survives
-    /// is logged, so a human can find the chapter.
-    async fn enforce_target_language(&self, translation: &str, source: &str) -> String {
+    /// third one) and ask it to redo just those. Retries while it keeps making
+    /// progress, up to `MAX_LANGUAGE_REPAIRS`: in practice the first pass clears
+    /// most of a chapter and the second finishes the stubborn genre jargon
+    /// ("cultivation"). Whatever survives is logged with the chapter, so it can
+    /// be found afterwards.
+    async fn enforce_target_language(&self, idx: usize, translation: &str, source: &str) -> String {
         let Some(expected) = textutil::expected_script(&self.config.target_lang) else {
             return translation.to_string();
         };
-        let bad = textutil::foreign_fragments(translation, expected, source, MIN_FOREIGN_RUN);
-        if bad.is_empty() {
-            return translation.to_string();
-        }
-        tracing::info!(fragments = ?bad, "translation kept foreign words; repairing");
 
-        let (system, user) =
-            prompt::build_language_fix_prompt(self.config, &bad, translation);
-        let fixed = match self.client.translate(&system, &user).await {
-            Ok(fixed) if !fixed.trim().is_empty() => fixed,
-            Ok(_) => return translation.to_string(),
-            Err(e) => {
-                tracing::warn!("language repair failed: {e:#}");
-                return translation.to_string();
+        let mut text = translation.to_string();
+        let mut bad = textutil::foreign_fragments(&text, expected, source, MIN_FOREIGN_RUN);
+        for attempt in 0..MAX_LANGUAGE_REPAIRS {
+            if bad.is_empty() {
+                break;
             }
-        };
+            tracing::info!(
+                chapter = idx,
+                attempt,
+                fragments = ?bad,
+                "translation kept foreign words; repairing"
+            );
 
-        // Only accept the repair if it actually removed fragments without
-        // mangling the text (a model that "fixes" by summarising is worse).
-        let still = textutil::foreign_fragments(&fixed, expected, source, MIN_FOREIGN_RUN);
-        let shrunk = fixed.chars().count() * 4 < translation.chars().count() * 3;
-        if shrunk {
-            tracing::warn!("language repair returned a much shorter text; keeping the original");
-            return translation.to_string();
+            let (system, user) = prompt::build_language_fix_prompt(self.config, &bad, &text);
+            let fixed = match self.client.translate(&system, &user).await {
+                Ok(fixed) if !fixed.trim().is_empty() => fixed,
+                Ok(_) => break,
+                Err(e) => {
+                    tracing::warn!(chapter = idx, "language repair failed: {e:#}");
+                    break;
+                }
+            };
+
+            // Reject a "repair" that mangled the text: a model that shortens the
+            // chapter instead of fixing words is worse than the leftover words.
+            if fixed.chars().count() * 4 < text.chars().count() * 3 {
+                tracing::warn!(
+                    chapter = idx,
+                    "language repair returned a much shorter text; keeping the previous one"
+                );
+                break;
+            }
+
+            let still = textutil::foreign_fragments(&fixed, expected, source, MIN_FOREIGN_RUN);
+            let progressed = still.len() < bad.len();
+            text = fixed;
+            bad = still;
+            // No progress means another identical request will not help either.
+            if !progressed {
+                break;
+            }
         }
-        if !still.is_empty() {
-            tracing::warn!(fragments = ?still, "foreign words remain after repair");
+
+        if !bad.is_empty() {
+            tracing::warn!(chapter = idx, fragments = ?bad, "foreign words remain after repair");
         }
-        fixed
+        text
     }
 
     async fn update_summary(&self, translation: &str) -> Result<String> {

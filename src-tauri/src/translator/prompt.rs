@@ -47,6 +47,13 @@ impl BookRef<'_> {
     }
 }
 
+/// True when the target language is English, where rules written to keep English
+/// out of the translation would be nonsense (an English romanization *is* the
+/// correct rendering, and the genre's English jargon is the established wording).
+fn target_is_english(config: &Config) -> bool {
+    config.target_lang.trim().eq_ignore_ascii_case("english")
+}
+
 /// System prompt: role and general translation rules.
 ///
 /// The language rules are deliberately blunt: models drift into leaving source
@@ -54,6 +61,23 @@ impl BookRef<'_> {
 /// English romanization of them. Both are checked for after translation
 /// (`textutil::foreign_fragments`).
 pub fn system_prompt(config: &Config) -> String {
+    // Translating *into* English needs the opposite advice on these two points.
+    let english_rules = if target_is_english(config) {
+        "         - Use the standard romanization of names for English (pinyin for \
+           Chinese), applied consistently.\n\
+         - The genre's established English terminology (\"cultivation\", \
+           \"cultivator\", \"Qi\", \"sect\") is the correct wording — use it \
+           consistently.\n"
+    } else {
+        "         - Never leave a name in the original script, and never fall back on an \
+           English romanization of it.\n\
+         - Do not carry over English genre jargon from English fan translations \
+           (\"cultivation\", \"cultivator\", \"cultivation base\", \"Qi\", \"dantian\", \
+           \"sect\", \"spirit stone\", \"immortal\"): use the established {tgt} \
+           wording for each.\n"
+    };
+    let english_rules = english_rules.replace("{tgt}", &config.target_lang);
+
     format!(
         "You are a professional literary translator from {src} to {tgt}. \
          Translate in a natural, coherent, literary style, preserving voice and \
@@ -75,13 +99,15 @@ pub fn system_prompt(config: &Config) -> String {
            Transliterate such a name only when it has no transparent meaning, or \
            when it is a real-world place with an established {tgt} name.\n\
          - Whichever way a name is rendered, render it that way everywhere.\n\
-         - Never leave a name in the original script, and never fall back on an \
-           English romanization of it.\n\
          - A term you are unsure about is still translated or transliterated — \
            leaving the original word in is never an acceptable fallback.\n\
+{english_rules}\
+         - Never build a hybrid word from a foreign stem and {tgt} inflection — \
+           that is not a translation.\n\
          - Keep numbers, and punctuation appropriate for {tgt}.",
         src = config.source_lang,
         tgt = config.target_lang,
+        english_rules = english_rules,
     )
 }
 
@@ -176,11 +202,15 @@ pub fn build_language_fix_prompt(
          personal names are transliterated by sound (never translated by meaning); \
          place, sect and technique names are translated by meaning when they carry \
          one, transliterated otherwise; everything else is translated. Never leave \
-         a word in the original script or in an English romanization. \
+         a word in the original script{no_roman}, and never keep a foreign stem \
+         with {tgt} endings attached — replace the whole word. \
+         Replace every occurrence of each fragment, including capitalised, plural \
+         and inflected forms, and any phrase built around it. \
          Change nothing else — keep \
          wording, paragraphs and punctuation exactly as they are. Output only the \
          corrected text.",
         tgt = config.target_lang,
+        no_roman = if target_is_english(config) { "" } else { " or in an English romanization" },
     );
     let mut user = String::from("Fragments that must not remain:\n");
     for f in fragments {
@@ -319,5 +349,36 @@ mod tests {
         assert!(u.contains("- 王林"));
         assert!(u.contains("- cultivation"));
         assert!(u.trim_end().ends_with("Текст"));
+    }
+
+    #[test]
+    fn system_prompt_bans_english_genre_jargon() {
+        let s = system_prompt(&Config::default()); // Chinese → Russian
+        assert!(s.contains("cultivation base"));
+        assert!(s.contains("hybrid word"));
+    }
+
+    #[test]
+    fn english_target_keeps_romanization_and_jargon() {
+        let cfg = Config { target_lang: "English".into(), ..Config::default() };
+        let s = system_prompt(&cfg);
+        // The anti-English rules would be nonsense when English is the target.
+        assert!(!s.contains("never fall back on an English romanization"));
+        assert!(!s.contains("Do not carry over English genre jargon"));
+        assert!(s.contains("standard romanization"));
+        assert!(s.contains("established English terminology"));
+        // The script rules still apply: nothing may stay in Chinese.
+        assert!(s.contains("entire output in English"));
+
+        let (fix, _u) = build_language_fix_prompt(&cfg, &["王林".into()], "text");
+        assert!(!fix.contains("English romanization"));
+    }
+
+    #[test]
+    fn fix_prompt_covers_inflected_forms() {
+        let (_s, u) = build_language_fix_prompt(&Config::default(), &["cultivation".into()], "т");
+        assert!(u.contains("- cultivation"));
+        let (s, _u) = build_language_fix_prompt(&Config::default(), &["x".into()], "т");
+        assert!(s.contains("inflected forms"));
     }
 }
