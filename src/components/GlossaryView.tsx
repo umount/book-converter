@@ -1,15 +1,25 @@
-import { useMemo, useState } from "react";
 import { TERM_KINDS, type Progress, type Term } from "../types";
+import { VirtualList } from "./common/VirtualList";
 import { Panel } from "./Panel";
+
+/** Row height in px. Must match `.glossary-row` in styles.css: the windowing
+ *  list positions rows arithmetically, so a mismatch shifts the whole list. */
+const ROW_HEIGHT = 34;
 
 type Props = {
   t: (key: string, vars?: Record<string, string | number>) => string;
   collapsed: Record<string, boolean>;
   onToggle: (id: string) => void;
-  glossary: Term[];
-  filteredGlossary: Term[];
+  /** The window of terms loaded so far (not the whole glossary). */
+  terms: Term[];
+  /** How many terms match the current filter, loaded or not. */
+  total: number;
+  loading: boolean;
   glossaryQuery: string;
   setGlossaryQuery: (q: string) => void;
+  kindFilter: string;
+  setKindFilter: (k: string) => void;
+  onLoadMore: () => void;
   newTerm: { source: string; target: string; kind: string };
   setNewTerm: (v: { source: string; target: string; kind: string }) => void;
   pending: Record<string, { old: string; new: string; kind: string }>;
@@ -24,21 +34,23 @@ type Props = {
   onDeleteTerm: (term: Term) => void;
 };
 
+/**
+ * The glossary table.
+ *
+ * Rows are windowed and paged: a book's glossary reaches tens of thousands of
+ * terms, and rendering that many live rows (each with two inputs and a select)
+ * froze the app. Only the rows in view exist in the DOM, and the backend is
+ * asked for the next page as the list is scrolled.
+ */
 export function GlossaryView({
-  t, collapsed, onToggle, glossary, filteredGlossary, glossaryQuery, setGlossaryQuery,
+  t, collapsed, onToggle, terms, total, loading,
+  glossaryQuery, setGlossaryQuery, kindFilter, setKindFilter, onLoadMore,
   newTerm, setNewTerm, pending, pendingCount, progress,
   onUpdateTranslation, onRefreshGlossary, onAddTerm,
   onRenameTerm, onEditTarget, onEditKind, onDeleteTerm,
 }: Props) {
-  const [kindFilter, setKindFilter] = useState<string>("all");
-
-  const displayed = useMemo(
-    () => (kindFilter === "all" ? filteredGlossary : filteredGlossary.filter((term) => term.kind === kindFilter)),
-    [filteredGlossary, kindFilter],
-  );
-
   return (
-    <Panel id="glossary" title={t("glossary.title", { n: glossary.length })} collapsed={collapsed} onToggle={onToggle} extra={
+    <Panel id="glossary" title={t("glossary.title", { n: total })} collapsed={collapsed} onToggle={onToggle} extra={
       <>
         <button className="primary" disabled={!pendingCount || !(progress && progress.done > 0)}
           title={t("glossary.updateTranslationTip")} onClick={onUpdateTranslation}>
@@ -56,43 +68,62 @@ export function GlossaryView({
           </button>
         ))}
       </div>
-      <div className="table-wrap">
-        <table>
-          <thead><tr><th>{t("glossary.colSource")}</th><th>{t("glossary.colTranslation")}</th><th>{t("glossary.colKind")}</th><th>{t("glossary.colCount")}</th><th>{t("glossary.colActions")}</th></tr></thead>
-          <tbody>
-            <tr className="add-row">
-              <td><input placeholder={t("glossary.addSource")} value={newTerm.source} onChange={(e) => setNewTerm({ ...newTerm, source: e.target.value })} /></td>
-              <td><input placeholder={t("glossary.addTranslation")} value={newTerm.target} onChange={(e) => setNewTerm({ ...newTerm, target: e.target.value })}
-                onKeyDown={(e) => e.key === "Enter" && onAddTerm()} /></td>
-              <td>
-                <select value={newTerm.kind} onChange={(e) => setNewTerm({ ...newTerm, kind: e.target.value })}>
-                  {TERM_KINDS.map((k) => <option key={k} value={k}>{t(`kind.${k}`)}</option>)}
-                </select>
-              </td>
-              <td colSpan={2}><button onClick={onAddTerm} disabled={!newTerm.source.trim() || !newTerm.target.trim()}>{t("glossary.add")}</button></td>
-            </tr>
-            {displayed.map((term) => {
-              const dirty = !!pending[term.source];
-              return (
-                <tr key={term.source} className={dirty ? "dirty" : ""}>
-                  <td><input defaultValue={term.source} onBlur={(ev) => { const v = ev.target.value.trim(); if (v && v !== term.source) onRenameTerm(term, v); }} /></td>
-                  <td><input key={term.target} defaultValue={term.target} onBlur={(ev) => onEditTarget(term, ev.target.value)} /></td>
-                  <td>
-                    <div className="kind-cell">
-                      <span className={`kind-dot kind-${term.kind}`} />
-                      <select value={term.kind} onChange={(ev) => onEditKind(term, ev.target.value)}>
-                        {TERM_KINDS.map((k) => <option key={k} value={k}>{t(`kind.${k}`)}</option>)}
-                      </select>
-                    </div>
-                  </td>
-                  <td>{term.frequency}{term.pinned ? " 📌" : ""}</td>
-                  <td><button className="ghost del" title={t("glossary.delete")} onClick={() => onDeleteTerm(term)}>✕</button></td>
-                </tr>
-              );
-            })}
-            {displayed.length === 0 && <tr><td colSpan={5} className="empty">{t("glossary.empty")}</td></tr>}
-          </tbody>
-        </table>
+
+      <div className="glossary-grid">
+        <div className="glossary-row glossary-head">
+          <span>{t("glossary.colSource")}</span>
+          <span>{t("glossary.colTranslation")}</span>
+          <span>{t("glossary.colKind")}</span>
+          <span>{t("glossary.colCount")}</span>
+          <span>{t("glossary.colActions")}</span>
+        </div>
+
+        <div className="glossary-row glossary-add">
+          <input placeholder={t("glossary.addSource")} value={newTerm.source}
+            onChange={(e) => setNewTerm({ ...newTerm, source: e.target.value })} />
+          <input placeholder={t("glossary.addTranslation")} value={newTerm.target}
+            onChange={(e) => setNewTerm({ ...newTerm, target: e.target.value })}
+            onKeyDown={(e) => e.key === "Enter" && onAddTerm()} />
+          <select value={newTerm.kind} onChange={(e) => setNewTerm({ ...newTerm, kind: e.target.value })}>
+            {TERM_KINDS.map((k) => <option key={k} value={k}>{t(`kind.${k}`)}</option>)}
+          </select>
+          <span />
+          <button onClick={onAddTerm} disabled={!newTerm.source.trim() || !newTerm.target.trim()}>{t("glossary.add")}</button>
+        </div>
+
+        {terms.length === 0 ? (
+          <div className="empty">{loading ? t("glossary.loading") : t("glossary.empty")}</div>
+        ) : (
+          <VirtualList
+            className="glossary-rows"
+            items={terms}
+            rowHeight={ROW_HEIGHT}
+            onReachEnd={onLoadMore}
+            renderRow={(term) => (
+              <div key={term.source} className={`glossary-row ${pending[term.source] ? "dirty" : ""}`}>
+                <input defaultValue={term.source} key={`s${term.source}`}
+                  onBlur={(ev) => { const v = ev.target.value.trim(); if (v && v !== term.source) onRenameTerm(term, v); }} />
+                <input defaultValue={term.target} key={`t${term.source}:${term.target}`}
+                  onBlur={(ev) => onEditTarget(term, ev.target.value)} />
+                <div className="kind-cell">
+                  <span className={`kind-dot kind-${term.kind}`} />
+                  <select value={term.kind} onChange={(ev) => onEditKind(term, ev.target.value)}>
+                    {TERM_KINDS.map((k) => <option key={k} value={k}>{t(`kind.${k}`)}</option>)}
+                  </select>
+                </div>
+                <span className="glossary-count">{term.frequency}{term.pinned ? " 📌" : ""}</span>
+                <button className="ghost del" title={t("glossary.delete")} onClick={() => onDeleteTerm(term)}>✕</button>
+              </div>
+            )}
+          />
+        )}
+
+        {terms.length > 0 && (
+          <div className="glossary-foot muted">
+            {t("glossary.shownOf", { shown: terms.length, total })}
+            {loading ? ` · ${t("glossary.loading")}` : ""}
+          </div>
+        )}
       </div>
     </Panel>
   );

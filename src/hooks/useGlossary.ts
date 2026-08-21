@@ -1,7 +1,7 @@
-import { useMemo, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import type { CallFn } from "../api";
-import type { Term } from "../types";
+import type { GlossaryPage, Term } from "../types";
 
 type Pending = Record<string, { old: string; new: string; kind: string }>;
 
@@ -15,12 +15,28 @@ type Opts = {
   t: (key: string, vars?: Record<string, string | number>) => string;
 };
 
-/** Glossary state, CRUD, pending renames, and retarget. */
+/** Rows fetched per request. Big enough that scrolling rarely waits, small
+ *  enough that a 10K-term glossary is never shipped over IPC at once. */
+const PAGE = 200;
+/** Delay before a filter keystroke becomes a query. */
+const FILTER_DEBOUNCE_MS = 200;
+
+/**
+ * Glossary state, CRUD, pending renames, and retarget.
+ *
+ * The glossary of a long book runs to tens of thousands of terms, so the list
+ * is never held in full: the backend filters, orders and windows it
+ * (`get_glossary_page`) and this hook keeps the pages scrolled through so far.
+ * `total` is the size of the current filter, not of what is loaded.
+ */
 export function useGlossary({
   call, activeId, setBusyFor, setError, addLog, logError, t,
 }: Opts) {
-  const [glossary, setGlossary] = useState<Term[]>([]);
+  const [terms, setTerms] = useState<Term[]>([]);
+  const [total, setTotal] = useState(0);
+  const [loading, setLoading] = useState(false);
   const [glossaryQuery, setGlossaryQuery] = useState("");
+  const [kindFilter, setKindFilter] = useState<string>("all");
   const [newTerm, setNewTerm] = useState<{ source: string; target: string; kind: string }>({
     source: "", target: "", kind: "person",
   });
@@ -30,16 +46,64 @@ export function useGlossary({
   const [pending, setPending] = useState<Pending>({});
   const pendingCount = Object.keys(pending).length;
 
-  async function refreshGlossary() {
-    const g = await call<Term[]>("get_glossary", { projectId: activeId });
-    if (g) setGlossary(g);
+  // Live refs so a page that resolves late can tell whether it is still wanted.
+  const requestRef = useRef(0);
+  const filterRef = useRef({ query: "", kind: "all", projectId: "" });
+  filterRef.current = { query: glossaryQuery.trim(), kind: kindFilter, projectId: activeId };
+
+  async function loadPage(offset: number) {
+    if (!activeId) {
+      setTerms([]);
+      setTotal(0);
+      return;
+    }
+    const { query, kind, projectId } = filterRef.current;
+    const token = ++requestRef.current;
+    setLoading(true);
+    try {
+      const page = await call<GlossaryPage>("get_glossary_page", {
+        projectId,
+        query: query || null,
+        kind: kind === "all" ? null : kind,
+        offset,
+        limit: PAGE,
+      });
+      // A newer request (or a project switch) has superseded this one.
+      if (token !== requestRef.current || filterRef.current.projectId !== projectId) return;
+      if (!page) return;
+      setTotal(page.total);
+      setTerms((prev) => (offset === 0 ? page.terms : [...prev, ...page.terms]));
+    } finally {
+      if (token === requestRef.current) setLoading(false);
+    }
   }
+
+  /** Reload from the top, keeping the current filter. */
+  async function refreshGlossary() {
+    await loadPage(0);
+  }
+
+  /** Fetch the next window; a no-op once everything matching is loaded. */
+  function loadMore() {
+    if (loading || terms.length >= total) return;
+    void loadPage(terms.length);
+  }
+
+  // A changed filter is a new query, so it restarts at the top. Debounced so
+  // typing does not fire a request per keystroke.
+  useEffect(() => {
+    const id = setTimeout(() => void loadPage(0), FILTER_DEBOUNCE_MS);
+    return () => clearTimeout(id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [glossaryQuery, kindFilter, activeId]);
 
   // Term edits auto-save. Changing the rendering also records a pending rename so
   // the global "Update translation" button can later propagate it into the text.
   async function saveTermField(term: Term, patch: Partial<Term>) {
     await call("update_term", { projectId: activeId, term: { ...term, ...patch, pinned: true } });
-    refreshGlossary();
+    // Patch the loaded row in place: a refetch here would reset the scroll
+    // position and re-order the row out from under the cursor.
+    setTerms((all) => all.map((x) => (x.source === term.source ? { ...x, ...patch, pinned: true } : x)));
   }
   function editTarget(term: Term, value: string) {
     const nt = value.trim();
@@ -80,12 +144,13 @@ export function useGlossary({
   async function deleteTerm(term: Term) {
     await call("delete_term", { projectId: activeId, source: term.source });
     setPending((p) => { const n = { ...p }; delete n[term.source]; return n; });
-    refreshGlossary();
+    setTerms((all) => all.filter((x) => x.source !== term.source));
+    setTotal((n) => Math.max(0, n - 1));
   }
   async function renameTerm(term: Term, source: string) {
     await call("update_term", { projectId: activeId, term: { ...term, source, pinned: true } });
     await call("delete_term", { projectId: activeId, source: term.source });
-    refreshGlossary();
+    void refreshGlossary();
   }
   async function addTerm() {
     const source = newTerm.source.trim(), target = newTerm.target.trim();
@@ -95,22 +160,16 @@ export function useGlossary({
       term: { source, target, kind: newTerm.kind, frequency: 1, pinned: true },
     });
     setNewTerm({ source: "", target: "", kind: "person" });
-    refreshGlossary();
+    void refreshGlossary();
   }
 
-  const filteredGlossary = useMemo(() => {
-    const q = glossaryQuery.trim().toLowerCase();
-    return q
-      ? glossary.filter((term) => term.source.toLowerCase().includes(q) || term.target.toLowerCase().includes(q))
-      : glossary;
-  }, [glossary, glossaryQuery]);
   return {
-    glossary, setGlossary,
+    terms, total, loading,
     glossaryQuery, setGlossaryQuery,
+    kindFilter, setKindFilter,
     newTerm, setNewTerm,
     pending, setPending, pendingCount,
-    filteredGlossary,
-    refreshGlossary,
+    refreshGlossary, loadMore,
     editTarget, editKind, updateTranslation,
     deleteTerm, renameTerm, addTerm,
   };

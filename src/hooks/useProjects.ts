@@ -5,7 +5,7 @@ import type { CallFn } from "../api";
 import type { MenuId } from "../components/Menubar";
 import {
   LS_ACTIVE, LS_PROJECTS, baseName, newId,
-  type BookInfo, type Project, type RefInfo, type Term, type ViewId,
+  type BookInfo, type Project, type RefInfo, type ViewId,
 } from "../types";
 
 export type ProjectHelpers = {
@@ -20,7 +20,6 @@ export type ProjectHelpers = {
   clearWorkspace: () => void;
   setBook: (b: BookInfo | null) => void;
   setRef: (r: RefInfo | null) => void;
-  setGlossary: (g: Term[]) => void;
   setPending: React.Dispatch<React.SetStateAction<Record<string, { old: string; new: string; kind: string }>>>;
   refreshDetails: () => Promise<void>;
   refreshProgressFor: (id: string) => Promise<void>;
@@ -61,7 +60,6 @@ export function useProjects(helpersRef: MutableRefObject<ProjectHelpers>) {
     h.addLogTo(p.id, h.t("log.opening", { name: p.name }));
     h.setError(null);
     h.clearWorkspace();
-    h.setGlossary([]);
     h.setPending({});
     // The explorer shows a preloader for the whole activation, not just the
     // list_chapters call, so it never flashes "no chapters" while opening.
@@ -97,7 +95,7 @@ export function useProjects(helpersRef: MutableRefObject<ProjectHelpers>) {
   useEffect(() => {
     const h = helpersRef.current;
     if (activeProject) void activateProject(activeProject);
-    else { activatingRef.current = null; h.clearWorkspace(); h.setGlossary([]); h.setPending({}); }
+    else { activatingRef.current = null; h.clearWorkspace(); h.setPending({}); }
     h.setView("overview");
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [active]);

@@ -5,25 +5,71 @@ use std::sync::Arc;
 
 use tauri::{AppHandle, Emitter, Manager, State};
 
-use crate::dto::{err, term_to_dto, RenameChange, TermDto};
+use crate::dto::{err, term_to_dto, GlossaryPage, RenameChange, TermDto};
 use crate::glossary::{Term, TermKind};
 use crate::jobs::run_retarget;
 use crate::session::AppState;
 use crate::state::Store;
 
-/// The whole glossary (most frequent first).
+/// One page of the glossary, filtered and ordered by the database.
+///
+/// The glossary of a long book runs to tens of thousands of terms. Shipping all
+/// of them to the UI and filtering there froze the app, so the window, the
+/// filter and the ordering are all the database's job; the UI asks for what it
+/// is about to draw.
 #[tauri::command]
-pub async fn get_glossary(
+pub async fn get_glossary_page(
     project_id: String,
+    query: Option<String>,
+    kind: Option<String>,
+    offset: usize,
+    limit: usize,
+    state: State<'_, AppState>,
+) -> Result<GlossaryPage, String> {
+    let db = state
+        .with(&project_id, |s| s.db_path.clone())
+        .ok_or("no_source")?;
+    let store = Store::open(&db).map_err(err)?;
+    let (total, terms) = store
+        .glossary_page(
+            query.as_deref().unwrap_or_default(),
+            kind.as_deref(),
+            offset,
+            limit.clamp(1, 1000),
+        )
+        .map_err(err)?;
+    Ok(GlossaryPage {
+        total,
+        terms: terms.into_iter().map(term_to_dto).collect(),
+    })
+}
+
+/// The glossary terms that occur in one chapter's original text.
+///
+/// This is what the reader needs to underline terms and map a source term to
+/// the rendering used in the translation. It used to receive the entire
+/// glossary and scan it against the chapter on every render, which is the same
+/// work the translation prompt already does through `glossary::relevant_terms`,
+/// so that function is reused here.
+#[tauri::command]
+pub async fn chapter_terms(
+    project_id: String,
+    index: usize,
     state: State<'_, AppState>,
 ) -> Result<Vec<TermDto>, String> {
     let db = state
         .with(&project_id, |s| s.db_path.clone())
         .ok_or("no_source")?;
     let store = Store::open(&db).map_err(err)?;
-    let mut terms = store.load_glossary().map_err(err)?;
-    terms.sort_by(|a, b| b.frequency.cmp(&a.frequency));
-    Ok(terms.into_iter().map(term_to_dto).collect())
+    let Some((_, source)) = store.chapter(index).map_err(err)? else {
+        return Ok(Vec::new());
+    };
+    let glossary = store.load_glossary().map_err(err)?;
+    Ok(crate::glossary::relevant_terms(&glossary, &source)
+        .into_iter()
+        .cloned()
+        .map(term_to_dto)
+        .collect())
 }
 
 /// Manually edit / pin a term.

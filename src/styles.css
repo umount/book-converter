@@ -279,6 +279,29 @@ tr.dirty td { background: color-mix(in srgb, var(--accent) 12%, transparent); }
 td button.ghost { white-space: nowrap; }
 tr.add-row input::placeholder { color: var(--fg-subtle); }
 
+/* Glossary rows are a grid, not a <table>: the list is windowed, and only a
+   grid lets rows be positioned arithmetically while keeping columns aligned.
+   Row height is fixed and must match ROW_HEIGHT in GlossaryView.tsx. */
+.glossary-grid { border: 1px solid var(--border); border-radius: var(--r-md); overflow: hidden; }
+.glossary-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr 170px 90px 44px;
+  gap: 9px;
+  align-items: center;
+  height: 34px;
+  padding: 0 9px;
+  border-bottom: 1px solid var(--border);
+  box-sizing: border-box;
+}
+.glossary-row input, .glossary-row select { width: 100%; }
+.glossary-head { color: var(--fg-muted); font-weight: 600; background: var(--bg-panel); }
+.glossary-add { background: var(--bg-elevated); border-bottom: 2px solid var(--border-strong); }
+.glossary-add input::placeholder { color: var(--fg-subtle); }
+.glossary-row.dirty { background: color-mix(in srgb, var(--accent) 12%, transparent); }
+.glossary-count { color: var(--fg-muted); white-space: nowrap; }
+.glossary-rows { max-height: 460px; }
+.glossary-foot { padding: 6px 9px; font-size: 12px; background: var(--bg-panel); }
+
 .settings-page { max-width: 900px; width: 100%; padding: 16px; display: flex; flex-direction: column; min-height: 0; height: 100%; }
 .settings-head { display: flex; align-items: center; justify-content: space-between; }
 .settings-search { margin: 10px 0 14px; }

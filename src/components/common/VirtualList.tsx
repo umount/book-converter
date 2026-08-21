@@ -7,13 +7,16 @@ type Props<T> = {
   renderRow: (item: T, index: number) => ReactNode;
   overscan?: number;
   className?: string;
+  /** Called when the viewport comes within `overscan` rows of the last item.
+   *  Lets a caller page in more data as the user scrolls. */
+  onReachEnd?: () => void;
 };
 
 /**
  * Generic fixed-height windowing list: renders only the rows in view (plus a
  * small overscan), so lists of thousands of rows stay cheap. No dependency.
  */
-export function VirtualList<T>({ items, rowHeight, renderRow, overscan = 6, className }: Props<T>) {
+export function VirtualList<T>({ items, rowHeight, renderRow, overscan = 6, className, onReachEnd }: Props<T>) {
   const ref = useRef<HTMLDivElement>(null);
   const [scrollTop, setScrollTop] = useState(0);
   const [height, setHeight] = useState(0);
@@ -31,6 +34,11 @@ export function VirtualList<T>({ items, rowHeight, renderRow, overscan = 6, clas
   const start = Math.max(0, Math.floor(scrollTop / rowHeight) - overscan);
   const end = Math.min(items.length, start + Math.ceil(height / rowHeight) + overscan * 2);
   const slice = items.slice(start, end);
+
+  useEffect(() => {
+    if (onReachEnd && height > 0 && end >= items.length) onReachEnd();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [end, items.length, height]);
 
   return (
     <div

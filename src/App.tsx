@@ -160,6 +160,7 @@ export default function App() {
 
   // Jump from a highlighted term in the reader to its glossary entry.
   function openGlossaryTerm(source: string) {
+    glossary.setKindFilter("all");
     glossary.setGlossaryQuery(source);
     setView("glossary");
   }
@@ -183,7 +184,7 @@ export default function App() {
     addLog: job.addLog, addLogTo: job.addLogTo,
     clearWorkspace: book.clearWorkspace,
     setBook: book.setBook, setRef: book.setRef,
-    setGlossary: glossary.setGlossary, setPending: glossary.setPending,
+    setPending: glossary.setPending,
     setChaptersLoading: book.setChaptersLoading,
     refreshDetails: book.refreshDetails,
     refreshProgressFor: job.refreshProgressFor,
@@ -361,7 +362,7 @@ export default function App() {
                 <TabBar
                   t={t} view={view}
                   chapters={book.chapters} openChapters={tabs.openChapters}
-                  chapterIdx={book.chapterIdx} glossaryCount={glossary.glossary.length}
+                  chapterIdx={book.chapterIdx} glossaryCount={glossary.total}
                   onSelectView={setView}
                   onSelectChapter={tabs.openChapter}
                   onCloseChapter={tabs.closeChapter}
@@ -400,10 +401,14 @@ export default function App() {
                   {view === "glossary" && (
                     <GlossaryView
                       t={t} collapsed={collapsed} onToggle={toggle}
-                      glossary={glossary.glossary}
-                      filteredGlossary={glossary.filteredGlossary}
+                      terms={glossary.terms}
+                      total={glossary.total}
+                      loading={glossary.loading}
                       glossaryQuery={glossary.glossaryQuery}
                       setGlossaryQuery={glossary.setGlossaryQuery}
+                      kindFilter={glossary.kindFilter}
+                      setKindFilter={glossary.setKindFilter}
+                      onLoadMore={glossary.loadMore}
                       newTerm={glossary.newTerm} setNewTerm={glossary.setNewTerm}
                       pending={glossary.pending} pendingCount={glossary.pendingCount}
                       progress={progress}
@@ -427,7 +432,7 @@ export default function App() {
                       chapterLoading={book.chapterLoading}
                       panes={book.panes} setPanes={book.setPanes}
                       hl={hl} find={find}
-                      terms={glossary.glossary}
+                      terms={book.chapterTerms}
                       onOpenGlossaryTerm={openGlossaryTerm}
                       onReplaceInBook={replaceInBook}
                       translating={!!progress?.running}
@@ -456,7 +461,7 @@ export default function App() {
       </div>
       <StatusBar
         t={t} progress={progress} book={book.book}
-        glossaryCount={glossary.glossary.length}
+        glossaryCount={glossary.total}
         srcLang={srcLang} tgtLang={tgtLang} busy={busy}
         onToggleConsole={() => setShowConsole((s) => !s)}
       />

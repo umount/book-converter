@@ -18,6 +18,14 @@ pub struct BookInfo {
     pub had_errors: bool,
 }
 
+/// One page of the glossary plus the size of the full match, so the UI can
+/// render a window and still report how many terms the filter really matched.
+#[derive(Serialize)]
+pub struct GlossaryPage {
+    pub total: usize,
+    pub terms: Vec<TermDto>,
+}
+
 #[derive(Serialize)]
 pub struct RefInfo {
     pub title: String,

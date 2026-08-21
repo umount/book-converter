@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { open } from "@tauri-apps/plugin-dialog";
 import type { CallFn } from "../api";
-import type { BookDetails, BookInfo, ChapterRow, ChapterView, RefInfo } from "../types";
+import type { BookDetails, BookInfo, ChapterRow, ChapterView, RefInfo, Term } from "../types";
 
 type Opts = {
   call: CallFn;
@@ -19,6 +19,11 @@ export function useBookWorkspace({ call, activeId }: Opts) {
   const chapterIdxRef = useRef<number | null>(null);
   const [chapter, setChapter] = useState<ChapterView | null>(null);
   const [chapterLoading, setChapterLoading] = useState(false);
+  // Glossary terms that occur in THIS chapter, for the reader's highlighting.
+  // The full glossary runs to tens of thousands of terms on a long book, and
+  // scanning all of them against the chapter on every render is what made the
+  // reader crawl; the backend already computes this set for the prompt.
+  const [chapterTerms, setChapterTerms] = useState<Term[]>([]);
   const [panes, setPanes] = useState({ orig: true, transl: true });
 
   // Live refs: async loads must be checked against the project/list that is
@@ -31,6 +36,7 @@ export function useBookWorkspace({ call, activeId }: Opts) {
   function clearWorkspace() {
     setBook(null); setRef(null); setDetails(null);
     setChapters([]); setChapterIdx(null); setChapter(null);
+    setChapterTerms([]);
     setChaptersLoading(false);
   }
 
@@ -85,9 +91,20 @@ export function useBookWorkspace({ call, activeId }: Opts) {
 
   async function openChapter(idx: number) {
     setChapterLoading(true);
-    const c = await call<ChapterView>("get_chapter", { projectId: activeId, index: idx });
+    const projectId = activeId;
+    const c = await call<ChapterView>("get_chapter", { projectId, index: idx });
     if (c) setChapter(c);
     setChapterLoading(false);
+    void loadChapterTerms(idx, projectId);
+  }
+
+  /** Terms present in one chapter, for highlighting. Best-effort: a failure
+   *  costs the underlines, not the chapter. */
+  async function loadChapterTerms(idx: number, projectId: string = activeId) {
+    const terms = await call<Term[]>("chapter_terms", { projectId, index: idx });
+    // Ignore a load that resolved after the reader moved on.
+    if (activeIdRef.current !== projectId || chapterIdxRef.current !== idx) return;
+    setChapterTerms(terms ?? []);
   }
 
   useEffect(() => {
@@ -115,6 +132,7 @@ export function useBookWorkspace({ call, activeId }: Opts) {
     chapterIdx, setChapterIdx, chapterIdxRef,
     chapter, setChapter,
     chapterLoading,
+    chapterTerms, loadChapterTerms,
     panes, setPanes,
     clearWorkspace,
     applyChapterEdit,

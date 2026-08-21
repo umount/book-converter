@@ -135,6 +135,7 @@ impl Store {
     pub fn open(path: &str) -> Result<Self> {
         let conn = Connection::open(path)?;
         conn.execute_batch(PRAGMAS)?;
+        register_ulower(&conn)?;
         conn.execute_batch(SCHEMA)?;
         let store = Store { conn };
         store.migrate()?;
@@ -161,6 +162,12 @@ impl Store {
 
     /// Additive migrations for databases created by an older version.
     fn migrate(&self) -> Result<()> {
+        // The glossary is read paged and ordered by frequency; on a book that
+        // grows tens of thousands of terms, that ordering must not be a scan.
+        self.conn.execute_batch(
+            "CREATE INDEX IF NOT EXISTS glossary_by_frequency
+             ON glossary (frequency DESC, source ASC);",
+        )?;
         self.ensure_column("chapters", "origin", "TEXT")?;
         self.ensure_column("chapters", "rolling_summary", "TEXT")?;
         self.ensure_column("chapters", "prev_tail", "TEXT")?;
@@ -860,6 +867,59 @@ impl Store {
         Ok(())
     }
 
+    /// One page of the glossary, filtered and ordered in SQL.
+    ///
+    /// `query` matches either side of a term, `kind` narrows to one category
+    /// (both are ignored when empty). Returns `(total_matching, page)` so the UI
+    /// can show the real size of a filter it is only rendering a window of.
+    ///
+    /// Matching is case-insensitive by lowercasing both sides. SQLite's own
+    /// `LIKE` folds case for ASCII only, which would make a filter useless on
+    /// exactly the scripts this tool works in.
+    pub fn glossary_page(
+        &self,
+        query: &str,
+        kind: Option<&str>,
+        offset: usize,
+        limit: usize,
+    ) -> Result<(usize, Vec<Term>)> {
+        let q = query.trim().to_lowercase();
+        let pattern = format!("%{}%", escape_like(&q));
+        let has_query = !q.is_empty();
+        let kind = kind.filter(|k| !k.trim().is_empty());
+
+        let where_sql = "WHERE (?1 = 0 OR ulower(source) LIKE ?2 ESCAPE '\\' \
+                                     OR ulower(target) LIKE ?2 ESCAPE '\\')
+                           AND (?3 IS NULL OR kind = ?3)";
+
+        let total: i64 = self.conn.query_row(
+            &format!("SELECT COUNT(*) FROM glossary {where_sql}"),
+            params![has_query as i64, pattern, kind],
+            |r| r.get(0),
+        )?;
+
+        let mut stmt = self.conn.prepare(&format!(
+            "SELECT source, target, kind, frequency, pinned FROM glossary {where_sql}
+             ORDER BY frequency DESC, source ASC
+             LIMIT ?4 OFFSET ?5"
+        ))?;
+        let rows = stmt
+            .query_map(
+                params![has_query as i64, pattern, kind, limit as i64, offset as i64],
+                |r| {
+                    Ok(Term {
+                        source: r.get(0)?,
+                        target: r.get(1)?,
+                        kind: kind_from_str(&r.get::<_, String>(2)?),
+                        frequency: r.get::<_, i64>(3)? as u32,
+                        pinned: r.get::<_, i64>(4)? != 0,
+                    })
+                },
+            )?
+            .collect::<rusqlite::Result<Vec<_>>>()?;
+        Ok((total as usize, rows))
+    }
+
     /// Upsert one glossary entry.
     ///
     /// The single-term counterpart of [`Store::save_glossary`]. Editing one term
@@ -980,6 +1040,32 @@ fn kind_from_str(s: &str) -> TermKind {
         "term" => TermKind::Term,
         _ => TermKind::Person,
     }
+}
+
+/// Register `ulower(x)`, a Unicode-aware lowercase for use in queries.
+///
+/// SQLite's built-in `lower()` and its `LIKE` both fold case for ASCII only, so
+/// neither can match "ВАН" against "Ван" and a glossary filter would be useless
+/// on exactly the scripts this tool translates between.
+fn register_ulower(conn: &Connection) -> Result<()> {
+    use rusqlite::functions::FunctionFlags;
+    conn.create_scalar_function(
+        "ulower",
+        1,
+        FunctionFlags::SQLITE_UTF8 | FunctionFlags::SQLITE_DETERMINISTIC,
+        |ctx| {
+            let s = ctx.get_raw(0).as_str_or_null()?;
+            Ok(s.map(|s| s.to_lowercase()))
+        },
+    )?;
+    Ok(())
+}
+
+/// Escape the wildcards SQL `LIKE` would otherwise interpret in user input.
+fn escape_like(s: &str) -> String {
+    s.replace('\\', "\\\\")
+        .replace('%', "\\%")
+        .replace('_', "\\_")
 }
 
 #[cfg(test)]
@@ -1113,6 +1199,90 @@ mod tests {
         for suffix in ["", "-wal", "-shm"] {
             let _ = std::fs::remove_file(format!("{path_str}{suffix}"));
         }
+    }
+
+    fn glossary_sample() -> Vec<Term> {
+        vec![
+            Term { source: "王林".into(), target: "Ван Линь".into(), kind: TermKind::Person, frequency: 90, pinned: true },
+            Term { source: "血湖".into(), target: "Кровавое озеро".into(), kind: TermKind::Location, frequency: 40, pinned: false },
+            Term { source: "剑宗".into(), target: "Секта Меча".into(), kind: TermKind::Organization, frequency: 20, pinned: false },
+            Term { source: "李慕婉".into(), target: "Ли Мувань".into(), kind: TermKind::Person, frequency: 10, pinned: false },
+        ]
+    }
+
+    #[test]
+    fn glossary_page_orders_by_frequency_and_windows() {
+        let store = Store::open(":memory:").unwrap();
+        store.save_glossary(&glossary_sample()).unwrap();
+
+        let (total, first) = store.glossary_page("", None, 0, 2).unwrap();
+        assert_eq!(total, 4);
+        assert_eq!(first.len(), 2);
+        assert_eq!(first[0].source, "王林");
+        assert_eq!(first[1].source, "血湖");
+
+        let (total, second) = store.glossary_page("", None, 2, 2).unwrap();
+        assert_eq!(total, 4);
+        assert_eq!(second[0].source, "剑宗");
+        assert_eq!(second[1].source, "李慕婉");
+
+        // Past the end is empty, not an error.
+        let (_, past) = store.glossary_page("", None, 10, 2).unwrap();
+        assert!(past.is_empty());
+    }
+
+    #[test]
+    fn glossary_page_filters_both_sides_case_insensitively() {
+        let store = Store::open(":memory:").unwrap();
+        store.save_glossary(&glossary_sample()).unwrap();
+
+        // Target side, and in a script SQLite's own LIKE would not fold.
+        let (total, hits) = store.glossary_page("ВАН ЛИНЬ", None, 0, 50).unwrap();
+        assert_eq!(total, 1);
+        assert_eq!(hits[0].source, "王林");
+
+        // Source side.
+        let (total, _) = store.glossary_page("剑宗", None, 0, 50).unwrap();
+        assert_eq!(total, 1);
+
+        // Substring of a target.
+        let (total, _) = store.glossary_page("озеро", None, 0, 50).unwrap();
+        assert_eq!(total, 1);
+    }
+
+    #[test]
+    fn glossary_page_filters_by_kind() {
+        let store = Store::open(":memory:").unwrap();
+        store.save_glossary(&glossary_sample()).unwrap();
+        let (total, hits) = store.glossary_page("", Some("person"), 0, 50).unwrap();
+        assert_eq!(total, 2);
+        assert!(hits.iter().all(|t| t.kind == TermKind::Person));
+
+        // Filter and kind compose: "Мувань" is one of the two persons.
+        let (total, hits) = store.glossary_page("МУВАНЬ", Some("person"), 0, 50).unwrap();
+        assert_eq!(total, 1);
+        assert_eq!(hits[0].source, "李慕婉");
+
+        // A term matching the query but not the kind is excluded.
+        let (total, _) = store.glossary_page("Кровавое", Some("person"), 0, 50).unwrap();
+        assert_eq!(total, 0);
+    }
+
+    /// A `%` typed into the filter box is a literal, not a wildcard.
+    #[test]
+    fn glossary_page_escapes_like_wildcards() {
+        let store = Store::open(":memory:").unwrap();
+        let mut terms = glossary_sample();
+        terms.push(Term { source: "100%".into(), target: "сто процентов".into(), kind: TermKind::Term, frequency: 1, pinned: false });
+        store.save_glossary(&terms).unwrap();
+
+        let (total, hits) = store.glossary_page("100%", None, 0, 50).unwrap();
+        assert_eq!(total, 1);
+        assert_eq!(hits[0].source, "100%");
+
+        // A lone "%" must not match everything.
+        let (total, _) = store.glossary_page("%", None, 0, 50).unwrap();
+        assert_eq!(total, 1);
     }
 
     #[test]

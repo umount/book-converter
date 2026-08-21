@@ -26,6 +26,8 @@ export type Progress = {
   eta_secs?: number | null;
 };
 export type Term = { source: string; target: string; kind: string; frequency: number; pinned: boolean };
+/** One window of the glossary plus how many terms the filter matched in total. */
+export type GlossaryPage = { total: number; terms: Term[] };
 export const TERM_KINDS = ["person", "location", "organization", "term"] as const;
 // Language names understood by the model in prompts ("translate from X to Y").
 export const TRANSLATION_LANGS = [
