@@ -320,6 +320,17 @@ impl Store {
     /// `pending` (never overwrite work already done by the model or an earlier
     /// import). Marks it `done` with `origin = 'reference'`. Returns whether a row
     /// was filled.
+    /// True when the chapter already holds a non-empty translation.
+    pub fn has_translation(&self, index: usize) -> Result<bool> {
+        let n: i64 = self.conn.query_row(
+            "SELECT COUNT(*) FROM chapters
+             WHERE idx = ?1 AND translated IS NOT NULL AND TRIM(translated) != ''",
+            params![index as i64],
+            |r| r.get(0),
+        )?;
+        Ok(n > 0)
+    }
+
     pub fn save_reference_chapter(
         &self,
         index: usize,

@@ -206,6 +206,17 @@ pub async fn update_chapter_translation(
             return Err("chapter_busy".into());
         }
     }
+    // Refuse to replace a translation with nothing.
+    //
+    // This is the editor's autosave path, so it fires on its own, and a UI race
+    // that pairs a new chapter with a stale empty draft would silently destroy a
+    // finished chapter while marking it done. That happened. Clearing a chapter
+    // deliberately is what resetting it is for, so nothing legitimate is lost by
+    // rejecting this here, and no future editor bug can do it either.
+    if translated.trim().is_empty() && store.has_translation(index).map_err(err)? {
+        tracing::warn!(chapter = index, "refused an empty overwrite of a translation");
+        return Err("refuse_empty_overwrite".into());
+    }
     store
         .save_manual_translation(index, translated_title.trim(), translated.trim())
         .map_err(err)?;

@@ -352,6 +352,19 @@ mod tests {
         }
     }
 
+    /// The editor autosaves, so an empty save must be recognisable as one and
+    /// never allowed to stand in for a translation.
+    #[test]
+    fn has_translation_distinguishes_empty_from_written() {
+        let store = Store::open(":memory:").unwrap();
+        store.init_chapters(&sample()).unwrap();
+        assert!(!store.has_translation(1).unwrap());
+        store.save_translation(1, "Глава 1", "Текст главы.").unwrap();
+        assert!(store.has_translation(1).unwrap());
+        store.save_manual_translation(2, "", "   ").unwrap();
+        assert!(!store.has_translation(2).unwrap());
+    }
+
     /// Everything the app needs from a reference after import is answerable from
     /// the chapters themselves, with no access to the reference file.
     #[test]

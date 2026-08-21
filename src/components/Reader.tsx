@@ -106,15 +106,24 @@ export function Reader({
   // our own save coming back: that would clobber keystrokes typed while the save
   // was in flight. Anything else (a regenerate, a book-wide replace) wins.
   const lastSentRef = useRef<{ title: string; body: string } | null>(null);
+  // Which chapter the drafts currently hold. A draft is only ever saved back to
+  // the chapter it was loaded from: `chapterIdx` changes as soon as the user
+  // navigates, while the drafts catch up a render later, and pairing the new
+  // index with the old draft is how a translation gets overwritten.
+  const draftIdxRef = useRef<number | null>(null);
   useEffect(() => {
     const body = chapter?.translated ?? "";
     const title = chapter?.translated_title ?? "";
     const sent = lastSentRef.current;
-    if (sent && sent.body === body.trim() && sent.title === title.trim()) return;
+    if (sent && sent.body === body.trim() && sent.title === title.trim()) {
+      draftIdxRef.current = chapter?.idx ?? null;
+      return;
+    }
     lastSentRef.current = null;
     setBodyDraft(body);
     setTitleDraft(title);
-  }, [chapterIdx, chapter?.translated, chapter?.translated_title]);
+    draftIdxRef.current = chapter?.idx ?? null;
+  }, [chapterIdx, chapter?.idx, chapter?.translated, chapter?.translated_title]);
 
   // A chapter can hold a translation while not being `done`: a failed run, a
   // reset queued for re-translation, or one being translated right now. Hiding
@@ -129,8 +138,13 @@ export function Reader({
 
   // Compared trimmed, because that is what the backend stores: otherwise a
   // trailing newline would look dirty forever and autosave in a loop.
+  // Only the chapter the drafts were loaded from can be dirty. Without this, the
+  // render between a freshly loaded translation and the drafts adopting it looks
+  // like "the user cleared the whole chapter".
+  const draftsMatchChapter = chapterIdx != null && draftIdxRef.current === chapterIdx;
   const dirty =
     canEdit &&
+    draftsMatchChapter &&
     (bodyDraft.trim() !== (chapter?.translated ?? "").trim() ||
       titleDraft.trim() !== (chapter?.translated_title ?? "").trim());
 
@@ -147,6 +161,8 @@ export function Reader({
     const p = pendingRef.current;
     if (!p) return;
     pendingRef.current = null;
+    // Emptying a chapter is never something autosave should do on its own.
+    if (!p.body.trim()) return;
     lastSentRef.current = { title: p.title.trim(), body: p.body.trim() };
     setSaving(true);
     try {
@@ -169,6 +185,7 @@ export function Reader({
       const p = pendingRef.current;
       if (!p) return;
       pendingRef.current = null;
+      if (!p.body.trim()) return; // see flushEdits
       void saveRef.current(p.idx, p.title, p.body);
     },
     [chapterIdx],
