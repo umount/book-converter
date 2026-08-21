@@ -13,6 +13,7 @@
 //! running summary, per-chapter status) lives in SQLite, so a run resumes with
 //! full context.
 
+use std::collections::HashSet;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Instant;
 
@@ -56,6 +57,9 @@ pub struct Orchestrator<'a> {
     store: &'a Store,
     config: &'a Config,
     glossary: Vec<Term>,
+    /// Source forms whose glossary row changed during this run and has not been
+    /// written yet. See [`Orchestrator::flush_glossary`].
+    dirty_terms: HashSet<String>,
     style: Option<String>,
     summary: String,
     prev_tail: Option<String>,
@@ -88,6 +92,7 @@ impl<'a> Orchestrator<'a> {
             store,
             config,
             glossary,
+            dirty_terms: HashSet::new(),
             style,
             summary,
             prev_tail: None,
@@ -118,7 +123,24 @@ impl<'a> Orchestrator<'a> {
     }
 
     /// Translate pending chapters in order, at most `limit` of them (`None` = all).
+    ///
+    /// Terms are written after each chapter; the flush here is the safety net
+    /// for a run that ended on a path which skipped one. See
+    /// [`Orchestrator::flush_glossary`].
     pub async fn run<F: FnMut(ProgressEvent)>(
+        &mut self,
+        limit: Option<usize>,
+        cancel: &AtomicBool,
+        progress: F,
+    ) -> Result<()> {
+        let result = self.run_chapters(limit, cancel, progress).await;
+        if let Err(e) = self.flush_glossary() {
+            tracing::warn!("glossary flush failed: {e:#}");
+        }
+        result
+    }
+
+    async fn run_chapters<F: FnMut(ProgressEvent)>(
         &mut self,
         limit: Option<usize>,
         cancel: &AtomicBool,
@@ -227,6 +249,20 @@ impl<'a> Orchestrator<'a> {
     /// Translate a single chapter (by index), using the previous chapter's saved
     /// rolling context. Used by the reader "Translate this chapter" action.
     pub async fn run_one<F: FnMut(ProgressEvent)>(
+        &mut self,
+        index: usize,
+        cancel: &AtomicBool,
+        progress: F,
+    ) -> Result<()> {
+        let result = self.run_one_chapter(index, cancel, progress).await;
+        // A run of one is still a run: flush what it learned.
+        if let Err(e) = self.flush_glossary() {
+            tracing::warn!("glossary flush failed: {e:#}");
+        }
+        result
+    }
+
+    async fn run_one_chapter<F: FnMut(ProgressEvent)>(
         &mut self,
         index: usize,
         cancel: &AtomicBool,
@@ -493,13 +529,61 @@ impl<'a> Orchestrator<'a> {
         self.client.translate(&system, &user).await
     }
 
+    /// Extract this chapter's terms, fold them into the glossary and persist
+    /// them, so the **next** chapter's prompt already carries what this one
+    /// taught. That is the whole point of growing a glossary mid-run: a name
+    /// first seen in chapter 40 must be fixed by the time chapter 41 is
+    /// translated, and it must be visible in the UI right away, not at the end
+    /// of a run that may be hundreds of chapters long.
+    ///
+    /// What changed is that only the terms this chapter touched are written,
+    /// instead of the entire list.
     async fn enrich_glossary(&mut self, source: &str, translation: &str) -> Result<()> {
         let new_terms =
             crate::translator::extract_terms(self.client, self.config, source, translation, 2)
                 .await?;
+        for t in &new_terms {
+            self.dirty_terms.insert(t.source.clone());
+        }
         glossary::merge(&mut self.glossary, new_terms);
-        self.store.save_glossary(&self.glossary)?;
+        self.flush_glossary()?;
         Ok(())
+    }
+
+    /// Write the terms learned since the last flush, and clear the dirty set.
+    ///
+    /// Runs after every chapter, and again when a run ends however it ends
+    /// (finished, paused, cancelled, failed) so terms extracted on a path that
+    /// skipped the per-chapter flush are not lost. Only the rows that actually
+    /// changed are written, so the cost is proportional to what was learned
+    /// rather than to the size of the glossary.
+    fn flush_glossary(&mut self) -> Result<usize> {
+        if self.dirty_terms.is_empty() {
+            return Ok(0);
+        }
+        // The in-memory glossary was read when the run started and can be hours
+        // old. A term the user edited in the UI meanwhile must keep the
+        // rendering they chose; only the frequency this run counted is ours to
+        // write. New terms are inserted as extracted.
+        let mut rows: Vec<Term> = Vec::with_capacity(self.dirty_terms.len());
+        for term in self
+            .glossary
+            .iter()
+            .filter(|t| self.dirty_terms.contains(&t.source))
+        {
+            match self.store.term(&term.source)? {
+                Some(stored) => rows.push(Term {
+                    frequency: term.frequency.max(stored.frequency),
+                    ..stored
+                }),
+                None => rows.push(term.clone()),
+            }
+        }
+        let refs: Vec<&Term> = rows.iter().collect();
+        self.store.upsert_terms(&refs)?;
+        self.dirty_terms.clear();
+        tracing::info!(terms = rows.len(), "glossary flushed at end of run");
+        Ok(rows.len())
     }
 
 }

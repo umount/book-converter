@@ -37,19 +37,16 @@ pub async fn update_term(
         .with(&project_id, |s| s.db_path.clone())
         .ok_or("no_source")?;
     let store = Store::open(&db).map_err(err)?;
-    let mut glossary = store.load_glossary().map_err(err)?;
-    let updated = Term {
-        source: term.source.clone(),
-        target: term.target,
-        kind: TermKind::from_label(&term.kind),
-        frequency: term.frequency.max(1),
-        pinned: true,
-    };
-    match glossary.iter_mut().find(|t| t.source == term.source) {
-        Some(existing) => *existing = updated,
-        None => glossary.push(updated),
-    }
-    store.save_glossary(&glossary).map_err(err)?;
+    // One row, not the whole glossary: this runs on every edit in the table.
+    store
+        .upsert_term(&Term {
+            source: term.source,
+            target: term.target,
+            kind: TermKind::from_label(&term.kind),
+            frequency: term.frequency.max(1),
+            pinned: true,
+        })
+        .map_err(err)?;
     Ok(())
 }
 

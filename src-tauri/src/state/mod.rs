@@ -860,6 +860,78 @@ impl Store {
         Ok(())
     }
 
+    /// Upsert one glossary entry.
+    ///
+    /// The single-term counterpart of [`Store::save_glossary`]. Editing one term
+    /// from the UI used to load every term and write every term back, which on a
+    /// 10K-entry glossary is 10K statements per keystroke-driven save.
+    pub fn upsert_term(&self, term: &Term) -> Result<()> {
+        self.conn.execute(
+            "INSERT INTO glossary (source, target, kind, frequency, pinned)
+             VALUES (?1, ?2, ?3, ?4, ?5)
+             ON CONFLICT(source) DO UPDATE SET
+                target = excluded.target,
+                kind = excluded.kind,
+                frequency = excluded.frequency,
+                pinned = excluded.pinned",
+            params![
+                term.source,
+                term.target,
+                kind_to_str(term.kind),
+                term.frequency as i64,
+                term.pinned as i64,
+            ],
+        )?;
+        Ok(())
+    }
+
+    /// Upsert several glossary entries in one transaction.
+    ///
+    /// Used to flush what a translation run learned: only the rows that changed,
+    /// rather than the whole term list.
+    pub fn upsert_terms(&self, terms: &[&Term]) -> Result<()> {
+        let tx = self.conn.unchecked_transaction()?;
+        {
+            let mut stmt = tx.prepare(
+                "INSERT INTO glossary (source, target, kind, frequency, pinned)
+                 VALUES (?1, ?2, ?3, ?4, ?5)
+                 ON CONFLICT(source) DO UPDATE SET
+                    target = excluded.target,
+                    kind = excluded.kind,
+                    frequency = excluded.frequency,
+                    pinned = excluded.pinned",
+            )?;
+            for t in terms {
+                stmt.execute(params![
+                    t.source,
+                    t.target,
+                    kind_to_str(t.kind),
+                    t.frequency as i64,
+                    t.pinned as i64,
+                ])?;
+            }
+        }
+        tx.commit()?;
+        Ok(())
+    }
+
+    /// Read one glossary entry by its source form.
+    pub fn term(&self, source: &str) -> Result<Option<Term>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT source, target, kind, frequency, pinned FROM glossary WHERE source = ?1",
+        )?;
+        let mut rows = stmt.query_map(params![source], |r| {
+            Ok(Term {
+                source: r.get(0)?,
+                target: r.get(1)?,
+                kind: kind_from_str(&r.get::<_, String>(2)?),
+                frequency: r.get::<_, i64>(3)? as u32,
+                pinned: r.get::<_, i64>(4)? != 0,
+            })
+        })?;
+        Ok(rows.next().transpose()?)
+    }
+
     /// Remove a single glossary entry by its source term.
     pub fn delete_term(&self, source: &str) -> Result<()> {
         self.conn
@@ -1041,6 +1113,56 @@ mod tests {
         for suffix in ["", "-wal", "-shm"] {
             let _ = std::fs::remove_file(format!("{path_str}{suffix}"));
         }
+    }
+
+    #[test]
+    fn upsert_term_touches_one_row() {
+        let store = Store::open(":memory:").unwrap();
+        let a = Term { source: "王林".into(), target: "Ван Линь".into(), kind: TermKind::Person, frequency: 3, pinned: false };
+        let b = Term { source: "血湖".into(), target: "Кровавое озеро".into(), kind: TermKind::Location, frequency: 1, pinned: false };
+        store.save_glossary(&[a.clone(), b.clone()]).unwrap();
+
+        store
+            .upsert_term(&Term { target: "Ван Линь (канон)".into(), pinned: true, ..a })
+            .unwrap();
+
+        let loaded = store.load_glossary().unwrap();
+        assert_eq!(loaded.len(), 2);
+        let wang = loaded.iter().find(|t| t.source == "王林").unwrap();
+        assert_eq!(wang.target, "Ван Линь (канон)");
+        assert!(wang.pinned);
+        // The untouched term is exactly as it was.
+        let lake = loaded.iter().find(|t| t.source == "血湖").unwrap();
+        assert_eq!(lake.target, "Кровавое озеро");
+        assert!(!lake.pinned);
+    }
+
+    #[test]
+    fn term_reads_one_entry() {
+        let store = Store::open(":memory:").unwrap();
+        let t = Term { source: "王林".into(), target: "Ван Линь".into(), kind: TermKind::Person, frequency: 2, pinned: true };
+        store.upsert_term(&t).unwrap();
+        let got = store.term("王林").unwrap().unwrap();
+        assert_eq!(got.target, "Ван Линь");
+        assert_eq!(got.frequency, 2);
+        assert!(got.pinned);
+        assert!(store.term("нет такого").unwrap().is_none());
+    }
+
+    #[test]
+    fn upsert_terms_writes_only_what_it_is_given() {
+        let store = Store::open(":memory:").unwrap();
+        let keep = Term { source: "血湖".into(), target: "Кровавое озеро".into(), kind: TermKind::Location, frequency: 1, pinned: true };
+        store.save_glossary(&[keep.clone()]).unwrap();
+
+        let new_a = Term { source: "王林".into(), target: "Ван Линь".into(), kind: TermKind::Person, frequency: 4, pinned: false };
+        let new_b = Term { source: "剑宗".into(), target: "Секта Меча".into(), kind: TermKind::Organization, frequency: 2, pinned: false };
+        store.upsert_terms(&[&new_a, &new_b]).unwrap();
+
+        let loaded = store.load_glossary().unwrap();
+        assert_eq!(loaded.len(), 3);
+        assert!(loaded.iter().find(|t| t.source == "血湖").unwrap().pinned);
+        assert_eq!(loaded.iter().find(|t| t.source == "王林").unwrap().frequency, 4);
     }
 
     #[test]

@@ -132,6 +132,11 @@ export function useTranslationJob({
           // finishes, and refresh the open chapter if it is the one just done.
           if (isActive(p.project)) {
             void loadChaptersRef.current();
+            // The run extracts terms from every chapter and writes them before
+            // moving on, so the glossary the user is looking at must follow
+            // along. Waiting for `done` meant a run of hundreds of chapters
+            // showed a stale glossary the whole way through.
+            void refreshGlossaryRef.current();
             if (p.current_idx != null && p.current_idx === chapterIdxRef.current) {
               void openChapterRef.current(p.current_idx);
             }
