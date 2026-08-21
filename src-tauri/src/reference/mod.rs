@@ -20,6 +20,7 @@ use anyhow::Result;
 
 use crate::book::{detect_format, load_book_text, read_book_file, BookMeta, Chapter, InputFormat};
 use crate::export::fb2::{extract_head, Fb2Head};
+use crate::config::Config;
 use crate::glossary::{self, Term};
 use crate::translator::DeepSeekClient;
 
@@ -108,6 +109,7 @@ pub fn style_exemplar(reference: &Reference, max_chars: usize) -> Option<String>
 /// later auto-extraction). Returns the merged glossary.
 pub async fn bootstrap_glossary(
     client: &DeepSeekClient,
+    config: &Config,
     source: &[Chapter],
     reference: &Reference,
     sample: usize,
@@ -118,7 +120,7 @@ pub async fn bootstrap_glossary(
     // Best-effort per chapter: retries on bad JSON (see `translator::extract_terms`);
     // if a chapter still fails it is skipped, not fatal — the rest yields canon.
     for (src, refc) in pairs {
-        match crate::translator::extract_terms(client, &src.body, &refc.body, 2).await {
+        match crate::translator::extract_terms(client, config, &src.body, &refc.body, 2).await {
             Ok(mut terms) => {
                 for t in &mut terms {
                     t.pinned = true; // reference-derived canon

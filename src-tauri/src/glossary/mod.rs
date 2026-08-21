@@ -23,6 +23,8 @@
 //! Persisted in SQLite by `state`.
 
 use anyhow::{Context, Result};
+
+use crate::config::Config;
 use serde::{Deserialize, Serialize};
 
 /// Term category — affects strictness and the model hint.
@@ -110,19 +112,27 @@ pub fn merge(glossary: &mut Vec<Term>, new_terms: Vec<Term>) {
 /// Build the (system, user) prompt for extracting terms from a translated
 /// chapter. The orchestrator sends this via `DeepSeekClient::translate`, then
 /// passes the reply to [`parse_extracted_terms`].
-pub fn build_extraction_prompt(source_text: &str, translated_text: &str) -> (String, String) {
-    let system = "You extract named entities from a Chinese→Russian novel translation so they \
-         stay consistent across chapters. Given a source passage in Chinese and its Russian \
+pub fn build_extraction_prompt(
+    config: &Config,
+    source_text: &str,
+    translated_text: &str,
+) -> (String, String) {
+    let src = &config.source_lang;
+    let tgt = &config.target_lang;
+    let system = format!(
+        "You extract named entities from a {src} to {tgt} novel translation so they \
+         stay consistent across chapters. Given a source passage in {src} and its {tgt} \
          translation, list the proper nouns and setting-specific terms: character names \
-         (person), places (location), organizations/sects (organization), and cultivation or \
-         setting terms (term). For each, give the Chinese source form and the exact Russian \
-         rendering used in the translation. Ignore ordinary words. Respond with ONLY a JSON \
-         array (no prose, no code fences); each item: \
-         {\"source\":\"…\",\"target\":\"…\",\"kind\":\"person|location|organization|term\"}."
-        .to_string();
+         (person), places (location), organizations and sects (organization), and \
+         setting-specific terminology (term). For each, give the {src} source form and \
+         the exact {tgt} rendering used in the translation. Ignore ordinary words. \
+         Respond with one json object and nothing else, shaped like \
+         {{\"terms\":[{{\"source\":\"…\",\"target\":\"…\",\"kind\":\"person|location|organization|term\"}}]}}. \
+         An empty list is a valid answer."
+    );
 
     let user = format!(
-        "SOURCE (Chinese):\n{source}\n\nTRANSLATION (Russian):\n{translated}\n\nJSON array:",
+        "SOURCE ({src}):\n{source}\n\nTRANSLATION ({tgt}):\n{translated}\n\njson:",
         source = source_text,
         translated = translated_text,
     );
@@ -139,14 +149,31 @@ struct RawTerm {
     kind: String,
 }
 
+/// The extraction reply: `{"terms": [ … ]}`.
+#[derive(Deserialize)]
+struct RawTerms {
+    #[serde(default)]
+    terms: Vec<RawTerm>,
+}
+
 /// Parse the model's extraction reply into `Term`s (frequency 1, not pinned).
 ///
-/// Tolerant of surrounding prose or ```code fences``` — it takes the outermost
-/// `[ … ]` as the JSON array.
+/// The request asks for `{"terms": [ … ]}` in JSON mode, but a bare `[ … ]`
+/// array is still accepted: that is what older prompts asked for, and a model
+/// occasionally answers with one anyway.
 pub fn parse_extracted_terms(raw: &str) -> Result<Vec<Term>> {
-    let json = slice_json_array(raw)?;
-    let raws: Vec<RawTerm> =
-        serde_json::from_str(json).context("parsing extracted-terms JSON")?;
+    let raws = match slice_json_object(raw) {
+        Some(json) => {
+            serde_json::from_str::<RawTerms>(json)
+                .context("parsing extracted-terms JSON")?
+                .terms
+        }
+        None => {
+            let json = slice_json_array(raw)?;
+            serde_json::from_str::<Vec<RawTerm>>(json)
+                .context("parsing extracted-terms JSON")?
+        }
+    };
     Ok(raws
         .into_iter()
         .filter(|r| !r.source.trim().is_empty() && !r.target.trim().is_empty())
@@ -158,6 +185,21 @@ pub fn parse_extracted_terms(raw: &str) -> Result<Vec<Term>> {
             pinned: false,
         })
         .collect())
+}
+
+/// Extract the outermost JSON object `{ … }` from a possibly-decorated reply,
+/// or `None` when the reply is array-shaped instead.
+///
+/// Which shape it is, is decided by whichever bracket opens first: a bare
+/// `[{"source": …}]` array also contains braces, and slicing on those would cut
+/// the array apart.
+fn slice_json_object(raw: &str) -> Option<&str> {
+    let start = raw.find('{')?;
+    if raw.find('[').is_some_and(|arr| arr < start) {
+        return None;
+    }
+    let end = raw.rfind('}')?;
+    (end > start).then(|| &raw[start..=end])
 }
 
 /// Extract the outermost JSON array `[ … ]` from a possibly-decorated reply.
@@ -173,6 +215,36 @@ fn slice_json_array(raw: &str) -> Result<&str> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn parse_extracted_terms_reads_the_terms_object() {
+        let raw = r#"{"terms":[{"source":"王林","target":"Ван Линь","kind":"person"}]}"#;
+        let terms = parse_extracted_terms(raw).unwrap();
+        assert_eq!(terms.len(), 1);
+        assert_eq!(terms[0].target, "Ван Линь");
+        assert_eq!(terms[0].kind, TermKind::Person);
+    }
+
+    #[test]
+    fn parse_extracted_terms_accepts_an_empty_terms_list() {
+        assert!(parse_extracted_terms(r#"{"terms":[]}"#).unwrap().is_empty());
+        assert!(parse_extracted_terms("{}").unwrap().is_empty());
+    }
+
+    /// The prompt is language-pair agnostic: it must not name Chinese or Russian
+    /// when the project translates something else.
+    #[test]
+    fn extraction_prompt_follows_the_configured_pair() {
+        let mut config = Config::default();
+        config.source_lang = "Japanese".into();
+        config.target_lang = "German".into();
+        let (system, user) = build_extraction_prompt(&config, "源", "Quelle");
+        assert!(system.contains("Japanese") && system.contains("German"));
+        assert!(!system.contains("Chinese") && !system.contains("Russian"));
+        assert!(user.contains("SOURCE (Japanese)") && user.contains("TRANSLATION (German)"));
+        // json mode requires the word to appear in the prompt itself.
+        assert!(system.to_lowercase().contains("json"));
+    }
 
     fn term(source: &str, target: &str, kind: TermKind, freq: u32, pinned: bool) -> Term {
         Term {

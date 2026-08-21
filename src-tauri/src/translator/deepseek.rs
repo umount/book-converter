@@ -29,6 +29,22 @@ struct ChatRequest<'a> {
     /// DeepSeek V4 allows up to 384K.
     max_tokens: u32,
     stream: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    response_format: Option<ResponseFormat>,
+}
+
+/// OpenAI-compatible structured-output selector. `json_object` makes the model
+/// return one parseable JSON document, which is only safe for replies that
+/// cannot hit the output limit: a truncated JSON document is unrecoverable,
+/// whereas truncated prose can be continued.
+#[derive(Serialize, Clone, Copy)]
+struct ResponseFormat {
+    #[serde(rename = "type")]
+    kind: &'static str,
+}
+
+impl ResponseFormat {
+    const JSON: Self = ResponseFormat { kind: "json_object" };
 }
 
 #[derive(Serialize, Clone)]
@@ -100,7 +116,7 @@ impl DeepSeekClient {
             },
         ];
 
-        let mut first = self.chat_with_retries(&messages).await?;
+        let mut first = self.chat_with_retries(&messages, None).await?;
         let mut full = first.content;
 
         let mut cont = 0;
@@ -118,7 +134,7 @@ impl DeepSeekClient {
                 role: "user".into(),
                 content: continuation_prompt(),
             });
-            first = self.chat_with_retries(&messages).await?;
+            first = self.chat_with_retries(&messages, None).await?;
             // Drop the continuation instruction before the next loop turn; keep
             // the growing assistant text as a single assistant message.
             messages.pop(); // continuation user
@@ -142,10 +158,48 @@ impl DeepSeekClient {
         Ok(full)
     }
 
-    async fn chat_with_retries(&self, messages: &[MessageOwned]) -> Result<Completion> {
+    /// Ask for one JSON document (`response_format: json_object`) and return it
+    /// raw, for the caller to deserialize.
+    ///
+    /// Unlike [`Self::translate`] this does **not** continue a truncated reply:
+    /// half a JSON document cannot be parsed and two halves cannot be rejoined.
+    /// Use it only for bounded replies (term extraction, line repair), and keep
+    /// prose on `translate`. A truncation here is logged and surfaced as an
+    /// error rather than silently returning an unparseable fragment.
+    pub async fn translate_json(&self, system: &str, user: &str) -> Result<String> {
+        if !self.config.has_key() {
+            return Err(anyhow!("DEEPSEEK_API_KEY is not set"));
+        }
+        let messages = vec![
+            MessageOwned {
+                role: "system".into(),
+                content: system.to_string(),
+            },
+            MessageOwned {
+                role: "user".into(),
+                content: user.to_string(),
+            },
+        ];
+        let completion = self
+            .chat_with_retries(&messages, Some(ResponseFormat::JSON))
+            .await?;
+        if completion.finish_reason.as_deref() == Some("length") {
+            return Err(anyhow!(
+                "JSON reply hit the output token limit and cannot be parsed; \
+                 ask for a smaller batch"
+            ));
+        }
+        Ok(completion.content)
+    }
+
+    async fn chat_with_retries(
+        &self,
+        messages: &[MessageOwned],
+        response_format: Option<ResponseFormat>,
+    ) -> Result<Completion> {
         let mut attempt = 0;
         loop {
-            match self.try_once(messages).await {
+            match self.try_once(messages, response_format).await {
                 Ok(c) => return Ok(c),
                 Err(ApiError { retryable, error }) => {
                     if !retryable || attempt >= self.config.max_retries {
@@ -165,7 +219,11 @@ impl DeepSeekClient {
     }
 
     /// One attempt. Classifies the outcome as retryable or fatal.
-    async fn try_once(&self, messages: &[MessageOwned]) -> std::result::Result<Completion, ApiError> {
+    async fn try_once(
+        &self,
+        messages: &[MessageOwned],
+        response_format: Option<ResponseFormat>,
+    ) -> std::result::Result<Completion, ApiError> {
         let url = format!(
             "{}/chat/completions",
             self.config.base_url.trim_end_matches('/')
@@ -176,6 +234,7 @@ impl DeepSeekClient {
             temperature: self.config.temperature,
             max_tokens: self.config.max_output_tokens,
             stream: false,
+            response_format,
         };
 
         let resp = self

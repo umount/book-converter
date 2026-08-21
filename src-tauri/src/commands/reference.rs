@@ -87,9 +87,11 @@ pub async fn bootstrap_glossary(
     // Merge into whatever is already there so a re-bootstrap does not wipe
     // terms harvested from later machine-translated chapters.
     let mut glossary = store.load_glossary().map_err(err)?;
-    let extracted = reference::bootstrap_glossary(&cl, &source.chapters, &reference, sample)
-        .await
-        .map_err(err)?;
+    let config = crate::config::Config::load();
+    let extracted =
+        reference::bootstrap_glossary(&cl, &config, &source.chapters, &reference, sample)
+            .await
+            .map_err(err)?;
     crate::glossary::merge(&mut glossary, extracted);
     store.save_glossary(&glossary).map_err(err)?;
     Ok(glossary.len())

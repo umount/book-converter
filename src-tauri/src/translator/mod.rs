@@ -2,11 +2,13 @@
 
 pub mod deepseek;
 pub mod prompt;
+pub mod reply;
 
 pub use deepseek::DeepSeekClient;
 
 use anyhow::Result;
 
+use crate::config::Config;
 use crate::glossary::{self, Term};
 
 /// Extract glossary terms from a source ↔ translation pair, retrying when the
@@ -19,14 +21,16 @@ use crate::glossary::{self, Term};
 ///   up to `retries` times (asking the model again usually fixes it).
 pub async fn extract_terms(
     client: &DeepSeekClient,
+    config: &Config,
     source: &str,
     translated: &str,
     retries: usize,
 ) -> Result<Vec<Term>> {
-    let (system, user) = glossary::build_extraction_prompt(source, translated);
+    let (system, user) = glossary::build_extraction_prompt(config, source, translated);
     let mut last_err = None;
     for attempt in 0..=retries {
-        let raw = client.translate(&system, &user).await?;
+        // Bounded reply, so it can safely ask for strict JSON.
+        let raw = client.translate_json(&system, &user).await?;
         match glossary::parse_extracted_terms(&raw) {
             Ok(terms) => return Ok(terms),
             Err(e) => {

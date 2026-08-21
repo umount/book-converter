@@ -23,7 +23,8 @@ use crate::config::Config;
 use crate::glossary::{self, Term};
 use crate::state::{Stats, Status, Store};
 use crate::textutil;
-use crate::translator::{prompt, DeepSeekClient};
+use crate::translator::prompt::ReplyShape;
+use crate::translator::{prompt, reply, DeepSeekClient};
 
 /// Shortest run of unexpected-script letters treated as a leftover foreign word.
 /// Single letters (an initial, a unit) are ignored; Han is always reported.
@@ -287,9 +288,8 @@ impl<'a> Orchestrator<'a> {
 
         let started = Instant::now();
         match self.translate_one(&title, &source, user_note.as_deref()).await {
-            Ok(full) => {
-                let (full, lang_issues) = self.enforce_target_language(idx, &full, &source).await;
-                let (t_title, t_body) = split_title_body(&full, &title);
+            Ok((t_title, body)) => {
+                let (t_body, lang_issues) = self.enforce_target_language(idx, &body, &source).await;
                 let ms = started.elapsed().as_millis() as u64;
                 self.store
                     .save_translation_timed(idx, &t_title, &t_body, Some(ms))?;
@@ -330,12 +330,15 @@ impl<'a> Orchestrator<'a> {
         Ok(())
     }
 
+    /// Translate one chapter's text, returning `(title, body)` as the model
+    /// framed them. Long chapters go out as several chunks: the first carries
+    /// the title, the rest continue the body.
     async fn translate_one(
         &self,
         title: &str,
         source: &str,
         user_note: Option<&str>,
-    ) -> Result<String> {
+    ) -> Result<(String, String)> {
         let chapter = Chapter {
             index: 0,
             number: None,
@@ -358,18 +361,35 @@ impl<'a> Orchestrator<'a> {
         };
         let system = prompt::system_prompt(self.config);
 
-        let mut parts: Vec<String> = Vec::with_capacity(chunks.len());
+        let mut out_title: Option<String> = None;
+        let mut bodies: Vec<String> = Vec::with_capacity(chunks.len());
         for chunk in &chunks {
-            let input = if chunk.part == 0 && !title.trim().is_empty() {
+            // Only the opening chunk of a titled chapter is asked for a title.
+            let carries_title = chunk.part == 0 && !title.trim().is_empty();
+            let input = if carries_title {
                 format!("{}\n\n{}", title.trim(), chunk.text)
             } else {
                 chunk.text.clone()
             };
-            let user = prompt::user_prompt(&ctx, &input);
-            let out = self.client.translate(&system, &user).await?;
-            parts.push(out);
+            let shape = if carries_title {
+                ReplyShape::TitleAndBody
+            } else {
+                ReplyShape::BodyOnly
+            };
+            let user = prompt::user_prompt(&ctx, &input, shape);
+            let raw = self.client.translate(&system, &user).await?;
+            if carries_title {
+                let (t, b) = reply::parse_chapter_reply(&raw, title);
+                out_title = Some(t);
+                bodies.push(b);
+            } else {
+                bodies.push(reply::parse_body_reply(&raw));
+            }
         }
-        Ok(parts.join("\n\n"))
+        Ok((
+            out_title.unwrap_or_else(|| title.trim().to_string()),
+            bodies.join("\n\n"),
+        ))
     }
 
     /// Catch words the model left in the source language (or pulled in from a
@@ -443,32 +463,14 @@ impl<'a> Orchestrator<'a> {
     }
 
     async fn enrich_glossary(&mut self, source: &str, translation: &str) -> Result<()> {
-        let new_terms = crate::translator::extract_terms(self.client, source, translation, 2).await?;
+        let new_terms =
+            crate::translator::extract_terms(self.client, self.config, source, translation, 2)
+                .await?;
         glossary::merge(&mut self.glossary, new_terms);
         self.store.save_glossary(&self.glossary)?;
         Ok(())
     }
 
-}
-
-fn split_title_body(full: &str, source_title: &str) -> (String, String) {
-    if source_title.trim().is_empty() {
-        return (String::new(), full.trim().to_string());
-    }
-    let trimmed = full.trim_start();
-    match trimmed.split_once('\n') {
-        Some((first, rest)) if !rest.trim().is_empty() => {
-            (clean_title(first), rest.trim().to_string())
-        }
-        _ => (source_title.trim().to_string(), trimmed.trim().to_string()),
-    }
-}
-
-fn clean_title(line: &str) -> String {
-    line.trim()
-        .trim_start_matches(|c: char| c == '#' || c == '*' || c.is_whitespace())
-        .trim()
-        .to_string()
 }
 
 fn non_empty(s: &str) -> Option<&str> {
@@ -489,18 +491,4 @@ mod tests {
         assert_eq!(non_empty("x"), Some("x"));
     }
 
-    #[test]
-    fn split_title_body_variants() {
-        let (t, b) = split_title_body("Глава 1\n\nТекст главы.", "第1章");
-        assert_eq!(t, "Глава 1");
-        assert_eq!(b, "Текст главы.");
-        let (t, _) = split_title_body("### Глава 3\n\nтекст", "第3章");
-        assert_eq!(t, "Глава 3");
-        let (t, b) = split_title_body("Просто текст.", "");
-        assert_eq!(t, "");
-        assert_eq!(b, "Просто текст.");
-        let (t, b) = split_title_body("Одна строка", "第2章");
-        assert_eq!(t, "第2章");
-        assert_eq!(b, "Одна строка");
-    }
 }

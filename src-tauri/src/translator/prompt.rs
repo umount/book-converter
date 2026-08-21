@@ -10,6 +10,7 @@ use std::fmt::Write as _;
 
 use crate::config::Config;
 use crate::glossary::{Term, TermKind};
+use crate::translator::reply;
 
 /// Everything except the chapter text that shapes a translation request.
 #[derive(Default)]
@@ -111,8 +112,23 @@ pub fn system_prompt(config: &Config) -> String {
     )
 }
 
+/// Which reply shape this request asks for.
+///
+/// A chapter's first chunk carries the title, later chunks continue a body that
+/// already has one. See [`crate::translator::reply`] for the format itself.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ReplyShape {
+    TitleAndBody,
+    BodyOnly,
+}
+
 /// User prompt: dictionary + style + rolling context + the text to translate.
-pub fn user_prompt(ctx: &PromptContext, text: &str) -> String {
+///
+/// The reply format instruction goes last, after the text: a rule stated right
+/// before the model starts writing is the one it follows most reliably.
+pub fn user_prompt(ctx: &PromptContext, text: &str, shape: ReplyShape) -> String {
+    let title_and_body = reply::envelope_instruction();
+    let body_only = reply::body_only_instruction();
     let mut out = String::new();
 
     if let Some(book) = ctx.book.filter(|b| !b.is_empty()) {
@@ -185,6 +201,11 @@ pub fn user_prompt(ctx: &PromptContext, text: &str) -> String {
 
     out.push_str("Translate the following text:\n\n");
     out.push_str(text);
+    out.push_str("\n\n");
+    out.push_str(match shape {
+        ReplyShape::TitleAndBody => &title_and_body,
+        ReplyShape::BodyOnly => &body_only,
+    });
     out
 }
 
@@ -256,6 +277,26 @@ fn kind_label(kind: TermKind) -> &'static str {
 mod tests {
     use super::*;
 
+    #[test]
+    fn reply_shape_picks_the_instruction() {
+        let ctx = PromptContext::default();
+        let first = user_prompt(&ctx, "text", ReplyShape::TitleAndBody);
+        assert!(first.contains(reply::TITLE_MARK));
+        assert!(first.contains(reply::BODY_MARK));
+
+        let cont = user_prompt(&ctx, "text", ReplyShape::BodyOnly);
+        assert!(cont.contains(reply::BODY_MARK));
+        assert!(!cont.contains(reply::TITLE_MARK));
+    }
+
+    /// The format rule must be the last thing before the model starts writing.
+    #[test]
+    fn the_format_instruction_comes_after_the_text() {
+        let ctx = PromptContext::default();
+        let p = user_prompt(&ctx, "МАРКЕР_ТЕКСТА", ReplyShape::TitleAndBody);
+        assert!(p.find("МАРКЕР_ТЕКСТА").unwrap() < p.find(reply::BODY_MARK).unwrap());
+    }
+
     fn term(source: &str, target: &str, kind: TermKind) -> Term {
         Term { source: source.into(), target: target.into(), kind, frequency: 1, pinned: false }
     }
@@ -264,15 +305,17 @@ mod tests {
     fn includes_glossary_and_text() {
         let wang = term("王林", "Ван Линь", TermKind::Person);
         let ctx = PromptContext { terms: &[&wang], ..Default::default() };
-        let p = user_prompt(&ctx, "王林走了。");
+        let p = user_prompt(&ctx, "王林走了。", ReplyShape::TitleAndBody);
         assert!(p.contains("王林 → Ван Линь [person]"));
-        assert!(p.trim_end().ends_with("王林走了。"));
+        // The text is followed only by the reply format rule (see
+        // `the_format_instruction_comes_after_the_text`).
+        assert!(p.contains("Translate the following text:\n\n王林走了。"));
     }
 
     #[test]
     fn no_dictionary_header_when_empty() {
         let ctx = PromptContext::default();
-        let p = user_prompt(&ctx, "text");
+        let p = user_prompt(&ctx, "text", ReplyShape::TitleAndBody);
         assert!(!p.contains("fixed translations"));
         assert!(p.contains("Translate the following text:"));
     }
@@ -285,7 +328,7 @@ mod tests {
             style: Some("A professional excerpt."),
             ..Default::default()
         };
-        let p = user_prompt(&ctx, "text");
+        let p = user_prompt(&ctx, "text", ReplyShape::TitleAndBody);
         assert!(p.contains("Story so far"));
         assert!(p.contains("Wang Lin survived."));
         assert!(p.contains("previous chapter ended with"));
@@ -298,7 +341,7 @@ mod tests {
             user_note: Some("Render 她 as господин, not госпожа."),
             ..Default::default()
         };
-        let p = user_prompt(&ctx, "text");
+        let p = user_prompt(&ctx, "text", ReplyShape::TitleAndBody);
         assert!(p.contains("Additional instructions from the user"));
         assert!(p.contains("господин, not госпожа"));
     }
@@ -321,7 +364,7 @@ mod tests {
             }),
             ..Default::default()
         };
-        let p = user_prompt(&ctx, "text");
+        let p = user_prompt(&ctx, "text", ReplyShape::TitleAndBody);
         assert!(p.contains("光阴之外"));
         assert!(p.contains("耳根"));
         assert!(p.contains("За гранью времени"));
@@ -330,7 +373,7 @@ mod tests {
     #[test]
     fn no_book_section_when_unknown() {
         let ctx = PromptContext { book: Some(BookRef::default()), ..Default::default() };
-        assert!(!user_prompt(&ctx, "text").contains("This chapter is from"));
+        assert!(!user_prompt(&ctx, "text", ReplyShape::TitleAndBody).contains("This chapter is from"));
     }
 
     #[test]

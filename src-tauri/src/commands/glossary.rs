@@ -100,12 +100,13 @@ pub async fn harvest_glossary(
     // Process in reading order for stable logs / extraction context.
     chosen.sort_by_key(|(idx, ..)| *idx);
 
+    let config = crate::config::Config::load();
     let client = super::util::client().map_err(err)?;
     let mut glossary = store.load_glossary().map_err(err)?;
     let before = glossary.len();
 
     for (idx, source, translated) in &chosen {
-        match crate::translator::extract_terms(&client, source, translated, 2).await {
+        match crate::translator::extract_terms(&client, &config, source, translated, 2).await {
             Ok(terms) => {
                 crate::glossary::merge(&mut glossary, terms);
                 tracing::info!(
