@@ -104,6 +104,7 @@ pub async fn load_reference(
         persist_meta(&db, "cover_ct", &c.content_type);
         persist_meta(&db, "cover_b64", &c.base64);
     }
+    persist_meta(&db, HEAD_IMPORTED, "1");
     Ok(info)
 }
 
@@ -159,6 +160,74 @@ pub async fn get_reference_info(
         // Importing happens when the reference is loaded, not when it is reopened.
         imported: 0,
     }))
+}
+
+/// Meta key marking that the reference's FB2 head was already imported.
+const HEAD_IMPORTED: &str = "ref_head_imported";
+
+/// One-time backfill of the annotation and cover a reference contributes.
+///
+/// Those used to live only in the session, restored by re-parsing the reference
+/// file on every project activation; projects attached before that stopped have
+/// them nowhere. This reads the reference once, writes what is missing, and
+/// marks itself done so it never runs again, whether or not it found anything.
+///
+/// Returns true when something was written, so the caller can refresh. New
+/// references never reach here: `load_reference` stores these directly.
+#[tauri::command]
+pub async fn backfill_reference_head(
+    project_id: String,
+    state: State<'_, AppState>,
+) -> Result<bool, String> {
+    let Some(db) = state.with(&project_id, |s| s.db_path.clone()) else {
+        return Ok(false);
+    };
+    {
+        let store = Store::open(&db).map_err(err)?;
+        if store.get_meta(HEAD_IMPORTED).map_err(err)?.is_some() {
+            return Ok(false);
+        }
+    }
+    let Some(ref_path) = crate::session::manifest_ref_path(&project_id) else {
+        persist_meta(&Some(db), HEAD_IMPORTED, "1");
+        return Ok(false);
+    };
+
+    // Reading and decoding a whole book, so off the async executor.
+    let head = tauri::async_runtime::spawn_blocking(move || {
+        reference::load_head(Path::new(&ref_path))
+    })
+    .await
+    .map_err(|e| err(anyhow::anyhow!("backfill task failed: {e}")))?
+    .map_err(err)?;
+
+    let store = Store::open(&db).map_err(err)?;
+    let missing = |k: &str| {
+        store
+            .get_meta(k)
+            .ok()
+            .flatten()
+            .filter(|v| !v.trim().is_empty())
+            .is_none()
+    };
+
+    let mut wrote = false;
+    if let Some(head) = head {
+        if let Some(cover) = head.cover.filter(|_| missing("cover_b64")) {
+            store.set_meta("cover_ct", &cover.content_type).map_err(err)?;
+            store.set_meta("cover_b64", &cover.base64).map_err(err)?;
+            state.with(&project_id, |s| s.cover = Some(cover));
+            wrote = true;
+        }
+        if let Some(annotation) = head.annotation.filter(|_| missing("summary")) {
+            store.set_meta("summary", &annotation).map_err(err)?;
+            state.with(&project_id, |s| s.summary = Some(annotation));
+            wrote = true;
+        }
+    }
+    store.set_meta(HEAD_IMPORTED, "1").map_err(err)?;
+    tracing::info!(project = %project_id, wrote, "reference head backfill done");
+    Ok(wrote)
 }
 
 /// Bootstrap a pinned glossary from `sample` aligned reference chapters.

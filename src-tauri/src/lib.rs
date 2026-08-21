@@ -73,6 +73,7 @@ pub fn run() {
             commands::list_projects,
             commands::load_reference,
             commands::get_reference_info,
+            commands::backfill_reference_head,
             commands::bootstrap_glossary,
             commands::harvest_glossary,
             commands::use_reference_as_base,

@@ -44,6 +44,10 @@ export function useProjectActions({
   const { projects, active, activeProject, activeId, addProject, removeAt, setRefPath } = list;
 
   const activatingRef = useRef<string | null>(null);
+  // Read at call time: a background refresh must not land on another project.
+  const activeIdRef = useRef(activeId);
+  activeIdRef.current = activeId;
+  const activeIdOf = () => activeIdRef.current;
 
   /**
    * Open a project and load everything that belongs to it.
@@ -92,6 +96,14 @@ export function useProjectActions({
     await glossary.refreshGlossary();
     void book.translateTitle();
     setBusyFor(p.id, null);
+
+    // A project whose reference was attached before its cover and annotation
+    // were stored has them nowhere. Reading the reference once fixes that, in
+    // the background and exactly once, so it never delays opening again.
+    void (async () => {
+      const wrote = await call<boolean>("backfill_reference_head", { projectId: p.id });
+      if (wrote && activeIdOf() === p.id) void book.refreshDetails();
+    })();
   }
 
   useEffect(() => {

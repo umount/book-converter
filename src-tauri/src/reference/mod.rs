@@ -48,6 +48,19 @@ pub fn load_reference(path: &Path) -> Result<Reference> {
     })
 }
 
+/// The FB2 "head" of a reference: its annotation and cover image.
+///
+/// Reads and decodes the file but does **not** parse chapters, which is the
+/// expensive part. Used only to backfill projects whose reference was attached
+/// before those values were written to the database.
+pub fn load_head(path: &Path) -> Result<Option<Fb2Head>> {
+    let decoded = read_book_file(path)?;
+    if detect_format(&decoded.text) != InputFormat::Fb2 {
+        return Ok(None);
+    }
+    Ok(Some(extract_head(&decoded.text)))
+}
+
 /// Highest chapter number the reference translation covers.
 pub fn max_covered_number(reference: &Reference) -> Option<usize> {
     reference.chapters.iter().filter_map(|c| c.number).max()
@@ -98,6 +111,45 @@ pub async fn bootstrap_glossary<C: Translate>(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The backfill path reads the head without parsing chapters.
+    #[test]
+    fn load_head_reads_cover_and_annotation_from_fb2() {
+        let fb2 = concat!(
+            "<?xml version=\"1.0\" encoding=\"utf-8\"?>\n",
+            "<FictionBook><description><title-info>",
+            "<book-title>За гранью времени</book-title>",
+            "<annotation><p>Аннотация книги.</p></annotation>",
+            "<coverpage><image l:href=\"#cover.jpg\"/></coverpage>",
+            "</title-info></description>",
+            "<body><section><title><p>Глава 1</p></title><p>Текст.</p></section></body>",
+            "<binary id=\"cover.jpg\" content-type=\"image/jpeg\">AQID</binary>",
+            "</FictionBook>",
+        );
+        let dir = std::env::temp_dir().join(format!("bc_head_{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("ref.fb2");
+        std::fs::write(&path, fb2).unwrap();
+
+        let head = load_head(&path).unwrap().expect("fb2 head");
+        let cover = head.cover.expect("cover");
+        assert_eq!(cover.content_type, "image/jpeg");
+        assert_eq!(cover.base64, "AQID");
+        assert_eq!(head.annotation.as_deref(), Some("Аннотация книги."));
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// A plain-text reference has no head to read, and that is not an error.
+    #[test]
+    fn load_head_is_none_for_a_non_fb2_reference() {
+        let dir = std::env::temp_dir().join(format!("bc_head_txt_{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("ref.txt");
+        std::fs::write(&path, "第一章 活着\n\nТекст.").unwrap();
+        assert!(load_head(&path).unwrap().is_none());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 
     fn chapter(index: usize, number: Option<usize>, body: &str) -> Chapter {
         Chapter {

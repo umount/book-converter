@@ -84,6 +84,12 @@ pub(crate) struct Manifest {
     pub(crate) ref_path: Option<String>,
 }
 
+/// The reference file recorded in a project's manifest, if one was attached.
+pub(crate) fn manifest_ref_path(id: &str) -> Option<String> {
+    let bytes = std::fs::read(project_dir(id).join("project.json")).ok()?;
+    serde_json::from_slice::<Manifest>(&bytes).ok()?.ref_path
+}
+
 pub(crate) fn write_manifest(id: &str, source_path: &str, ref_path: Option<&str>) {
     let _ = std::fs::create_dir_all(project_dir(id));
     let name = Path::new(source_path)
