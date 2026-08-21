@@ -132,6 +132,7 @@ mod tests {
         std::fs::write(&path, fb2).unwrap();
 
         let head = load_head(&path).unwrap().expect("fb2 head");
+        assert_eq!(head.title.as_deref(), Some("За гранью времени"));
         let cover = head.cover.expect("cover");
         assert_eq!(cover.content_type, "image/jpeg");
         assert_eq!(cover.base64, "AQID");

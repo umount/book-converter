@@ -102,7 +102,12 @@ export function useProjectActions({
     // the background and exactly once, so it never delays opening again.
     void (async () => {
       const wrote = await call<boolean>("backfill_reference_head", { projectId: p.id });
-      if (wrote && activeIdOf() === p.id) void book.refreshDetails();
+      if (!wrote || activeIdOf() !== p.id) return;
+      void book.refreshDetails();
+      // The backfill can also supply the reference's own title, which is shown
+      // in the overview's Reference panel and does not live in book details.
+      const refreshed = await call<RefInfo | null>("get_reference_info", { projectId: p.id });
+      if (refreshed && activeIdOf() === p.id) book.setRef(refreshed);
     })();
   }
 

@@ -36,13 +36,19 @@ impl Cover {
 /// (summary) and the cover image.
 #[derive(Debug, Clone, Default)]
 pub struct Fb2Head {
+    /// `<book-title>` as written in this file, in its own language.
+    pub title: Option<String>,
     pub annotation: Option<String>,
     pub cover: Option<Cover>,
 }
 
-/// Extract the annotation (as plain text) and cover image from FB2 XML.
+/// Extract the title, annotation (as plain text) and cover image from FB2 XML.
 pub fn extract_head(xml: &str) -> Fb2Head {
     Fb2Head {
+        title: slice_first(xml, "book-title")
+            .map(|t| tags_to_text(&t))
+            .map(|t| t.trim().to_string())
+            .filter(|t| !t.is_empty()),
         annotation: slice_first(xml, "annotation")
             .map(|a| tags_to_text(&a))
             .filter(|s| !s.trim().is_empty()),

@@ -104,7 +104,7 @@ pub async fn load_reference(
         persist_meta(&db, "cover_ct", &c.content_type);
         persist_meta(&db, "cover_b64", &c.base64);
     }
-    persist_meta(&db, HEAD_IMPORTED, "1");
+    persist_meta(&db, HEAD_IMPORTED, &HEAD_IMPORT_VERSION.to_string());
     Ok(info)
 }
 
@@ -162,8 +162,12 @@ pub async fn get_reference_info(
     }))
 }
 
-/// Meta key marking that the reference's FB2 head was already imported.
+/// Meta key recording which version of the reference head import has run.
 const HEAD_IMPORTED: &str = "ref_head_imported";
+/// Bump when the import starts reading a field it did not read before, so
+/// projects that already ran an older version pick the new one up.
+/// 1: cover + annotation. 2: also the reference's own title.
+const HEAD_IMPORT_VERSION: u32 = 2;
 
 /// One-time backfill of the annotation and cover a reference contributes.
 ///
@@ -184,12 +188,17 @@ pub async fn backfill_reference_head(
     };
     {
         let store = Store::open(&db).map_err(err)?;
-        if store.get_meta(HEAD_IMPORTED).map_err(err)?.is_some() {
+        let done: u32 = store
+            .get_meta(HEAD_IMPORTED)
+            .map_err(err)?
+            .and_then(|v| v.trim().parse().ok())
+            .unwrap_or(0);
+        if done >= HEAD_IMPORT_VERSION {
             return Ok(false);
         }
     }
     let Some(ref_path) = crate::session::manifest_ref_path(&project_id) else {
-        persist_meta(&Some(db), HEAD_IMPORTED, "1");
+        persist_meta(&Some(db), HEAD_IMPORTED, &HEAD_IMPORT_VERSION.to_string());
         return Ok(false);
     };
 
@@ -224,8 +233,15 @@ pub async fn backfill_reference_head(
             state.with(&project_id, |s| s.summary = Some(annotation));
             wrote = true;
         }
+        // The reference's own title, shown in the overview's Reference panel.
+        if let Some(title) = head.title.filter(|_| missing("ref_title")) {
+            store.set_meta("ref_title", &title).map_err(err)?;
+            wrote = true;
+        }
     }
-    store.set_meta(HEAD_IMPORTED, "1").map_err(err)?;
+    store
+        .set_meta(HEAD_IMPORTED, &HEAD_IMPORT_VERSION.to_string())
+        .map_err(err)?;
     tracing::info!(project = %project_id, wrote, "reference head backfill done");
     Ok(wrote)
 }
