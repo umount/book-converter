@@ -17,6 +17,13 @@ function formatEta(secs: number): string {
 
 type TranslateOpts = {
   call: CallFn;
+  /** Per-project console (owned by useConsoleLog, not by the job). */
+  addLog: (m: string) => void;
+  /** Writer used inside the once-registered event listeners, which must reach a
+   *  project's console even when it is not the active one. */
+  addLogToRef: MutableRefObject<(id: string, m: string) => void>;
+  /** Forget a deleted project's progress. */
+  dropLog: (id: string) => void;
   activeId: string;
   book: BookInfo | null;
   t: (key: string, vars?: Record<string, string | number>) => string;
@@ -41,23 +48,18 @@ type TranslateOpts = {
 /** Progress/logs, translation job controls, and backend event listeners. */
 export function useTranslationJob({
   call, activeId, book, t, tRef, activeIdRef, chapterIdxRef,
+  addLog, addLogToRef, dropLog,
   setBusyFor, setError, setPending, refreshGlossary, openChapter, loadChapters,
   chapterNumberOf, applyChapterEdit, errText, limit,
 }: TranslateOpts) {
-  // Progress and console log are per project (keyed by id) so background/parallel
-  // runs keep updating even while another project is in the foreground.
+  // Progress is per project (keyed by id) so background/parallel runs keep
+  // updating even while another project is in the foreground.
   const [progressById, setProgressById] = useState<Record<string, Progress>>({});
-  const [logsById, setLogsById] = useState<Record<string, string[]>>({});
   const [sample, setSample] = useState(30);
   const [reFrom, setReFrom] = useState<number>(1);
 
-  const log = activeId ? logsById[activeId] ?? [] : [];
   const progress = activeId ? progressById[activeId] ?? null : null;
 
-  // Append a log line to a project's console (defaults to the active project).
-  const addLogTo = (id: string, m: string) =>
-    setLogsById((all) => ({ ...all, [id]: [...(all[id] ?? []).slice(-300), m] }));
-  const addLog = (m: string) => { if (activeId) addLogTo(activeId, m); };
   const setProgressFor = (id: string, p: Progress) =>
     setProgressById((all) => ({ ...all, [id]: p }));
 
@@ -85,8 +87,6 @@ export function useTranslationJob({
   setPendingRef.current = setPending;
   const errTextRef = useRef(errText);
   errTextRef.current = errText;
-  const addLogToRef = useRef(addLogTo);
-  addLogToRef.current = addLogTo;
   const setProgressForRef = useRef(setProgressFor);
   setProgressForRef.current = setProgressFor;
 
@@ -299,18 +299,15 @@ export function useTranslationJob({
   }
 
   function clearProjectJobState(id: string) {
-    setLogsById((all) => { const n = { ...all }; delete n[id]; return n; });
+    dropLog(id);
     setProgressById((all) => { const n = { ...all }; delete n[id]; return n; });
   }
 
   return {
     progressById, setProgressById,
-    logsById, setLogsById,
-    log,
     progress,
     sample, setSample,
     reFrom, setReFrom,
-    addLog, addLogTo,
     setProgressFor,
     refreshProgressFor, refreshProgress,
     bootstrap, harvestGlossary, start, pause, reTranslate,

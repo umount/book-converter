@@ -16,13 +16,15 @@ import { BottomPanel } from "./components/shell/BottomPanel";
 import { StatusBar } from "./components/shell/StatusBar";
 import { TabBar } from "./components/shell/TabBar";
 import { CommandPalette, type Command } from "./components/CommandPalette";
+import { useConsoleLog } from "./hooks/useConsoleLog";
 import { useFindReplace } from "./hooks/useFindReplace";
 import { useHotkeys } from "./hooks/useHotkeys";
 import { useTabs } from "./hooks/useTabs";
 import type { FindOpts } from "./lib/find";
 import { useBookWorkspace } from "./hooks/useBookWorkspace";
 import { useGlossary } from "./hooks/useGlossary";
-import { useProjects, type ProjectHelpers } from "./hooks/useProjects";
+import { useProjectActions } from "./hooks/useProjectActions";
+import { useProjectList } from "./hooks/useProjectList";
 import { useTranslationJob } from "./hooks/useTranslationJob";
 import { LS_LANG, normalizeLang, translate, type Lang } from "./i18n";
 import type { ViewId } from "./types";
@@ -57,13 +59,6 @@ export default function App() {
   const toggle = (k: string) => setCollapsed((c) => ({ ...c, [k]: !c[k] }));
 
   const logRef = useRef<HTMLDivElement>(null);
-  const helpersRef = useRef<ProjectHelpers>(null!);
-
-  // Log/error bridge filled after useTranslationJob mounts (call/glossary need it earlier).
-  const logApiRef = useRef<{
-    addLog: (m: string) => void;
-    addLogTo: (id: string, m: string) => void;
-  }>({ addLog: () => {}, addLogTo: () => {} });
 
   // Keep live refs so once-registered event listeners / IPC see current values.
   const tRef = useRef(t);
@@ -77,30 +72,32 @@ export default function App() {
     return s === key ? raw : s;
   }
   function logError(msg: string) {
-    logApiRef.current.addLog(tRef.current("log.error", { msg: errText(msg) }));
+    addLog(tRef.current("log.error", { msg: errText(msg) }));
   }
-
   const call = makeCall((msg, critical) => {
     logError(msg);
     if (critical) setError(errText(msg));
   });
 
-  const projectsApi = useProjects(helpersRef);
-  const { projects, active, setActive, activeProject, activeId,
-    openBook, removeProject, openReference, saveProject, openProjectArchive,
-    generateSummary, exportAs } = projectsApi;
+  // The hook order below is the app's data flow, not an accident. The console
+  // owns itself and depends on nothing, so everything can write to it. The
+  // project list comes next, because every other hook keys off `activeId`. The
+  // actions that operate on a project come last, because they drive all the
+  // hooks in between.
+  const { linesOf, addLogTo, addLogToRef, clearLog, dropLog } = useConsoleLog();
+  const list = useProjectList({ call });
+  const { projects, active, setActive, activeProject, activeId } = list;
+  const addLog = (m: string) => addLogTo(activeId, m);
+  const log = linesOf(activeId);
 
   const activeIdRef = useRef(activeId);
   activeIdRef.current = activeId;
 
   const book = useBookWorkspace({ call, activeId });
-  const glossary = useGlossary({
-    call, activeId, setBusyFor, setError,
-    addLog: (m) => logApiRef.current.addLog(m),
-    logError, t,
-  });
+  const glossary = useGlossary({ call, activeId, setBusyFor, setError, addLog, logError, t });
   const job = useTranslationJob({
     call, activeId, book: book.book, t, tRef, activeIdRef,
+    addLog, addLogToRef, dropLog,
     chapterIdxRef: book.chapterIdxRef,
     setBusyFor, setError, setPending: glossary.setPending,
     refreshGlossary: glossary.refreshGlossary,
@@ -111,8 +108,14 @@ export default function App() {
     chapterNumberOf: (idx) => book.chapters.find((c) => c.idx === idx)?.number ?? null,
     errText, limit,
   });
-
-  logApiRef.current = { addLog: job.addLog, addLogTo: job.addLogTo };
+  const {
+    openBook, removeProject, openReference, saveProject, openProjectArchive,
+    generateSummary, exportAs,
+  } = useProjectActions({
+    call, t, errText, addLog, addLogTo, logError,
+    setBusyFor, setBusyById, setError, setView, setMenu,
+    list, book, glossary, job,
+  });
 
   // Find/replace lives here (not in Reader) so the Edit menu, the command
   // palette and the shortcuts can open it even from another view.
@@ -172,31 +175,13 @@ export default function App() {
       matchCase: opts.matchCase, wholeWord: opts.wholeWord, regex: !!opts.regex,
     });
     if (n != null) {
-      job.addLog(t("log.replacedInBook", { n }));
+      addLog(t("log.replacedInBook", { n }));
       await book.loadChapters();
       if (book.chapterIdx != null) await book.openChapter(book.chapterIdx);
     }
     return n ?? 0;
   }
 
-  helpersRef.current = {
-    call, t, setBusyFor, setBusyById, setError, logError,
-    addLog: job.addLog, addLogTo: job.addLogTo,
-    clearWorkspace: book.clearWorkspace,
-    setBook: book.setBook, setRef: book.setRef,
-    setPending: glossary.setPending,
-    setChaptersLoading: book.setChaptersLoading,
-    refreshDetails: book.refreshDetails,
-    refreshProgressFor: job.refreshProgressFor,
-    refreshProgress: job.refreshProgress,
-    refreshGlossary: glossary.refreshGlossary,
-    translateTitle: book.translateTitle,
-    loadChapters: book.loadChapters,
-    openChapter: book.openChapter,
-    chapterIdxRef: book.chapterIdxRef,
-    clearProjectJobState: job.clearProjectJobState,
-    setView, setMenu, errText,
-  };
 
   // Prefer the active project's busy message; fall back to any in-flight busy
   // (e.g. openBook sets busy for a new id before setActive makes it active).
@@ -204,7 +189,7 @@ export default function App() {
     (activeId ? busyById[activeId] : null) ??
     Object.values(busyById).find((m): m is string => !!m) ??
     null;
-  const { progress, log, progressById } = job;
+  const { progress, progressById } = job;
   const canExport = !!progress && progress.done > 0;
 
   const paletteCommands: Command[] = [
@@ -259,6 +244,11 @@ export default function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [lang]);
   useEffect(() => logRef.current?.scrollTo(0, logRef.current.scrollHeight), [log]);
+  // Projects the startup reconcile found on disk but not in the stored list.
+  useEffect(() => {
+    if (list.recovered > 0) addLog(t("log.projectsRecovered", { n: list.recovered }));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [list.recovered]);
 
   // Refresh on entering the reader. The initial load happens during project
   // activation (see useProjects): list_chapters needs the backend session that
@@ -452,7 +442,7 @@ export default function App() {
             <BottomPanel>
               <Console
                 t={t} log={log} logRef={logRef}
-                onClear={() => activeId && job.setLogsById((all) => ({ ...all, [activeId]: [] }))}
+                onClear={() => clearLog(activeId)}
                 onClose={() => setShowConsole(false)}
               />
             </BottomPanel>
