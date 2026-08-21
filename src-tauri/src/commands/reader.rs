@@ -101,8 +101,13 @@ pub async fn replace_in_book(
         .case_insensitive(!match_case)
         .build()
         .map_err(err)?;
-    let store = Store::open(&db).map_err(err)?;
-    store.replace_in_translations(&re, &replace, regex).map_err(err)
+    // Rewrites every stored translation, so it runs off the async executor:
+    // SQLite here is blocking work, and a book is thousands of chapters.
+    blocking(move || {
+        let store = Store::open(&db)?;
+        store.replace_in_translations(&re, &replace, regex)
+    })
+    .await
 }
 
 /// Book-wide search, grouped per chapter like an IDE's search view. Searches the
@@ -118,13 +123,6 @@ pub async fn search_book(
     in_source: bool,
     state: State<'_, AppState>,
 ) -> Result<Vec<SearchChapter>, String> {
-    /// Matching lines kept per chapter.
-    const MAX_HITS_PER_CHAPTER: usize = 30;
-    /// Chapters reported, at most.
-    const MAX_CHAPTERS: usize = 300;
-    /// Characters kept around a match in the preview.
-    const PREVIEW: usize = 160;
-
     if query.trim().is_empty() {
         return Ok(Vec::new());
     }
@@ -140,9 +138,26 @@ pub async fn search_book(
         .build()
         .map_err(err)?;
 
-    let store = Store::open(&db).map_err(err)?;
+    blocking(move || search_all(&db, &re, in_source)).await
+}
+
+/// The scan itself, off the async executor: it reads and regex-matches the text
+/// of every chapter in the book.
+fn search_all(
+    db: &str,
+    re: &regex::Regex,
+    in_source: bool,
+) -> anyhow::Result<Vec<SearchChapter>> {
+    /// Matching lines kept per chapter.
+    const MAX_HITS_PER_CHAPTER: usize = 30;
+    /// Chapters reported, at most.
+    const MAX_CHAPTERS: usize = 300;
+    /// Characters kept around a match in the preview.
+    const PREVIEW: usize = 160;
+
+    let store = Store::open(db)?;
     let mut out = Vec::new();
-    for (idx, number, title, text) in store.searchable_chapters(in_source).map_err(err)? {
+    for (idx, number, title, text) in store.searchable_chapters(in_source)? {
         let mut hits = Vec::new();
         let mut count = 0usize;
         for (n, line) in text.lines().enumerate() {
@@ -163,6 +178,23 @@ pub async fn search_book(
         }
     }
     Ok(out)
+}
+
+/// Run blocking work on the blocking pool and map its error for IPC.
+///
+/// `commands/mod.rs` states that the non-Sync SQLite connection is kept off the
+/// async executor; for the long-running commands that was only true of the
+/// translation job. These hold the executor for as long as it takes to walk a
+/// whole book.
+async fn blocking<T, F>(f: F) -> Result<T, String>
+where
+    T: Send + 'static,
+    F: FnOnce() -> anyhow::Result<T> + Send + 'static,
+{
+    tauri::async_runtime::spawn_blocking(f)
+        .await
+        .map_err(|e| err(anyhow::anyhow!("background task failed: {e}")))?
+        .map_err(err)
 }
 
 /// Keep `width` characters around `at`, on character boundaries, with ellipses
