@@ -5,7 +5,7 @@ use std::path::Path;
 use tauri::State;
 
 use crate::book::load_book;
-use crate::dto::{err, BookInfo, ImportedProject};
+use crate::dto::{err, BookInfo, ImportedProject, ProjectSummary};
 use crate::export::fb2::Cover;
 use crate::session::{
     db_path_for_project, project_dir, write_manifest, AppState, Manifest,
@@ -187,6 +187,72 @@ pub async fn open_project(
         duplicates: 0,
         had_errors: false,
     })
+}
+
+/// Every project that exists on disk, newest data first.
+///
+/// The UI keeps its project list in `localStorage`, which is a cache, not the
+/// record: clearing it, or moving to another machine, used to strand the
+/// project directories with no way back except importing a `.bcproj`. Each
+/// project directory is self-describing (`project.json` beside `progress.db`),
+/// so the real list can simply be read.
+///
+/// A directory without a readable database is skipped rather than reported as a
+/// broken project: it is either a half-finished import or something that is not
+/// a project at all.
+#[tauri::command]
+pub async fn list_projects() -> Result<Vec<ProjectSummary>, String> {
+    let root = crate::paths::app_data_dir().join("projects");
+    let Ok(entries) = std::fs::read_dir(&root) else {
+        return Ok(Vec::new());
+    };
+
+    let mut out = Vec::new();
+    for entry in entries.flatten() {
+        if !entry.file_type().map(|t| t.is_dir()).unwrap_or(false) {
+            continue;
+        }
+        let id = entry.file_name().to_string_lossy().into_owned();
+        let db = entry.path().join("progress.db");
+        if !db.exists() {
+            continue;
+        }
+        let Ok(store) = Store::open(&db.to_string_lossy()) else {
+            continue;
+        };
+        let Ok(stats) = store.stats() else { continue };
+        if stats.total == 0 {
+            continue;
+        }
+
+        let manifest: Manifest = std::fs::read(entry.path().join("project.json"))
+            .ok()
+            .and_then(|b| serde_json::from_slice(&b).ok())
+            .unwrap_or_default();
+        // A project imported from an archive may have no manifest name; the
+        // book's own title is the best fallback, then the directory id.
+        let name = if manifest.name.trim().is_empty() {
+            store
+                .get_meta("title")
+                .ok()
+                .flatten()
+                .filter(|t| !t.trim().is_empty())
+                .unwrap_or_else(|| id.clone())
+        } else {
+            manifest.name.clone()
+        };
+
+        out.push(ProjectSummary {
+            id,
+            name,
+            source_path: manifest.source_path,
+            ref_path: manifest.ref_path,
+            total: stats.total,
+            done: stats.done,
+        });
+    }
+    out.sort_by(|a, b| a.name.cmp(&b.name));
+    Ok(out)
 }
 
 /// Delete a project and all of its data (progress DB, manifest, extracted files).

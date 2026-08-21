@@ -76,6 +76,11 @@ export type AppInfo = {
 };
 
 export type Project = { id: string; path: string; name: string; refPath?: string };
+/** A project directory as the backend found it on disk. */
+export type ProjectSummary = {
+  id: string; name: string; source_path: string; ref_path: string | null;
+  total: number; done: number;
+};
 export type ViewId = "overview" | "reader" | "glossary";
 
 export const LS_PROJECTS = "bc.projects.v2";

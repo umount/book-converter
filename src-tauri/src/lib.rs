@@ -67,6 +67,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             commands::load_source,
             commands::open_project,
+            commands::list_projects,
             commands::load_reference,
             commands::bootstrap_glossary,
             commands::harvest_glossary,

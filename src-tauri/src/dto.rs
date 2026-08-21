@@ -18,6 +18,17 @@ pub struct BookInfo {
     pub had_errors: bool,
 }
 
+/// A project as found on disk, for reconciling the UI's list with reality.
+#[derive(Serialize)]
+pub struct ProjectSummary {
+    pub id: String,
+    pub name: String,
+    pub source_path: String,
+    pub ref_path: Option<String>,
+    pub total: usize,
+    pub done: usize,
+}
+
 /// One page of the glossary plus the size of the full match, so the UI can
 /// render a window and still report how many terms the filter really matched.
 #[derive(Serialize)]

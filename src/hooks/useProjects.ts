@@ -5,7 +5,7 @@ import type { CallFn } from "../api";
 import type { MenuId } from "../components/Menubar";
 import {
   LS_ACTIVE, LS_PROJECTS, baseName, newId,
-  type BookInfo, type Project, type RefInfo, type ViewId,
+  type BookInfo, type Project, type ProjectSummary, type RefInfo, type ViewId,
 } from "../types";
 
 export type ProjectHelpers = {
@@ -48,6 +48,43 @@ export function useProjects(helpersRef: MutableRefObject<ProjectHelpers>) {
   const activeId = activeProject?.id ?? "";
 
   useEffect(() => localStorage.setItem(LS_PROJECTS, JSON.stringify(projects)), [projects]);
+
+  // localStorage is a cache of the list, not the record of it: the projects
+  // themselves are directories on disk, each self-describing. Reconciling once
+  // on startup means a cleared browser store, or a fresh machine pointed at the
+  // same data directory, finds its projects instead of stranding them.
+  const reconciled = useRef(false);
+  useEffect(() => {
+    if (reconciled.current) return;
+    reconciled.current = true;
+    (async () => {
+      const h = helpersRef.current;
+      const found = await h.call<ProjectSummary[]>("list_projects");
+      if (!found) return;
+      setProjects((current) => {
+        const onDisk = new Map(found.map((p) => [p.id, p]));
+        // Drop rows whose data is gone (deleted outside the app), keep the rest
+        // in their existing order so the active index stays meaningful.
+        const kept = current.filter((p) => onDisk.has(p.id));
+        const known = new Set(kept.map((p) => p.id));
+        const recovered = found
+          .filter((p) => !known.has(p.id))
+          .map((p) => ({
+            id: p.id,
+            path: p.source_path,
+            name: p.name,
+            ...(p.ref_path ? { refPath: p.ref_path } : {}),
+          }));
+        if (recovered.length) {
+          h.addLog(h.t("log.projectsRecovered", { n: recovered.length }));
+        }
+        return kept.length === current.length && recovered.length === 0
+          ? current
+          : [...kept, ...recovered];
+      });
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   useEffect(() => localStorage.setItem(LS_ACTIVE, String(active)), [active]);
 
   async function activateProject(p: Project) {
