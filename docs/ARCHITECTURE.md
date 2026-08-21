@@ -1,6 +1,6 @@
 # book-converter — Architecture
 
-> Last updated 2026-07-22 — synced with the implemented codebase.
+> Last updated 2026-08-21, synced with the implemented codebase.
 
 ## Overview
 
@@ -97,10 +97,12 @@ thing the frontend knows about; session/job helpers sit beside it.
 | **reference** | Optional reference translation: load, align, bootstrap pinned glossary + style exemplar |
 | **glossary** | Consistency: store terms, inject into prompt, auto-extract, merge with conflict resolution |
 | **retarget** | Propagate a glossary rename into translated text + rolling context (inflection-aware) |
-| **translator::prompt** | System/user prompts: book identity + glossary + rolling summary + style; strict target-language rules; repair prompt |
-| **translator::deepseek** | DeepSeek HTTP client, retry + backoff, continue on output truncation |
+| **translator::prompt** | System/user prompts: book identity + glossary + rolling summary + style; strict target-language rules |
+| **translator::reply** | The `<<<TITLE>>>` / `<<<BODY>>>` reply envelope, with the old first-line heuristic as fallback |
+| **translator::repair** | Line-scoped language repair: which lines to send, the JSON prompt, and splicing replies back by line number |
+| **translator::deepseek** | DeepSeek HTTP client, retry + backoff, continue on output truncation, `json_object` mode |
 | **orchestrator** | Sequential translation loop (glossary + summary + enrich + target-language check) |
-| **state** | Persist progress and glossary in per-project SQLite |
+| **state** | Per-project SQLite: `chapters` / `glossary` / `meta` / `search` submodules over one `Store` |
 | **settings** | App-wide key-value settings DB |
 | **export::txt** / **fb2** / **epub** / **pdf** | Assemble output formats |
 | **i18n** | Output-facing localization from `assets/locales.json` |
@@ -122,11 +124,12 @@ SEQUENTIAL loop
    │  1. glossary::relevant_terms(body)
    │  2. running summary + prev chapter tail
    │  3. chunker if body > max_chunk_chars (paragraph boundaries)
-   │  4. deepseek.translate() ── retry ──>
-   │  5. target-language check → one repair pass if foreign words remain
+   │  4. deepseek.translate() ── retry ──>  (reply framed: TITLE / BODY)
+   │  5. target-language check → repair ONLY the lines that kept foreign
+   │     words (title is line 0), spliced back by line number
    │  6. save_translation (join chunks if split)
    │  7. update running_summary
-   │  8. glossary extract + merge
+   │  8. glossary extract + merge + write the changed rows
    │  9. emit("progress", { project, … })
    ▼
 export::{txt,fb2,epub,pdf}
@@ -180,9 +183,21 @@ App data layout (see also `PROJECT_ISOLATION.md`):
 | **glossary** | Canonical terms (`source`, `target`, `kind`, `frequency`, `pinned`) |
 | **meta** | Title/author/cover/summary, `running_summary`, format, encoding |
 
+Every connection runs in WAL with a busy timeout: a translation run holds a
+writer on a background thread while the UI opens short-lived readers, which the
+default rollback journal would block outright.
+
+Opening the database never changes it. Crash recovery (`in_progress` → `pending`)
+is an explicit `Store::recover()`, called on project activation and at job start,
+because reads happen constantly and a read that rewrote statuses would erase the
+state of a run in flight.
+
 ## Error Handling and Limits
 
 - **Retry:** network errors, `429`, `5xx` → exponential backoff, up to `max_retries`.
+- **Repair scope:** a translation that keeps foreign words costs only the lines
+  that contain them, not the chapter. A mangled repair loses its own line, never
+  the chapter (see `translator::repair`).
 - **Order:** chapters always run **sequentially** so the running summary carries forward.
 - **Failure isolation:** a chapter that fails after retries is marked `failed`; the run continues.
 - **Long chapters:** split via `book::chunker` when over `max_chunk_chars`.
@@ -207,7 +222,8 @@ App data layout (see also `PROJECT_ISOLATION.md`):
 | Command | Purpose |
 |---------|---------|
 | `load_source` | Parse book into a new project DB |
-| `open_project` | Restore project from DB alone |
+| `open_project` | Restore project from DB alone (also runs crash recovery) |
+| `list_projects` | Every project found on disk, for reconciling the UI's list |
 | `delete_project` | Remove project data + session |
 | `export_project` / `import_project` | `.bcproj` archive (manifest + DB) |
 
@@ -223,13 +239,18 @@ App data layout (see also `PROJECT_ISOLATION.md`):
 | Command | Purpose |
 |---------|---------|
 | `start_translation` / `pause_translation` | Start/resume or pause after current chapter |
+| `translate_chapter` | Translate one chapter from the reader |
+| `update_chapter_translation` | Save a hand-edited translation (refused while that chapter is `in_progress`) |
+| `set_chapter_prompt` / `set_chapter_context` | Per-chapter instruction and rolling context |
 | `get_progress` | Snapshot (also pushed via `progress` events) |
 | `reset_translation` | Reset done → pending from a book chapter number |
 
 ### Glossary
 | Command | Purpose |
 |---------|---------|
-| `get_glossary` / `update_term` / `delete_term` | Glossary CRUD |
+| `get_glossary_page` | One filtered, ordered window of the glossary plus the match total |
+| `chapter_terms` | Only the terms occurring in one chapter (reader highlighting) |
+| `update_term` / `delete_term` | Glossary CRUD (single-row writes) |
 | `retarget_terms` | Propagate renames (background; `retarget_*` events) |
 
 ### Reader / metadata

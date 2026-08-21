@@ -1,8 +1,96 @@
 # book-converter — Design Decisions
 
-> Last updated 2026-07-17
+> Last updated 2026-08-21
 
 Record of the key choices and their rationale. Newest first.
+
+---
+
+## Framed chapter replies, JSON only where a reply cannot truncate
+
+**Decision:** a chapter translation comes back inside `<<<TITLE>>>` /
+`<<<BODY>>>` markers, parsed by `translator::reply`. The short, bounded calls
+(term extraction, language repair) use real JSON via DeepSeek's
+`response_format: json_object`.
+
+**Why:** the title used to be recovered by guessing, taking the reply's first
+line and stripping markdown. That eats a short opening paragraph when the model
+skips the title, and promotes prose when it writes one differently than expected.
+
+**Why not JSON for the chapter body:** the client survives the output token limit
+by continuing a reply whose `finish_reason` is `length`. Truncated JSON cannot be
+parsed and continued JSON cannot be rejoined, so JSON would convert a rare title
+slip into a hard failure on exactly the long chapters that continuation exists to
+rescue. It also pushes the whole chapter through string escaping. Markers cost
+nothing to escape, and a continuation simply appends to the body. The old
+heuristic is kept as a fallback, so a reply that ignores the format degrades
+rather than fails.
+
+---
+
+## Language repair is line-scoped, not chapter-scoped
+
+**Decision:** when a translation keeps words in the wrong language, only the
+lines containing them are sent back to the model, batched under a character cap,
+and spliced into place by line number from a JSON reply. The chapter title is
+line 0 of that list.
+
+**Why:** the repair pass re-sent the whole chapter, up to twice, to fix a handful
+of words. On a book where the pass fires often that is a second and third full
+translation cost per chapter. It was also unsafe: a model asked to rewrite four
+thousand characters "changing nothing else" sometimes summarises instead, which
+is why the old code carried a guard that discarded a repair that came back much
+shorter. That guard is now per line, so a derailed reply can only lose its own
+line, and correct paragraphs are never at risk because they are never sent.
+
+---
+
+## The glossary is written per chapter, but only what changed
+
+**Decision:** terms extracted from a chapter are merged and persisted before the
+next chapter starts. What changed is that only the rows this chapter touched are
+written, instead of the whole term list, and that a term edited in the UI during
+a run keeps the rendering the user chose (the flush re-reads the row and writes
+back only the frequency it counted).
+
+**Why:** a name first seen in chapter 40 has to be in the dictionary by the time
+chapter 41 is translated. That is the entire purpose of growing a glossary
+mid-run, so the per-chapter write stays. The cost problem was never the timing,
+it was rewriting tens of thousands of rows to record one new term. The UI had a
+matching bug: it only refetched the glossary when the run finished, so through a
+long run the table looked frozen.
+
+---
+
+## The glossary is paged by the database, not filtered in the UI
+
+**Decision:** the glossary view asks for one filtered, ordered window at a time
+(`get_glossary_page`) and renders only the rows in view. The reader asks for the
+terms occurring in the open chapter (`chapter_terms`) rather than receiving all
+of them.
+
+**Why:** a long book's glossary reaches tens of thousands of terms. Shipping all
+of them to the frontend and rendering every match as a live row, each with two
+inputs and a select, froze the app; so did rescanning the whole list against the
+chapter text on every reader render. Matching uses a Unicode-aware lowercase
+registered on the connection, because SQLite's own `lower()` and `LIKE` fold case
+for ASCII only, which would leave the filter useless in the scripts this tool
+actually works in.
+
+---
+
+## Reading the database never writes to it
+
+**Decision:** `Store::open` applies schema, migrations and pragmas, and nothing
+else. Crash recovery is an explicit `Store::recover()`, called on project
+activation and at job start.
+
+**Why:** `open` used to reset every `in_progress` chapter to `pending`, and it is
+called from more than thirty places, most of them reads the UI polls. The status
+of the chapter being translated was therefore erased almost as soon as it was
+set, which broke the guard that refuses a hand edit to a chapter mid-translation:
+the read that checks it had already cleared the value it looks for, so the edit
+was silently overwritten when the translator saved.
 
 ---
 

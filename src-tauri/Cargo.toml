@@ -2,7 +2,7 @@
 name = "book-converter"
 version = "0.1.0"
 edition = "2021"
-description = "Translate large books (Chinese → Russian) via the DeepSeek API, GUI on Tauri + React"
+description = "Translate book-length works between languages via the DeepSeek API, GUI on Tauri + React"
 license = "MIT"
 
 # The Rust core builds both as a library (for Tauri commands) and as a binary.

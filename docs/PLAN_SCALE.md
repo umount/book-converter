@@ -1,7 +1,14 @@
 # Plan: scale, correctness, and cost of the translation loop
 
 > Written 2026-08-21. Tracks the work started after the architecture review of
-> commit `599ca6b`. Each phase below lands as one commit.
+> commit `599ca6b`. Each phase below landed as one commit; all ten are done.
+>
+> One correction during the work: phase 4 was first built to batch the glossary
+> write to the end of a run. That is wrong. A name first seen in chapter 40 must
+> be in the dictionary before chapter 41 is translated, so the per-chapter write
+> stays and only its cost was fixed (write the changed rows, not all of them).
+> The behaviour that looked like end-of-run batching was in the UI, which only
+> refetched the glossary on the run's `done` event.
 
 ## Why
 
