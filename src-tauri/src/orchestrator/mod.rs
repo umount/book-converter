@@ -321,9 +321,15 @@ impl<'a, C: Translate> Orchestrator<'a, C> {
             .chapter(idx)?
             .ok_or_else(|| anyhow!("no source for chapter {idx}"))?;
         let user_note = self.store.chapter_user_prompt(idx)?;
+        // The book chapter number lets the reply parser tell a heading that
+        // slipped into the body from an ordinary opening paragraph.
+        let number = self.store.chapter_number(idx)?;
 
         let started = Instant::now();
-        match self.translate_one(&title, &source, user_note.as_deref()).await {
+        match self
+            .translate_one(&title, &source, user_note.as_deref(), number)
+            .await
+        {
             Ok((title_out, body)) => {
                 let (t_title, t_body, lang_issues) = self
                     .enforce_target_language(idx, &title_out, &body, &source)
@@ -376,6 +382,7 @@ impl<'a, C: Translate> Orchestrator<'a, C> {
         title: &str,
         source: &str,
         user_note: Option<&str>,
+        number: Option<usize>,
     ) -> Result<(String, String)> {
         let chapter = Chapter {
             index: 0,
@@ -417,7 +424,7 @@ impl<'a, C: Translate> Orchestrator<'a, C> {
             let user = prompt::user_prompt(&ctx, &input, shape);
             let raw = self.client.translate(&system, &user).await?;
             if carries_title {
-                let (t, b) = reply::parse_chapter_reply(&raw, title);
+                let (t, b) = reply::parse_chapter_reply(&raw, title, number);
                 out_title = Some(t);
                 bodies.push(b);
             } else {
