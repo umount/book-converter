@@ -37,6 +37,10 @@ export function Settings({
   const [temperature, setTemperature] = useState("");
   const [chunk, setChunk] = useState("");
   const [retries, setRetries] = useState("");
+  // The stored key is never sent back, so this box starts empty and only ever
+  // holds what the user is typing right now.
+  const [apiKey, setApiKey] = useState("");
+  const [keyBusy, setKeyBusy] = useState(false);
 
   useEffect(() => {
     (async () => {
@@ -55,6 +59,22 @@ export function Settings({
 
   const locked = (k: string) => !!eff?.env_locked.includes(k);
   const save = (key: string, value: string) => void call("set_setting", { key, value });
+
+  async function refreshEffective() {
+    const c = await call<EffectiveConfig>("get_effective_config");
+    if (c) setEff(c);
+  }
+  /** Save (or, with an empty box, clear) the API key. */
+  async function saveApiKey() {
+    setKeyBusy(true);
+    try {
+      await call("set_api_key", { key: apiKey }, { critical: true });
+      setApiKey("");
+      await refreshEffective();
+    } finally {
+      setKeyBusy(false);
+    }
+  }
 
   const sections: { id: SectionId; label: string }[] = [
     { id: "interface", label: t("settings.sectionInterface") },
@@ -107,7 +127,27 @@ export function Settings({
     },
     {
       id: "apiKey", section: "model", label: t("settings.apiKey"), desc: t("settings.apiKeyDesc"),
-      el: <span className={eff?.has_key ? "muted" : "setting-warn"}>{eff?.has_key ? t("settings.apiKeySet") : t("settings.apiKeyMissing")}</span>,
+      el: (
+        <div className="api-key">
+          <input
+            type="password" autoComplete="off" spellCheck={false}
+            value={apiKey} onChange={(e) => setApiKey(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && void saveApiKey()}
+            placeholder={eff?.has_key ? t("settings.apiKeyReplace") : "sk-…"}
+          />
+          <button className="primary" disabled={keyBusy || (!apiKey.trim() && !eff?.has_key)}
+            onClick={() => void saveApiKey()}>
+            {keyBusy ? t("reader.saving") : apiKey.trim() ? t("term.save") : t("settings.apiKeyClear")}
+          </button>
+          <span className={eff?.has_key ? "muted" : "setting-warn"}>
+            {!eff?.has_key
+              ? t("settings.apiKeyMissing")
+              : eff.key_from_env
+                ? t("settings.apiKeyFromEnv", { hint: eff.key_hint ?? "" })
+                : t("settings.apiKeyStored", { hint: eff.key_hint ?? "" })}
+          </span>
+        </div>
+      ),
     },
     {
       id: "chunk", section: "advanced", label: t("settings.maxChunk"), desc: t("settings.maxChunkDesc"),

@@ -60,7 +60,9 @@ make install            # frontend + CLI deps
 cp .env.example .env     # set DEEPSEEK_API_KEY=sk-...
 ```
 
-The key is read from `.env` (auto-loaded) or `DEEPSEEK_API_KEY`.
+The key is normally entered in **Settings -> Model -> API key**, where it is saved
+with the app's settings. `.env` (auto-loaded) and `DEEPSEEK_API_KEY` are the
+fallback, used only when no key is saved there.
 
 ## Run
 
@@ -145,7 +147,7 @@ Environment / `.env`:
 
 | Variable | Default | Purpose |
 |---|---|---|
-| `DEEPSEEK_API_KEY` | — | API key (required) |
+| `DEEPSEEK_API_KEY` | — | API key; used only when none is saved in Settings |
 | `DEEPSEEK_MODEL` | `deepseek-chat` | Model |
 | `DEEPSEEK_BASE_URL` | `https://api.deepseek.com` | API base URL |
 | `SOURCE_LANG` | (UI / Chinese) | Override source language |

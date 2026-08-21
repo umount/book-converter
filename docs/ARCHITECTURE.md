@@ -83,7 +83,7 @@ thing the frontend knows about; session/job helpers sit beside it.
 
 | Module | Responsibility |
 |--------|----------------|
-| **config** | Configuration: DeepSeek API key (env `DEEPSEEK_API_KEY`), base_url, model, languages, `max_chunk_chars`, `max_retries` |
+| **config** | Configuration: DeepSeek API key (settings DB, falling back to env `DEEPSEEK_API_KEY`), base_url, model, languages, `max_chunk_chars`, `max_retries` |
 | **paths** | Shared app data directory (`XDG_DATA_HOME` / `~/.local/share/book-converter`) |
 | **session** | Per-project `Session` + `AppState` map; project dirs; legacy cleanup |
 | **jobs** | Background OS-thread runners for translation and glossary retarget |
@@ -228,7 +228,8 @@ state of a run in flight.
 | Command | Purpose |
 |---------|---------|
 | `get_setting` / `set_setting` | Durable app-wide KV (UI language, language pair, model/advanced) |
-| `get_effective_config` | Resolved non-secret config for the Settings page (env-locked keys, key presence) |
+| `get_effective_config` | Resolved non-secret config for the Settings page (env-locked keys, masked key hint) |
+| `set_api_key` | Store or clear the API key; the generic setter refuses this key |
 | `get_app_info` | Product name, version, git commit/date, Tauri and platform (About dialog) |
 
 ### Project I/O

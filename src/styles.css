@@ -310,6 +310,11 @@ tr.add-row input::placeholder { color: var(--fg-subtle); }
 .glossary-rows { max-height: 460px; }
 .glossary-foot { padding: 6px 9px; font-size: 12px; background: var(--bg-panel); }
 
+/* API key row: input + save button + the state of the stored key. */
+.api-key { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; justify-content: flex-end; }
+.api-key input { flex: 1 1 150px; min-width: 0; font-family: var(--font-mono); }
+.api-key > span { flex: 1 0 100%; text-align: right; font-size: 11px; }
+
 /* Term dialog */
 .term-dialog {
   position: relative; z-index: 49;

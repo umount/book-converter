@@ -1,13 +1,19 @@
 //! Application configuration: DeepSeek API access and translation parameters.
 //!
-//! The API key is read from the `DEEPSEEK_API_KEY` environment variable and is
-//! never written to the repo (see `.gitignore`: `.env`, `config.local.toml`).
+//! The API key is entered on the Settings page and kept in the settings DB;
+//! `DEEPSEEK_API_KEY` (or a local `.env`) is the fallback for a machine with no
+//! UI. Neither is ever written to the repo (see `.gitignore`: `.env`,
+//! `config.local.toml`).
 
 use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+/// Settings-DB key holding the DeepSeek API key.
+pub const API_KEY_SETTING: &str = "deepseek_api_key";
+
+#[derive(Clone, Serialize, Deserialize)]
 pub struct Config {
-    /// DeepSeek API key (env: DEEPSEEK_API_KEY). Never logged or persisted.
+    /// DeepSeek API key. Stored in the settings DB (entered in the UI), or taken
+    /// from `DEEPSEEK_API_KEY` when no setting is present. Never logged.
     pub api_key: String,
     /// API base URL (OpenAI-compatible).
     pub base_url: String,
@@ -35,6 +41,24 @@ pub struct Config {
     pub max_retries: usize,
 }
 
+/// Redacts the API key, so no accidental `{config:?}` can print it.
+impl std::fmt::Debug for Config {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Config")
+            .field("api_key", &if self.has_key() { "<set>" } else { "<unset>" })
+            .field("base_url", &self.base_url)
+            .field("model", &self.model)
+            .field("source_lang", &self.source_lang)
+            .field("target_lang", &self.target_lang)
+            .field("temperature", &self.temperature)
+            .field("request_timeout_secs", &self.request_timeout_secs)
+            .field("max_chunk_chars", &self.max_chunk_chars)
+            .field("max_output_tokens", &self.max_output_tokens)
+            .field("max_retries", &self.max_retries)
+            .finish()
+    }
+}
+
 impl Default for Config {
     fn default() -> Self {
         Self {
@@ -59,7 +83,7 @@ impl Config {
     /// key is available at startup without exporting it manually. Real
     /// environment variables take precedence over `.env`.
     ///
-    /// `DEEPSEEK_API_KEY` (required for real requests), plus optional overrides:
+    /// `DEEPSEEK_API_KEY` (used when no key is saved in settings), plus optional overrides:
     /// `DEEPSEEK_MODEL`, `DEEPSEEK_BASE_URL`.
     pub fn load() -> Self {
         // Ignore "not found" — running without a .env (env vars only) is valid.
@@ -112,10 +136,17 @@ impl Config {
             }
         }
 
+        // The API key is the one setting the UI owns outright: it is entered on
+        // the Settings page and kept in the settings DB. The environment
+        // variable is the fallback for a machine with no UI (CI, a headless
+        // run), which is the reverse of every other key below, where the
+        // environment wins so an operator can pin a value.
+        cfg.api_key = match crate::settings::get(&sdb, API_KEY_SETTING) {
+            Ok(Some(v)) if !v.trim().is_empty() => v.trim().to_string(),
+            _ => std::env::var("DEEPSEEK_API_KEY").unwrap_or_default(),
+        };
+
         // Environment variables (for power users / CI) take precedence.
-        if let Ok(key) = std::env::var("DEEPSEEK_API_KEY") {
-            cfg.api_key = key;
-        }
         if let Ok(model) = std::env::var("DEEPSEEK_MODEL") {
             cfg.model = model;
         }
@@ -134,5 +165,59 @@ impl Config {
     /// True when an API key is present.
     pub fn has_key(&self) -> bool {
         !self.api_key.trim().is_empty()
+    }
+
+    /// Whether the effective key came from the environment rather than settings.
+    pub fn key_from_env() -> bool {
+        let stored = crate::settings::get(&crate::settings::db_path(), API_KEY_SETTING)
+            .ok()
+            .flatten()
+            .filter(|v| !v.trim().is_empty());
+        stored.is_none() && std::env::var("DEEPSEEK_API_KEY").is_ok_and(|v| !v.trim().is_empty())
+    }
+
+    /// A key shown to a human without revealing it: enough to tell two keys
+    /// apart, not enough to use one.
+    pub fn key_hint(&self) -> Option<String> {
+        let key = self.api_key.trim();
+        if key.is_empty() {
+            return None;
+        }
+        let chars: Vec<char> = key.chars().collect();
+        if chars.len() <= 12 {
+            return Some("•".repeat(chars.len().max(4)));
+        }
+        let head: String = chars.iter().take(5).collect();
+        let tail: String = chars.iter().skip(chars.len() - 4).collect();
+        Some(format!("{head}…{tail}"))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The hint has to identify a key without being usable as one.
+    #[test]
+    fn key_hint_masks_the_key() {
+        let cfg = Config { api_key: "sk-f656052576dd45408b235cd387c332d3".into(), ..Config::default() };
+        let hint = cfg.key_hint().unwrap();
+        assert_eq!(hint, "sk-f6\u{2026}32d3");
+        assert!(!cfg.api_key.contains(&hint));
+
+        let short = Config { api_key: "abc".into(), ..Config::default() };
+        assert_eq!(short.key_hint().unwrap(), "\u{2022}\u{2022}\u{2022}\u{2022}");
+
+        assert!(Config { api_key: "   ".into(), ..Config::default() }.key_hint().is_none());
+    }
+
+    /// A stray `{config:?}` must not print the key.
+    #[test]
+    fn debug_redacts_the_key() {
+        let cfg = Config { api_key: "sk-secret-value-here".into(), ..Config::default() };
+        let printed = format!("{cfg:?}");
+        assert!(!printed.contains("secret"), "{printed}");
+        assert!(printed.contains("<set>"));
+        assert!(format!("{:?}", Config::default()).contains("<unset>"));
     }
 }

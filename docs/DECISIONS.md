@@ -233,7 +233,12 @@ was iced (pure Rust); switched after weighing the UI shape.
 low cost per token for a 990-chapter job. The author already uses DeepSeek in another
 project (napartner), so it's a known quantity.
 
-**Config:** API key from env `DEEPSEEK_API_KEY` (never committed). `deepseek-reasoner`
+**Config:** API key entered in Settings and stored in the settings DB, falling
+back to env `DEEPSEEK_API_KEY` for a headless run (never committed either way).
+It is the one setting where the UI wins over the environment, because it is the
+one an ordinary user has to provide; everywhere else the environment wins so an
+operator can pin a value. The key is never returned to the frontend once saved,
+only a masked hint, and `Config`'s `Debug` redacts it. `deepseek-reasoner`
 left as an option for hard passages.
 
 ---

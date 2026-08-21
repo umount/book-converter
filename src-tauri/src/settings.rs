@@ -37,6 +37,13 @@ pub fn get(db: &Path, key: &str) -> Result<Option<String>> {
     Ok(v)
 }
 
+/// Remove a setting, if present.
+pub fn remove(db: &Path, key: &str) -> Result<()> {
+    let conn = open(db)?;
+    conn.execute("DELETE FROM settings WHERE key = ?1", params![key])?;
+    Ok(())
+}
+
 /// Insert or update a setting.
 pub fn set(db: &Path, key: &str, value: &str) -> Result<()> {
     let conn = open(db)?;
@@ -51,6 +58,19 @@ pub fn set(db: &Path, key: &str, value: &str) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn remove_deletes_a_setting() {
+        let db = std::env::temp_dir().join(format!("bc_settings_rm_{}.db", std::process::id()));
+        let _ = std::fs::remove_file(&db);
+        set(&db, "deepseek_api_key", "sk-test").unwrap();
+        assert_eq!(get(&db, "deepseek_api_key").unwrap().as_deref(), Some("sk-test"));
+        remove(&db, "deepseek_api_key").unwrap();
+        assert!(get(&db, "deepseek_api_key").unwrap().is_none());
+        // Removing what is not there is not an error.
+        remove(&db, "deepseek_api_key").unwrap();
+        let _ = std::fs::remove_file(&db);
+    }
 
     #[test]
     fn round_trips() {

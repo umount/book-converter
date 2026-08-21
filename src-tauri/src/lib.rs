@@ -102,6 +102,7 @@ pub fn run() {
             commands::set_chapter_context,
             commands::get_setting,
             commands::set_setting,
+            commands::set_api_key,
             commands::get_effective_config,
             commands::get_app_info,
             commands::delete_project,
