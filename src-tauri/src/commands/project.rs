@@ -136,6 +136,9 @@ pub async fn open_project(
         return Err("no_source".into());
     }
     let store = Store::open(&db).map_err(err)?;
+    // Activation is one of the two moments crash recovery is allowed to run: a
+    // chapter left `in_progress` here belongs to a process that is gone.
+    let _ = store.recover();
     let stats = store.stats().map_err(err)?;
     if stats.total == 0 {
         return Err("no_source".into());

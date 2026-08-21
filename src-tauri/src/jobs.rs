@@ -22,6 +22,10 @@ pub(crate) async fn run_job(
     let config = Config::load();
     let cl = DeepSeekClient::new(config.clone())?;
     let store = Store::open(db)?;
+    // The other moment recovery is allowed: nothing else is translating this
+    // project (the session's `running` flag gates that), so anything still
+    // marked `in_progress` is debris from a crash.
+    let _ = store.recover();
     let mut orch = Orchestrator::new(&cl, &store, &config, style)?;
     let emit = |ev: crate::orchestrator::ProgressEvent| {
         let _ = app.emit(

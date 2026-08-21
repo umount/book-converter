@@ -60,6 +60,20 @@ pub struct Stats {
     pub pending: usize,
 }
 
+/// Connection pragmas, applied before the schema on every connection.
+///
+/// A translation run holds its own connection on a background thread while the
+/// UI keeps opening short-lived ones to read progress, chapters and the
+/// glossary. In the default rollback-journal mode a writer locks the whole
+/// database, and rusqlite installs no busy handler, so those reads would fail
+/// outright with SQLITE_BUSY. WAL lets readers run alongside the writer, and the
+/// busy timeout absorbs the remaining contention on the write lock itself.
+const PRAGMAS: &str = r#"
+PRAGMA journal_mode = WAL;
+PRAGMA busy_timeout = 5000;
+PRAGMA synchronous = NORMAL;
+"#;
+
 const SCHEMA: &str = r#"
 CREATE TABLE IF NOT EXISTS meta (
     key   TEXT PRIMARY KEY,
@@ -112,15 +126,37 @@ pub struct Store {
 }
 
 impl Store {
-    /// Open/create the database, apply the schema, and recover from a crash by
-    /// resetting any `in_progress` chapter back to `pending`.
+    /// Open/create the database and apply the schema and migrations.
+    ///
+    /// Opening is **read-only in effect**: it never changes chapter data. Crash
+    /// recovery is a separate, explicit step ([`Store::recover`]) precisely
+    /// because commands open the database constantly to read it, and a read that
+    /// rewrites statuses would erase the state of a run that is in flight.
     pub fn open(path: &str) -> Result<Self> {
         let conn = Connection::open(path)?;
+        conn.execute_batch(PRAGMAS)?;
         conn.execute_batch(SCHEMA)?;
         let store = Store { conn };
         store.migrate()?;
-        store.reset_in_progress()?;
         Ok(store)
+    }
+
+    /// Recover from a crash: chapters left `in_progress` by a process that died
+    /// mid-translation go back to `pending`. Returns how many were reset.
+    ///
+    /// Called once when a project is opened and once when a job starts, never on
+    /// a plain read. A chapter that is genuinely being translated right now is
+    /// `in_progress`, and that status is what tells the UI not to let the user
+    /// edit it under the translator's feet.
+    pub fn recover(&self) -> Result<usize> {
+        let n = self.conn.execute(
+            "UPDATE chapters SET status = 'pending' WHERE status = 'in_progress'",
+            [],
+        )?;
+        if n > 0 {
+            tracing::info!(chapters = n, "recovered chapters left in_progress by a crash");
+        }
+        Ok(n)
     }
 
     /// Additive migrations for databases created by an older version.
@@ -145,15 +181,6 @@ impl Store {
                 .execute(&format!("ALTER TABLE {table} ADD COLUMN {name} {ty}"), [])?;
         }
         Ok(())
-    }
-
-    /// Reset chapters stuck `in_progress` (from a previous crash) to `pending`.
-    fn reset_in_progress(&self) -> Result<usize> {
-        let n = self.conn.execute(
-            "UPDATE chapters SET status = 'pending' WHERE status = 'in_progress'",
-            [],
-        )?;
-        Ok(n)
     }
 
     /// Load the book's chapters into the database.
@@ -946,12 +973,14 @@ mod tests {
         assert_eq!(store.translated_chapters().unwrap().len(), 1);
     }
 
+    /// A temp DB path unique to this test process and name.
+    fn temp_db(name: &str) -> std::path::PathBuf {
+        std::env::temp_dir().join(format!("bc_state_{}_{}.db", name, std::process::id()))
+    }
+
     #[test]
-    fn reopen_resets_in_progress() {
-        let path = std::env::temp_dir().join(format!(
-            "bc_state_test_{}.db",
-            std::process::id()
-        ));
+    fn recover_requeues_in_progress() {
+        let path = temp_db("recover");
         let path_str = path.to_str().unwrap();
         {
             let store = Store::open(path_str).unwrap();
@@ -961,9 +990,57 @@ mod tests {
         }
         {
             let store = Store::open(path_str).unwrap();
+            assert_eq!(store.recover().unwrap(), 1);
             assert_eq!(store.pending_chapters().unwrap(), vec![1, 2, 3]);
         }
         let _ = std::fs::remove_file(path);
+    }
+
+    /// Reading the database must never rewrite it. A UI command opening the DB
+    /// while a chapter is being translated used to reset that chapter to
+    /// `pending`, which erased the status the editor lock is built on.
+    #[test]
+    fn open_leaves_in_progress_alone() {
+        let path = temp_db("open_pure");
+        let path_str = path.to_str().unwrap();
+        let running = Store::open(path_str).unwrap();
+        running.init_chapters(&sample()).unwrap();
+        running.set_status(2, Status::InProgress).unwrap();
+
+        // A concurrent reader, exactly as every Tauri command does it.
+        let reader = Store::open(path_str).unwrap();
+        assert_eq!(reader.stats().unwrap().in_progress, 1);
+        assert_eq!(reader.chapter_full(2).unwrap().unwrap().3, "in_progress");
+
+        // The translating connection still sees its own chapter as in flight.
+        assert_eq!(running.stats().unwrap().in_progress, 1);
+        assert_eq!(running.pending_chapters().unwrap(), vec![1, 3]);
+
+        drop(reader);
+        drop(running);
+        let _ = std::fs::remove_file(path);
+    }
+
+    /// WAL is what lets the UI read while the background job writes.
+    #[test]
+    fn open_enables_wal_and_a_busy_timeout() {
+        let path = temp_db("pragmas");
+        let path_str = path.to_str().unwrap();
+        let store = Store::open(path_str).unwrap();
+        let mode: String = store
+            .conn
+            .query_row("PRAGMA journal_mode", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(mode.to_lowercase(), "wal");
+        let timeout: i64 = store
+            .conn
+            .query_row("PRAGMA busy_timeout", [], |r| r.get(0))
+            .unwrap();
+        assert!(timeout >= 5000, "busy_timeout was {timeout}");
+        drop(store);
+        for suffix in ["", "-wal", "-shm"] {
+            let _ = std::fs::remove_file(format!("{path_str}{suffix}"));
+        }
     }
 
     #[test]
