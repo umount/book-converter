@@ -25,7 +25,7 @@ use crate::glossary::{self, Term};
 use crate::state::{Stats, Status, Store};
 use crate::textutil;
 use crate::translator::prompt::ReplyShape;
-use crate::translator::{prompt, repair, reply, DeepSeekClient};
+use crate::translator::{prompt, repair, reply, Translate};
 
 /// Shortest run of unexpected-script letters treated as a leftover foreign word.
 /// Single letters (an initial, a unit) are ignored; Han is always reported.
@@ -52,8 +52,8 @@ pub struct ProgressEvent {
     pub eta_secs: Option<u64>,
 }
 
-pub struct Orchestrator<'a> {
-    client: &'a DeepSeekClient,
+pub struct Orchestrator<'a, C: Translate> {
+    client: &'a C,
     store: &'a Store,
     config: &'a Config,
     glossary: Vec<Term>,
@@ -75,11 +75,11 @@ struct BookIdentity {
     title_translated: Option<String>,
 }
 
-impl<'a> Orchestrator<'a> {
+impl<'a, C: Translate> Orchestrator<'a, C> {
     /// Build from the store's current state. `style` is an optional exemplar from a
     /// reference translation (`reference::style_exemplar`).
     pub fn new(
-        client: &'a DeepSeekClient,
+        client: &'a C,
         store: &'a Store,
         config: &'a Config,
         style: Option<String>,
@@ -599,6 +599,314 @@ fn non_empty(s: &str) -> Option<&str> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    use std::sync::Mutex;
+
+    use crate::translator::reply::{BODY_MARK, TITLE_MARK};
+
+    /// A scripted stand-in for the model.
+    ///
+    /// It answers by recognising which prompt it was handed, and records every
+    /// request, so a test can assert not just the result but what was sent: the
+    /// point of the line-scoped repair is that a chapter is *not* re-sent.
+    #[derive(Default)]
+    struct FakeModel {
+        /// `(source title, translated title, translated body)` per chapter.
+        bodies: Vec<(String, String, String)>,
+        /// Replacement text the repair pass returns for any line it is given.
+        repair_to: Option<String>,
+        /// Source titles whose translation request must fail.
+        fail_titles: Vec<String>,
+        calls: Mutex<Vec<(String, String)>>,
+    }
+
+    impl FakeModel {
+        fn prose_calls(&self) -> Vec<(String, String)> {
+            self.calls.lock().unwrap().clone()
+        }
+
+        fn body_for(&self, user: &str) -> Option<(String, String, String)> {
+            self.bodies
+                .iter()
+                .find(|(source_title, ..)| user.contains(source_title.as_str()))
+                .cloned()
+        }
+    }
+
+    impl crate::translator::Translate for FakeModel {
+        async fn translate(&self, system: &str, user: &str) -> Result<String> {
+            self.calls
+                .lock()
+                .unwrap()
+                .push((system.to_string(), user.to_string()));
+
+            if system.contains("running synopsis") {
+                return Ok("Синопсис.".to_string());
+            }
+            if let Some(title) = self.fail_titles.iter().find(|t| user.contains(t.as_str())) {
+                anyhow::bail!("scripted failure for {title}");
+            }
+            let (_, title, body) = self
+                .body_for(user)
+                .ok_or_else(|| anyhow!("fake has no body for this request"))?;
+            Ok(format!("{TITLE_MARK}\n{title}\n{BODY_MARK}\n{body}"))
+        }
+
+        async fn translate_json(&self, system: &str, user: &str) -> Result<String> {
+            self.calls
+                .lock()
+                .unwrap()
+                .push((system.to_string(), user.to_string()));
+
+            if system.contains("extract named entities") {
+                return Ok(r#"{"terms":[{"source":"王林","target":"Ван Линь","kind":"person"}]}"#
+                    .to_string());
+            }
+            if system.contains("clean up") {
+                let replacement = self.repair_to.clone().unwrap_or_default();
+                // Echo back every line number the prompt listed.
+                let lines: Vec<String> = user
+                    .lines()
+                    .filter_map(|l| l.strip_prefix('['))
+                    .filter_map(|l| l.split_once(']'))
+                    .map(|(n, _)| {
+                        format!(r#"{{"n":{},"text":"{}"}}"#, n.trim(), replacement)
+                    })
+                    .collect();
+                return Ok(format!(r#"{{"lines":[{}]}}"#, lines.join(",")));
+            }
+            anyhow::bail!("fake got an unexpected json prompt")
+        }
+    }
+
+    fn chapters() -> Vec<Chapter> {
+        (1..=3)
+            .map(|i| Chapter {
+                index: i,
+                number: Some(i),
+                title: format!("第{i}章"),
+                body: format!("原文 {i}"),
+            })
+            .collect()
+    }
+
+    fn store_with_chapters() -> Store {
+        let store = Store::open(":memory:").unwrap();
+        store.init_chapters(&chapters()).unwrap();
+        store
+    }
+
+    fn clean_model() -> FakeModel {
+        FakeModel {
+            bodies: (1..=3)
+                .map(|i| {
+                    (
+                        format!("第{i}章"),
+                        format!("Глава {i}"),
+                        format!("Глава {i}. Перевод главы."),
+                    )
+                })
+                .collect(),
+            ..Default::default()
+        }
+    }
+
+    #[tokio::test]
+    async fn run_translates_every_pending_chapter_in_order() {
+        let store = store_with_chapters();
+        let config = Config::default();
+        let model = clean_model();
+        let mut orch = Orchestrator::new(&model, &store, &config, None).unwrap();
+
+        let mut seen: Vec<Option<usize>> = Vec::new();
+        orch.run(None, &AtomicBool::new(false), |ev| {
+            if ev.phase == "chapter_start" {
+                seen.push(ev.current_number);
+            }
+        })
+        .await
+        .unwrap();
+
+        assert_eq!(seen, vec![Some(1), Some(2), Some(3)]);
+        assert_eq!(store.stats().unwrap().done, 3);
+        assert!(store.pending_chapters().unwrap().is_empty());
+        let (title, body) = store.chapter_full(2).unwrap().map(|r| (r.4.unwrap(), r.5.unwrap())).unwrap();
+        assert_eq!(title, "Глава 2");
+        assert_eq!(body, "Глава 2. Перевод главы.");
+    }
+
+    #[tokio::test]
+    async fn run_honours_the_limit_and_leaves_the_rest_pending() {
+        let store = store_with_chapters();
+        let config = Config::default();
+        let model = clean_model();
+        let mut orch = Orchestrator::new(&model, &store, &config, None).unwrap();
+
+        orch.run(Some(2), &AtomicBool::new(false), |_| {}).await.unwrap();
+
+        assert_eq!(store.stats().unwrap().done, 2);
+        assert_eq!(store.pending_chapters().unwrap(), vec![3]);
+    }
+
+    #[tokio::test]
+    async fn a_cancelled_run_stops_and_stays_resumable() {
+        let store = store_with_chapters();
+        let config = Config::default();
+        let model = clean_model();
+        let mut orch = Orchestrator::new(&model, &store, &config, None).unwrap();
+
+        let cancel = AtomicBool::new(false);
+        orch.run(None, &cancel, |ev| {
+            if ev.phase == "chapter_done" {
+                cancel.store(true, Ordering::Relaxed);
+            }
+        })
+        .await
+        .unwrap();
+
+        assert_eq!(store.stats().unwrap().done, 1);
+        assert_eq!(store.pending_chapters().unwrap(), vec![2, 3]);
+        // Nothing is left claiming to be in flight.
+        assert_eq!(store.stats().unwrap().in_progress, 0);
+    }
+
+    /// A chapter the model cannot translate is marked failed and the run goes on.
+    #[tokio::test]
+    async fn a_failed_chapter_does_not_sink_the_run() {
+        let store = store_with_chapters();
+        let config = Config::default();
+        let model = FakeModel {
+            fail_titles: vec!["第2章".to_string()],
+            ..clean_model()
+        };
+        let mut orch = Orchestrator::new(&model, &store, &config, None).unwrap();
+
+        orch.run(None, &AtomicBool::new(false), |_| {}).await.unwrap();
+
+        let stats = store.stats().unwrap();
+        assert_eq!(stats.done, 2);
+        assert_eq!(stats.failed, 1);
+        assert_eq!(store.chapter_full(2).unwrap().unwrap().3, "failed");
+    }
+
+    /// The terms a chapter teaches must be in the database before the next
+    /// chapter is translated, not at the end of the run.
+    #[tokio::test]
+    async fn the_glossary_is_written_as_the_run_goes() {
+        let store = store_with_chapters();
+        let config = Config::default();
+        let model = clean_model();
+        let mut orch = Orchestrator::new(&model, &store, &config, None).unwrap();
+
+        let mut after_first: Option<usize> = None;
+        orch.run(None, &AtomicBool::new(false), |ev| {
+            if ev.phase == "chapter_done" && after_first.is_none() {
+                after_first = Some(store.load_glossary().unwrap().len());
+            }
+        })
+        .await
+        .unwrap();
+
+        assert_eq!(after_first, Some(1), "the first chapter's term was not persisted");
+        let glossary = store.load_glossary().unwrap();
+        assert_eq!(glossary.len(), 1);
+        assert_eq!(glossary[0].target, "Ван Линь");
+        // Seen once per chapter, so the count reflects all three.
+        assert_eq!(glossary[0].frequency, 3);
+    }
+
+    /// The repair pass must send the offending lines, not the whole chapter.
+    #[tokio::test]
+    async fn repair_sends_only_the_offending_lines() {
+        let store = Store::open(":memory:").unwrap();
+        store
+            .init_chapters(&[Chapter {
+                index: 1,
+                number: Some(1),
+                title: "第1章".into(),
+                body: "原文".into(),
+            }])
+            .unwrap();
+        let config = Config::default();
+        let model = FakeModel {
+            bodies: vec![(
+                "第1章".to_string(),
+                "Глава 1".to_string(),
+                "Первая строка.\nОн увидел cultivation.\nТретья строка.".to_string(),
+            )],
+            repair_to: Some("Он увидел культивацию.".to_string()),
+            ..Default::default()
+        };
+        let mut orch = Orchestrator::new(&model, &store, &config, None).unwrap();
+
+        orch.run(None, &AtomicBool::new(false), |_| {}).await.unwrap();
+
+        let body = store.chapter_full(1).unwrap().unwrap().5.unwrap();
+        assert_eq!(
+            body,
+            "Первая строка.\nОн увидел культивацию.\nТретья строка."
+        );
+
+        let repair_prompts: Vec<String> = model
+            .prose_calls()
+            .into_iter()
+            .filter(|(system, _)| system.contains("clean up"))
+            .map(|(_, user)| user)
+            .collect();
+        assert_eq!(repair_prompts.len(), 1, "expected exactly one repair request");
+        let sent = &repair_prompts[0];
+        assert!(sent.contains("Он увидел cultivation."), "the bad line was not sent");
+        assert!(!sent.contains("Первая строка."), "a clean line was sent: {sent}");
+        assert!(!sent.contains("Третья строка."), "a clean line was sent: {sent}");
+    }
+
+    /// The title is line 0 of the repair, so a title that kept a foreign word is
+    /// fixed in the same request as the body rather than needing its own.
+    #[tokio::test]
+    async fn repair_covers_the_title() {
+        let store = Store::open(":memory:").unwrap();
+        store
+            .init_chapters(&[Chapter {
+                index: 1,
+                number: Some(1),
+                title: "第1章".into(),
+                body: "原文".into(),
+            }])
+            .unwrap();
+        let config = Config::default();
+        let model = FakeModel {
+            bodies: vec![(
+                "第1章".to_string(),
+                "Глава 1: cultivation".to_string(),
+                "Чистая строка перевода.".to_string(),
+            )],
+            repair_to: Some("Глава 1: культивация".to_string()),
+            ..Default::default()
+        };
+        let mut orch = Orchestrator::new(&model, &store, &config, None).unwrap();
+
+        orch.run(None, &AtomicBool::new(false), |_| {}).await.unwrap();
+
+        let row = store.chapter_full(1).unwrap().unwrap();
+        assert_eq!(row.4.unwrap(), "Глава 1: культивация");
+        assert_eq!(row.5.unwrap(), "Чистая строка перевода.");
+    }
+
+    /// A clean translation costs nothing extra: no repair request at all.
+    #[tokio::test]
+    async fn a_clean_translation_triggers_no_repair() {
+        let store = store_with_chapters();
+        let config = Config::default();
+        let model = clean_model();
+        let mut orch = Orchestrator::new(&model, &store, &config, None).unwrap();
+
+        orch.run(Some(1), &AtomicBool::new(false), |_| {}).await.unwrap();
+
+        assert!(
+            !model.prose_calls().iter().any(|(system, _)| system.contains("clean up")),
+            "a clean chapter should not be repaired"
+        );
+    }
 
     #[test]
     fn non_empty_filters_blank() {

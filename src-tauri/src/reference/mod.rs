@@ -22,7 +22,7 @@ use crate::book::{detect_format, load_book_text, read_book_file, BookMeta, Chapt
 use crate::export::fb2::{extract_head, Fb2Head};
 use crate::config::Config;
 use crate::glossary::{self, Term};
-use crate::translator::DeepSeekClient;
+use crate::translator::Translate;
 
 /// A loaded reference translation.
 #[derive(Debug, Clone)]
@@ -107,8 +107,8 @@ pub fn style_exemplar(reference: &Reference, max_chars: usize) -> Option<String>
 /// For each pair, DeepSeek extracts `source → professional rendering` named
 /// entities; those become pinned canon (human-quality, never overwritten by
 /// later auto-extraction). Returns the merged glossary.
-pub async fn bootstrap_glossary(
-    client: &DeepSeekClient,
+pub async fn bootstrap_glossary<C: Translate>(
+    client: &C,
     config: &Config,
     source: &[Chapter],
     reference: &Reference,

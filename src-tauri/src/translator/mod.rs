@@ -7,10 +7,48 @@ pub mod reply;
 
 pub use deepseek::DeepSeekClient;
 
+use std::future::Future;
+
 use anyhow::Result;
 
 use crate::config::Config;
 use crate::glossary::{self, Term};
+
+/// What the orchestration layer needs from a model.
+///
+/// The orchestrator is generic over this rather than tied to
+/// [`DeepSeekClient`], so the translation loop can be driven end to end in
+/// tests against a scripted stand-in: chapter order, resume, the language
+/// repair pass, glossary growth. None of that was reachable before, because
+/// exercising it meant calling the real API.
+///
+/// Retry, backoff and truncation handling stay inside the implementation; this
+/// trait is only "send a prompt, get a reply".
+pub trait Translate {
+    /// Prose reply. May be continued internally if the model truncates it.
+    fn translate(&self, system: &str, user: &str) -> impl Future<Output = Result<String>> + Send;
+
+    /// One JSON document. Must not be a reply that can outgrow the output limit.
+    fn translate_json(
+        &self,
+        system: &str,
+        user: &str,
+    ) -> impl Future<Output = Result<String>> + Send;
+}
+
+impl Translate for DeepSeekClient {
+    fn translate(&self, system: &str, user: &str) -> impl Future<Output = Result<String>> + Send {
+        DeepSeekClient::translate(self, system, user)
+    }
+
+    fn translate_json(
+        &self,
+        system: &str,
+        user: &str,
+    ) -> impl Future<Output = Result<String>> + Send {
+        DeepSeekClient::translate_json(self, system, user)
+    }
+}
 
 /// Extract glossary terms from a source ↔ translation pair, retrying when the
 /// model's reply is not valid JSON.
@@ -20,8 +58,8 @@ use crate::glossary::{self, Term};
 ///   with backoff inside [`DeepSeekClient::translate`], and bubbles up here;
 /// - **a successful response whose term list is malformed JSON** is retried here
 ///   up to `retries` times (asking the model again usually fixes it).
-pub async fn extract_terms(
-    client: &DeepSeekClient,
+pub async fn extract_terms<C: Translate>(
+    client: &C,
     config: &Config,
     source: &str,
     translated: &str,
