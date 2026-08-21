@@ -37,9 +37,6 @@ export function useGlossary({
   const [loading, setLoading] = useState(false);
   const [glossaryQuery, setGlossaryQuery] = useState("");
   const [kindFilter, setKindFilter] = useState<string>("all");
-  const [newTerm, setNewTerm] = useState<{ source: string; target: string; kind: string }>({
-    source: "", target: "", kind: "person",
-  });
   // Renames whose new rendering has been saved to the glossary but not yet
   // propagated into the existing translation. Keyed by source; `old` is the
   // rendering still present in the translated text. Drives the global button.
@@ -97,29 +94,39 @@ export function useGlossary({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [glossaryQuery, kindFilter, activeId]);
 
-  // Term edits auto-save. Changing the rendering also records a pending rename so
-  // the global "Update translation" button can later propagate it into the text.
-  async function saveTermField(term: Term, patch: Partial<Term>) {
-    await call("update_term", { projectId: activeId, term: { ...term, ...patch, pinned: true } });
-    // Patch the loaded row in place: a refetch here would reset the scroll
-    // position and re-order the row out from under the cursor.
-    setTerms((all) => all.map((x) => (x.source === term.source ? { ...x, ...patch, pinned: true } : x)));
+  /**
+   * Create or update one term. `original` is null when adding.
+   *
+   * The single write path for the glossary, called only from the term dialog's
+   * Save. Renaming the source form is a delete plus an insert, because `source`
+   * is the primary key.
+   *
+   * Changing the rendering records a **pending rename**: the glossary is fixed
+   * immediately, but the chapters already translated still carry the old
+   * wording until "Update translation" propagates it. That propagation calls
+   * the model per affected paragraph, which is why it is never automatic.
+   */
+  async function saveTerm(next: Term, original: Term | null) {
+    await call("update_term", { projectId: activeId, term: { ...next, pinned: next.pinned } });
+    if (original && original.source !== next.source) {
+      await call("delete_term", { projectId: activeId, source: original.source });
+    }
+
+    if (original && original.target !== next.target) {
+      setPending((p) => {
+        const prev = p[original.source];
+        // The rendering still present in the translated text, which is the one
+        // a later retarget has to search for.
+        const old = prev ? prev.old : original.target;
+        const cleared = { ...p };
+        delete cleared[original.source];
+        if (old === next.target) return cleared;
+        return { ...cleared, [next.source]: { old, new: next.target, kind: next.kind } };
+      });
+    }
+    await refreshGlossary();
   }
-  function editTarget(term: Term, value: string) {
-    const nt = value.trim();
-    if (!nt || nt === term.target) return;
-    void saveTermField(term, { target: nt });
-    setPending((p) => {
-      const prev = p[term.source];
-      const old = prev ? prev.old : term.target; // rendering still in the translated text
-      if (old === nt) { const n = { ...p }; delete n[term.source]; return n; }
-      return { ...p, [term.source]: { old, new: nt, kind: prev?.kind ?? term.kind } };
-    });
-  }
-  function editKind(term: Term, kind: string) {
-    void saveTermField(term, { kind });
-    setPending((p) => (p[term.source] ? { ...p, [term.source]: { ...p[term.source], kind } } : p));
-  }
+
   // Propagate all pending renames into the already-translated text (background job).
   async function updateTranslation() {
     const list = Object.values(pending);
@@ -141,36 +148,22 @@ export function useGlossary({
       logError(String(e));
     }
   }
+  /** Remove a term, after confirming: there is no undo. */
   async function deleteTerm(term: Term) {
+    if (!confirm(t("term.deleteConfirm", { source: term.source, target: term.target }))) return;
     await call("delete_term", { projectId: activeId, source: term.source });
     setPending((p) => { const n = { ...p }; delete n[term.source]; return n; });
     setTerms((all) => all.filter((x) => x.source !== term.source));
     setTotal((n) => Math.max(0, n - 1));
-  }
-  async function renameTerm(term: Term, source: string) {
-    await call("update_term", { projectId: activeId, term: { ...term, source, pinned: true } });
-    await call("delete_term", { projectId: activeId, source: term.source });
-    void refreshGlossary();
-  }
-  async function addTerm() {
-    const source = newTerm.source.trim(), target = newTerm.target.trim();
-    if (!source || !target) return;
-    await call("update_term", {
-      projectId: activeId,
-      term: { source, target, kind: newTerm.kind, frequency: 1, pinned: true },
-    });
-    setNewTerm({ source: "", target: "", kind: "person" });
-    void refreshGlossary();
   }
 
   return {
     terms, total, loading,
     glossaryQuery, setGlossaryQuery,
     kindFilter, setKindFilter,
-    newTerm, setNewTerm,
     pending, setPending, pendingCount,
     refreshGlossary, loadMore,
-    editTarget, editKind, updateTranslation,
-    deleteTerm, renameTerm, addTerm,
+    updateTranslation,
+    saveTerm, deleteTerm,
   };
 }

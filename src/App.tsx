@@ -399,15 +399,11 @@ export default function App() {
                       kindFilter={glossary.kindFilter}
                       setKindFilter={glossary.setKindFilter}
                       onLoadMore={glossary.loadMore}
-                      newTerm={glossary.newTerm} setNewTerm={glossary.setNewTerm}
                       pending={glossary.pending} pendingCount={glossary.pendingCount}
                       progress={progress}
                       onUpdateTranslation={glossary.updateTranslation}
                       onRefreshGlossary={glossary.refreshGlossary}
-                      onAddTerm={glossary.addTerm}
-                      onRenameTerm={glossary.renameTerm}
-                      onEditTarget={glossary.editTarget}
-                      onEditKind={glossary.editKind}
+                      onSaveTerm={glossary.saveTerm}
                       onDeleteTerm={glossary.deleteTerm}
                     />
                   )}

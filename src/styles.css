@@ -285,22 +285,56 @@ tr.add-row input::placeholder { color: var(--fg-subtle); }
 .glossary-grid { border: 1px solid var(--border); border-radius: var(--r-md); overflow: hidden; }
 .glossary-row {
   display: grid;
-  grid-template-columns: 1fr 1fr 170px 90px 44px;
-  gap: 9px;
+  /* source | translation | kind dot | count | actions */
+  grid-template-columns: 1fr 1fr 14px 74px 56px;
+  gap: 10px;
   align-items: center;
-  height: 34px;
+  height: 30px;
   padding: 0 9px;
   border-bottom: 1px solid var(--border);
   box-sizing: border-box;
 }
-.glossary-row input, .glossary-row select { width: 100%; }
+/* Rows are read-only text: editing happens in the term dialog. Long values are
+   clipped rather than wrapped, because the row height is fixed by the
+   windowing list. */
+.glossary-cell { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .glossary-head { color: var(--fg-muted); font-weight: 600; background: var(--bg-panel); }
-.glossary-add { background: var(--bg-elevated); border-bottom: 2px solid var(--border-strong); }
-.glossary-add input::placeholder { color: var(--fg-subtle); }
 .glossary-row.dirty { background: color-mix(in srgb, var(--accent) 12%, transparent); }
-.glossary-count { color: var(--fg-muted); white-space: nowrap; }
+.glossary-row:hover { background: var(--bg-hover); }
+.glossary-count { color: var(--fg-muted); white-space: nowrap; font-variant-numeric: tabular-nums; }
+.glossary-actions { display: flex; gap: 2px; justify-content: flex-end; }
+/* Revealed on hover so a full list stays calm, but kept reachable by keyboard. */
+.glossary-actions button { opacity: 0; padding: 0 4px; line-height: 1; }
+.glossary-row:hover .glossary-actions button,
+.glossary-actions button:focus-visible { opacity: 1; }
 .glossary-rows { max-height: 460px; }
 .glossary-foot { padding: 6px 9px; font-size: 12px; background: var(--bg-panel); }
+
+/* Term dialog */
+.term-dialog {
+  position: relative; z-index: 49;
+  width: min(480px, 100%);
+  padding: 18px 22px 20px;
+  background: var(--bg-elevated); border: 1px solid var(--border-strong);
+  border-radius: var(--r-lg); box-shadow: var(--shadow);
+}
+.term-dialog h3 { margin: 0 0 14px; font-size: 15px; font-weight: 650; }
+.term-field { display: grid; grid-template-columns: 110px 1fr; align-items: center; gap: 10px; margin: 10px 0; }
+.term-field > span { color: var(--fg-muted); }
+.term-field input, .term-field select { width: 100%; }
+.term-check { display: flex; align-items: center; gap: 8px; margin: 14px 0 4px; color: var(--fg-muted); }
+.term-check input { margin: 0; }
+.term-note {
+  margin: 12px 0 0;
+  padding: 9px 11px;
+  border-radius: var(--r-md);
+  background: color-mix(in srgb, var(--warn) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--warn) 35%, transparent);
+  color: var(--fg);
+  font-size: 12px;
+  line-height: 1.5;
+}
+.term-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 18px; }
 
 .settings-page { max-width: 900px; width: 100%; padding: 16px; display: flex; flex-direction: column; min-height: 0; height: 100%; }
 .settings-head { display: flex; align-items: center; justify-content: space-between; }
