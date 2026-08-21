@@ -84,6 +84,21 @@ pub(crate) struct Manifest {
     pub(crate) ref_path: Option<String>,
 }
 
+/// Whether output should default to a zip: "zip in, zip out".
+///
+/// True when either input the project was built from was zipped, the reference
+/// included. That matters here because a project can have a plain-text source
+/// and a zipped reference, which is the common shape when a professional
+/// translation is downloaded as an archive.
+///
+/// Derived from the manifest rather than remembered in the session, because the
+/// session is rebuilt on every open and used to get this only as a side effect
+/// of re-parsing the reference on each activation.
+pub(crate) fn zipped_input_for(source_path: Option<&str>, ref_path: Option<&str>) -> bool {
+    let is_zip = |p: &str| crate::book::source::is_zip(Path::new(p));
+    source_path.is_some_and(is_zip) || ref_path.is_some_and(is_zip)
+}
+
 /// The reference file recorded in a project's manifest, if one was attached.
 pub(crate) fn manifest_ref_path(id: &str) -> Option<String> {
     let bytes = std::fs::read(project_dir(id).join("project.json")).ok()?;
@@ -110,6 +125,16 @@ pub(crate) fn write_manifest(id: &str, source_path: &str, ref_path: Option<&str>
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A zipped reference alone is enough: the source is often a plain .txt.
+    #[test]
+    fn zipped_input_considers_both_inputs() {
+        assert!(!zipped_input_for(Some("/books/novel.txt"), None));
+        assert!(zipped_input_for(Some("/books/novel.zip"), None));
+        assert!(zipped_input_for(Some("/books/novel.txt"), Some("/refs/pro.zip")));
+        assert!(!zipped_input_for(Some("/books/novel.txt"), Some("/refs/pro.fb2")));
+        assert!(!zipped_input_for(None, None));
+    }
 
     #[test]
     fn project_dir_nests_under_app_data() {

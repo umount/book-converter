@@ -152,20 +152,24 @@ pub async fn open_project(
         (Some(content_type), Some(base64)) => Some(Cover { content_type, base64 }),
         _ => None,
     };
-    let source_path = std::fs::read(project_dir(&project_id).join("project.json"))
+    let manifest: Option<Manifest> = std::fs::read(project_dir(&project_id).join("project.json"))
         .ok()
-        .and_then(|b| serde_json::from_slice::<Manifest>(&b).ok())
-        .map(|m| m.source_path);
+        .and_then(|b| serde_json::from_slice(&b).ok());
+    let source_path = manifest.as_ref().map(|m| m.source_path.clone());
+    // "zip in, zip out" has to survive a restart. It used to be set as a side
+    // effect of re-parsing the reference on every activation, so it was lost
+    // when that stopped; the manifest records both inputs, so ask it.
+    let zipped = crate::session::zipped_input_for(
+        source_path.as_deref(),
+        manifest.as_ref().and_then(|m| m.ref_path.as_deref()),
+    );
 
     state.with(&project_id, |s| {
         s.reference = None;
         s.style = None;
         s.cancel = None;
         s.running = false;
-        s.zipped_input = source_path
-            .as_deref()
-            .map(|p| p.to_lowercase().ends_with(".zip"))
-            .unwrap_or(false);
+        s.zipped_input = zipped;
         s.db_path = Some(db.clone());
         s.source_path = source_path;
         s.title = (!title.is_empty()).then(|| title.clone());
