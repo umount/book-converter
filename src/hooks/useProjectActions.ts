@@ -78,14 +78,14 @@ export function useProjectActions({
     addLogTo(p.id, t("log.loaded", {
       name: p.name, n: info.total_chapters, format: info.format, encoding: info.encoding,
     }));
-    // Re-attach the reference for canon/style if its file is still available.
-    if (p.refPath) {
-      try {
-        const r = await invoke<RefInfo>("load_reference", { projectId: p.id, path: p.refPath });
-        book.setRef(r);
-        addLogTo(p.id, t("log.reference", { n: r.max_covered ?? "?" }));
-        if (r.imported > 0) addLogTo(p.id, t("log.refImported", { n: r.imported }));
-      } catch { /* reference file gone (e.g. imported project) */ }
+    // Reference facts come from the project's own database. Activation used to
+    // call load_reference here, which re-read and re-parsed the professional
+    // translation AND the whole source book on every open, for data that was
+    // already stored. On a book of this size that was most of the wait.
+    const r = await call<RefInfo | null>("get_reference_info", { projectId: p.id });
+    if (r) {
+      book.setRef(r);
+      addLogTo(p.id, t("log.reference", { n: r.max_covered ?? "?" }));
     }
     await book.refreshDetails();
     await job.refreshProgressFor(p.id);

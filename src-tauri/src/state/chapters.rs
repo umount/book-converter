@@ -544,6 +544,82 @@ impl Store {
 
     /// Done chapters with source + translation, in reading order:
     /// `(idx, source, translated)`.
+    /// Chapters seeded from a reference translation: how many, and the highest
+    /// book number among them.
+    ///
+    /// Derived from the chapters themselves rather than remembered separately,
+    /// so it stays true after a reset (which keeps the text and only changes
+    /// status) and needs no access to the reference file.
+    pub fn reference_stats(&self) -> Result<(usize, Option<usize>)> {
+        self.conn
+            .query_row(
+                "SELECT COUNT(*), MAX(number) FROM chapters
+                 WHERE origin = 'reference'
+                   AND translated IS NOT NULL AND TRIM(translated) != ''",
+                [],
+                |r| {
+                    Ok((
+                        r.get::<_, i64>(0)? as usize,
+                        r.get::<_, Option<i64>>(1)?.map(|n| n as usize),
+                    ))
+                },
+            )
+            .map_err(Into::into)
+    }
+
+    /// Source and professional-translation pairs from reference-seeded chapters,
+    /// in reading order. This is what a pinned glossary is mined from.
+    pub fn reference_pairs(&self, limit: usize) -> Result<Vec<(usize, String, String)>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT idx, source, translated FROM chapters
+             WHERE origin = 'reference'
+               AND translated IS NOT NULL AND TRIM(translated) != ''
+               AND source IS NOT NULL AND TRIM(source) != ''
+             ORDER BY idx
+             LIMIT ?1",
+        )?;
+        let rows = stmt
+            .query_map(params![limit as i64], |r| {
+                Ok((
+                    r.get::<_, i64>(0)? as usize,
+                    r.get::<_, String>(1)?,
+                    r.get::<_, String>(2)?,
+                ))
+            })?
+            .collect::<rusqlite::Result<Vec<_>>>()?;
+        Ok(rows)
+    }
+
+    /// A style excerpt from the first substantial reference chapter, for the
+    /// few-shot style guide in translation prompts.
+    pub fn reference_style(&self, max_chars: usize) -> Result<Option<String>> {
+        let text: Option<String> = self
+            .conn
+            .query_row(
+                "SELECT translated FROM chapters
+                 WHERE origin = 'reference' AND LENGTH(translated) > 200
+                 ORDER BY idx LIMIT 1",
+                [],
+                |r| r.get(0),
+            )
+            .optional()?;
+        Ok(text.map(|t| t.chars().take(max_chars).collect()))
+    }
+
+    /// Put reference-seeded chapters that were reset back to `done`.
+    ///
+    /// A reset only changes status, so the professional text is still there;
+    /// re-seeding is restoring the status, not re-importing the text.
+    pub fn restore_reference_chapters(&self) -> Result<usize> {
+        let n = self.conn.execute(
+            "UPDATE chapters SET status = 'done', updated_at = datetime('now')
+             WHERE origin = 'reference' AND status = 'pending'
+               AND translated IS NOT NULL AND TRIM(translated) != ''",
+            [],
+        )?;
+        Ok(n)
+    }
+
     pub fn done_chapter_pairs(&self) -> Result<Vec<(usize, String, String)>> {
         let mut stmt = self.conn.prepare(
             "SELECT idx, source, translated FROM chapters

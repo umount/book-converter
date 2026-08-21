@@ -113,16 +113,33 @@ pub(crate) fn import_reference_pending(
     reference: &crate::reference::Reference,
 ) -> anyhow::Result<usize> {
     let source = load_book(Path::new(source_path))?;
+    let store = Store::open(db)?;
+
+    // Prefer chapter numbers: they survive different editions and languages.
     let idx_by_number: HashMap<usize, usize> = source
         .chapters
         .iter()
         .filter_map(|c| c.number.map(|n| (n, c.index)))
         .collect();
-    let store = Store::open(db)?;
+
     let mut count = 0;
-    for rc in &reference.chapters {
-        if let Some(&idx) = rc.number.and_then(|n| idx_by_number.get(&n)) {
-            if store.save_reference_chapter(idx, &rc.title, &rc.body)? {
+    if !idx_by_number.is_empty() {
+        for rc in &reference.chapters {
+            if let Some(&idx) = rc.number.and_then(|n| idx_by_number.get(&n)) {
+                if store.save_reference_chapter(idx, &rc.title, &rc.body)? {
+                    count += 1;
+                }
+            }
+        }
+    }
+
+    // Positional fallback, for a reference (or a source) whose chapters carry no
+    // numbers. Import is the only place alignment happens now, so the fallback
+    // has to live here: everything downstream reads the aligned pairs from the
+    // database.
+    if count == 0 {
+        for (sc, rc) in source.chapters.iter().zip(reference.chapters.iter()) {
+            if store.save_reference_chapter(sc.index, &rc.title, &rc.body)? {
                 count += 1;
             }
         }

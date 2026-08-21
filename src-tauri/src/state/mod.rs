@@ -352,6 +352,47 @@ mod tests {
         }
     }
 
+    /// Everything the app needs from a reference after import is answerable from
+    /// the chapters themselves, with no access to the reference file.
+    #[test]
+    fn reference_facts_come_from_the_chapters() {
+        let store = Store::open(":memory:").unwrap();
+        store.init_chapters(&sample()).unwrap();
+        assert_eq!(store.reference_stats().unwrap(), (0, None));
+        assert!(store.reference_pairs(10).unwrap().is_empty());
+
+        let long = "Профессиональный перевод. ".repeat(20);
+        assert!(store.save_reference_chapter(1, "Глава 1", &long).unwrap());
+        assert!(store.save_reference_chapter(2, "Глава 2", "Короткая.").unwrap());
+
+        assert_eq!(store.reference_stats().unwrap(), (2, Some(2)));
+        let pairs = store.reference_pairs(10).unwrap();
+        assert_eq!(pairs.len(), 2);
+        assert_eq!(pairs[0].0, 1);
+        assert_eq!(pairs[0].2, long);
+        assert_eq!(store.reference_pairs(1).unwrap().len(), 1);
+        // The style excerpt skips the chapter that is too short to be one.
+        assert!(store.reference_style(50).unwrap().unwrap().starts_with("Профессиональный"));
+    }
+
+    /// A reset keeps the professional text, so re-seeding is restoring status.
+    #[test]
+    fn reference_chapters_survive_a_reset_and_can_be_restored() {
+        let store = Store::open(":memory:").unwrap();
+        store.init_chapters(&sample()).unwrap();
+        store.save_reference_chapter(1, "Глава 1", "Текст.").unwrap();
+        assert_eq!(store.stats().unwrap().done, 1);
+
+        store.reset_from(None).unwrap();
+        assert_eq!(store.stats().unwrap().done, 0);
+        // The text is still there, which is why nothing needs re-importing.
+        assert_eq!(store.reference_stats().unwrap().0, 1);
+
+        assert_eq!(store.restore_reference_chapters().unwrap(), 1);
+        assert_eq!(store.stats().unwrap().done, 1);
+        assert_eq!(store.chapter_full(1).unwrap().unwrap().6.unwrap(), "reference");
+    }
+
     fn glossary_sample() -> Vec<Term> {
         vec![
             Term { source: "王林".into(), target: "Ван Линь".into(), kind: TermKind::Person, frequency: 90, pinned: true },

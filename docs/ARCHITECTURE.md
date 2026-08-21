@@ -160,10 +160,23 @@ Encoding on input is detected (UTF-8 / GBK / GB18030 / Big5, …).
 
 ## Reference Translation (optional)
 
-1. **Parse** the reference into chapters.
-2. **Align** by reading order / chapter numbers; seed pending chapters in continue mode.
-3. **Bootstrap** pinned glossary from a ~30-chapter sample.
-4. **Style exemplar** injected into translation prompts.
+Loading a reference is a **one-time import**. It parses the file, aligns it to the
+source (by chapter number, falling back to reading order when either side is
+unnumbered), and writes everything into the project database: the professional
+chapters, the style exemplar, and the title/annotation/cover it contributes.
+
+Afterwards nothing reads the reference file again:
+
+| Step | Reads |
+|---|---|
+| Open the project (`get_reference_info`) | the database |
+| Bootstrap the pinned glossary | the aligned pairs already in the database |
+| Re-seed covered chapters (`use_reference_as_base`) | the database (a reset keeps the text, only status changes) |
+| Style exemplar in prompts | `meta.ref_style` |
+
+Activation used to call `load_reference`, which re-parsed the professional
+translation **and** the whole source book on every open, for data that was
+already stored. On a 1354-chapter book that was most of the wait.
 
 ## State Storage (SQLite)
 
@@ -230,7 +243,8 @@ state of a run in flight.
 ### Reference
 | Command | Purpose |
 |---------|---------|
-| `load_reference` | Load reference; seed pending chapters |
+| `load_reference` | One-time import: parse, align, and write chapters + style + metadata into the DB |
+| `get_reference_info` | What the DB knows about the attached reference (no file access) |
 | `bootstrap_glossary` | Pinned glossary from aligned sample |
 | `harvest_glossary` | Extract terms from done chapters (start or end) into glossary |
 | `use_reference_as_base` | Explicit continue-mode re-seed |
