@@ -2,6 +2,7 @@
 
 pub mod deepseek;
 pub mod prompt;
+pub mod repair;
 pub mod reply;
 
 pub use deepseek::DeepSeekClient;

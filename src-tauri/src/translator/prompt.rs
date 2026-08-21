@@ -209,38 +209,6 @@ pub fn user_prompt(ctx: &PromptContext, text: &str, shape: ReplyShape) -> String
     out
 }
 
-/// Build a (system, user) prompt asking the model to repair a translation that
-/// still carries words in the wrong language: the fragments are named explicitly,
-/// and everything else must come back untouched.
-pub fn build_language_fix_prompt(
-    config: &Config,
-    fragments: &[String],
-    text: &str,
-) -> (String, String) {
-    let system = format!(
-        "You clean up a {tgt} literary translation. The text below still contains \
-         words that are not in {tgt}. Replace every one of them with proper {tgt}: \
-         personal names are transliterated by sound (never translated by meaning); \
-         place, sect and technique names are translated by meaning when they carry \
-         one, transliterated otherwise; everything else is translated. Never leave \
-         a word in the original script{no_roman}, and never keep a foreign stem \
-         with {tgt} endings attached — replace the whole word. \
-         Replace every occurrence of each fragment, including capitalised, plural \
-         and inflected forms, and any phrase built around it. \
-         Change nothing else — keep \
-         wording, paragraphs and punctuation exactly as they are. Output only the \
-         corrected text.",
-        tgt = config.target_lang,
-        no_roman = if target_is_english(config) { "" } else { " or in an English romanization" },
-    );
-    let mut user = String::from("Fragments that must not remain:\n");
-    for f in fragments {
-        let _ = writeln!(user, "- {f}");
-    }
-    let _ = write!(user, "\nText:\n{text}");
-    (system, user)
-}
-
 /// Build a (system, user) prompt to fold a freshly translated chapter into the
 /// running summary. Keeps continuity compact so the prompt stays small.
 pub fn build_summary_prompt(
@@ -386,15 +354,6 @@ mod tests {
     }
 
     #[test]
-    fn language_fix_prompt_lists_fragments() {
-        let cfg = Config::default();
-        let (_s, u) = build_language_fix_prompt(&cfg, &["王林".into(), "cultivation".into()], "Текст");
-        assert!(u.contains("- 王林"));
-        assert!(u.contains("- cultivation"));
-        assert!(u.trim_end().ends_with("Текст"));
-    }
-
-    #[test]
     fn system_prompt_bans_english_genre_jargon() {
         let s = system_prompt(&Config::default()); // Chinese → Russian
         assert!(s.contains("cultivation base"));
@@ -412,16 +371,5 @@ mod tests {
         assert!(s.contains("established English terminology"));
         // The script rules still apply: nothing may stay in Chinese.
         assert!(s.contains("entire output in English"));
-
-        let (fix, _u) = build_language_fix_prompt(&cfg, &["王林".into()], "text");
-        assert!(!fix.contains("English romanization"));
-    }
-
-    #[test]
-    fn fix_prompt_covers_inflected_forms() {
-        let (_s, u) = build_language_fix_prompt(&Config::default(), &["cultivation".into()], "т");
-        assert!(u.contains("- cultivation"));
-        let (s, _u) = build_language_fix_prompt(&Config::default(), &["x".into()], "т");
-        assert!(s.contains("inflected forms"));
     }
 }

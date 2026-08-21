@@ -24,7 +24,7 @@ use crate::glossary::{self, Term};
 use crate::state::{Stats, Status, Store};
 use crate::textutil;
 use crate::translator::prompt::ReplyShape;
-use crate::translator::{prompt, reply, DeepSeekClient};
+use crate::translator::{prompt, repair, reply, DeepSeekClient};
 
 /// Shortest run of unexpected-script letters treated as a leftover foreign word.
 /// Single letters (an initial, a unit) are ignored; Han is always reported.
@@ -288,8 +288,10 @@ impl<'a> Orchestrator<'a> {
 
         let started = Instant::now();
         match self.translate_one(&title, &source, user_note.as_deref()).await {
-            Ok((t_title, body)) => {
-                let (t_body, lang_issues) = self.enforce_target_language(idx, &body, &source).await;
+            Ok((title_out, body)) => {
+                let (t_title, t_body, lang_issues) = self
+                    .enforce_target_language(idx, &title_out, &body, &source)
+                    .await;
                 let ms = started.elapsed().as_millis() as u64;
                 self.store
                     .save_translation_timed(idx, &t_title, &t_body, Some(ms))?;
@@ -393,59 +395,86 @@ impl<'a> Orchestrator<'a> {
     }
 
     /// Catch words the model left in the source language (or pulled in from a
-    /// third one) and ask it to redo just those. Retries while it keeps making
-    /// progress, up to `MAX_LANGUAGE_REPAIRS`: in practice the first pass clears
-    /// most of a chapter and the second finishes the stubborn genre jargon
-    /// ("cultivation"). Whatever survives is logged with the chapter, so it can
-    /// be found afterwards.
+    /// third one) and ask it to redo **just the lines they sit in**.
+    ///
+    /// The title is line 0 of that list, so a title that kept a foreign word is
+    /// repaired in the same request as the body rather than needing its own.
+    /// Retries while it keeps making progress, up to `MAX_LANGUAGE_REPAIRS`: in
+    /// practice the first pass clears most of a chapter and the second finishes
+    /// the stubborn genre jargon ("cultivation"). Whatever survives is logged
+    /// with the chapter, so it can be found afterwards.
+    ///
+    /// Returns the repaired `(title, body)` and the fragments still present.
     async fn enforce_target_language(
         &self,
         idx: usize,
-        translation: &str,
+        title: &str,
+        body: &str,
         source: &str,
-    ) -> (String, Vec<String>) {
+    ) -> (String, String, Vec<String>) {
         let Some(expected) = textutil::expected_script(&self.config.target_lang) else {
-            return (translation.to_string(), Vec::new());
+            return (title.to_string(), body.to_string(), Vec::new());
         };
 
-        let mut text = translation.to_string();
-        let mut bad = textutil::foreign_fragments(&text, expected, source, MIN_FOREIGN_RUN);
+        // Line 0 is the title; the body follows. Splitting on '\n' rather than
+        // `lines()` keeps blank lines, so paragraph structure survives the join.
+        let mut lines: Vec<String> = std::iter::once(title.to_string())
+            .chain(body.split('\n').map(|l| l.to_string()))
+            .collect();
+
+        let joined = |lines: &[String]| lines.join("\n");
+        let mut bad = textutil::foreign_fragments(&joined(&lines), expected, source, MIN_FOREIGN_RUN);
+
         for attempt in 0..MAX_LANGUAGE_REPAIRS {
             if bad.is_empty() {
                 break;
             }
+            let targets = repair::lines_with_fragments(&lines, &bad);
+            if targets.is_empty() {
+                // The fragments live in whitespace-only or joined-away text; no
+                // line to send, so another pass cannot help.
+                break;
+            }
+            let numbered: Vec<repair::NumberedLine> = targets
+                .iter()
+                .map(|&n| repair::NumberedLine { n, text: lines[n].clone() })
+                .collect();
+            let sent_chars: usize = numbered.iter().map(|l| l.text.chars().count()).sum();
             tracing::info!(
                 chapter = idx,
                 attempt,
                 fragments = ?bad,
-                "translation kept foreign words; repairing"
+                lines = numbered.len(),
+                of_lines = lines.len(),
+                chars = sent_chars,
+                "translation kept foreign words; repairing the affected lines"
             );
 
-            let (system, user) = prompt::build_language_fix_prompt(self.config, &bad, &text);
-            let fixed = match self.client.translate(&system, &user).await {
-                Ok(fixed) if !fixed.trim().is_empty() => fixed,
-                Ok(_) => break,
-                Err(e) => {
-                    tracing::warn!(chapter = idx, "language repair failed: {e:#}");
-                    break;
+            let mut changed = 0usize;
+            for batch in repair::batches(&numbered, repair::MAX_BATCH_CHARS) {
+                let (system, user) = repair::build_prompt(self.config, &bad, &batch);
+                let raw = match self.client.translate_json(&system, &user).await {
+                    Ok(raw) => raw,
+                    Err(e) => {
+                        tracing::warn!(chapter = idx, "language repair request failed: {e:#}");
+                        break;
+                    }
+                };
+                match repair::parse_reply(&raw) {
+                    // Per-line validation lives in `splice`: a mangled reply can
+                    // now only lose its own line, never the chapter.
+                    Ok(fixed) => changed += repair::splice(&mut lines, &fixed),
+                    Err(e) => tracing::warn!(chapter = idx, "unparseable repair reply: {e:#}"),
                 }
-            };
-
-            // Reject a "repair" that mangled the text: a model that shortens the
-            // chapter instead of fixing words is worse than the leftover words.
-            if fixed.chars().count() * 4 < text.chars().count() * 3 {
-                tracing::warn!(
-                    chapter = idx,
-                    "language repair returned a much shorter text; keeping the previous one"
-                );
+            }
+            if changed == 0 {
+                // Nothing was accepted, so an identical request will not help.
                 break;
             }
 
-            let still = textutil::foreign_fragments(&fixed, expected, source, MIN_FOREIGN_RUN);
+            let still = textutil::foreign_fragments(&joined(&lines), expected, source, MIN_FOREIGN_RUN);
             let progressed = still.len() < bad.len();
-            text = fixed;
             bad = still;
-            // No progress means another identical request will not help either.
             if !progressed {
                 break;
             }
@@ -454,7 +483,9 @@ impl<'a> Orchestrator<'a> {
         if !bad.is_empty() {
             tracing::warn!(chapter = idx, fragments = ?bad, "foreign words remain after repair");
         }
-        (text, bad)
+
+        let title = lines.remove(0);
+        (title, lines.join("\n").trim().to_string(), bad)
     }
 
     async fn update_summary(&self, translation: &str) -> Result<String> {
