@@ -215,7 +215,7 @@ impl<'a, C: Translate> Orchestrator<'a, C> {
             let status_ok = self
                 .store
                 .chapter_full(idx)?
-                .map(|r| r.3 == "done")
+                .map(|chapter| chapter.status == "done")
                 .unwrap_or(false);
             if status_ok {
                 job_done += 1;
@@ -737,7 +737,11 @@ mod tests {
         assert_eq!(seen, vec![Some(1), Some(2), Some(3)]);
         assert_eq!(store.stats().unwrap().done, 3);
         assert!(store.pending_chapters().unwrap().is_empty());
-        let (title, body) = store.chapter_full(2).unwrap().map(|r| (r.4.unwrap(), r.5.unwrap())).unwrap();
+        let chapter = store.chapter_full(2).unwrap().unwrap();
+        let (title, body) = (
+            chapter.translated_title.unwrap(),
+            chapter.translated.unwrap(),
+        );
         assert_eq!(title, "Глава 2");
         assert_eq!(body, "Глава 2. Перевод главы.");
     }
@@ -793,7 +797,7 @@ mod tests {
         let stats = store.stats().unwrap();
         assert_eq!(stats.done, 2);
         assert_eq!(stats.failed, 1);
-        assert_eq!(store.chapter_full(2).unwrap().unwrap().3, "failed");
+        assert_eq!(store.chapter_full(2).unwrap().unwrap().status, "failed");
     }
 
     /// The terms a chapter teaches must be in the database before the next
@@ -848,7 +852,7 @@ mod tests {
 
         orch.run(None, &AtomicBool::new(false), |_| {}).await.unwrap();
 
-        let body = store.chapter_full(1).unwrap().unwrap().5.unwrap();
+        let body = store.chapter_full(1).unwrap().unwrap().translated.unwrap();
         assert_eq!(
             body,
             "Первая строка.\nОн увидел культивацию.\nТретья строка."
@@ -895,8 +899,8 @@ mod tests {
         orch.run(None, &AtomicBool::new(false), |_| {}).await.unwrap();
 
         let row = store.chapter_full(1).unwrap().unwrap();
-        assert_eq!(row.4.unwrap(), "Глава 1: культивация");
-        assert_eq!(row.5.unwrap(), "Чистая строка перевода.");
+        assert_eq!(row.translated_title.unwrap(), "Глава 1: культивация");
+        assert_eq!(row.translated.unwrap(), "Чистая строка перевода.");
     }
 
     /// A clean translation costs nothing extra: no repair request at all.

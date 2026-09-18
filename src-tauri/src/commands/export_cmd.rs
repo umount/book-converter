@@ -51,7 +51,7 @@ pub async fn export_book(
         .list_chapters()
         .map_err(err)?
         .into_iter()
-        .map(|(idx, number, ..)| (idx, number))
+        .map(|row| (row.idx, row.number))
         .collect();
     let mut chapters: Vec<TranslatedChapter> = rows
         .into_iter()

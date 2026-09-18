@@ -7,7 +7,7 @@ use rusqlite::{params, OptionalExtension};
 
 use crate::book::Chapter;
 
-use super::{ChapterListRow, Stats, Status, Store};
+use super::{ChapterListRow, ChapterRecord, Stats, Status, Store};
 
 impl Store {
     /// Load the book's chapters into the database.
@@ -414,9 +414,7 @@ impl Store {
         Ok(stats)
     }
 
-    /// List chapters for the UI:
-    /// `(idx, number, title, translated_title, status, origin, lang_issues)` in order.
-    #[allow(clippy::type_complexity)]
+    /// List chapters for the UI in reading order.
     pub fn list_chapters(&self) -> Result<Vec<ChapterListRow>> {
         let mut stmt = self.conn.prepare(
             "SELECT idx, number, title, translated_title, status, origin, lang_issues
@@ -424,38 +422,22 @@ impl Store {
         )?;
         let rows = stmt
             .query_map([], |r| {
-                Ok((
-                    r.get::<_, i64>(0)? as usize,
-                    r.get::<_, Option<i64>>(1)?.map(|n| n as usize),
-                    r.get::<_, String>(2)?,
-                    r.get::<_, Option<String>>(3)?,
-                    r.get::<_, String>(4)?,
-                    r.get::<_, Option<String>>(5)?,
-                    r.get::<_, Option<String>>(6)?,
-                ))
+                Ok(ChapterListRow {
+                    idx: r.get::<_, i64>(0)? as usize,
+                    number: r.get::<_, Option<i64>>(1)?.map(|n| n as usize),
+                    title: r.get(2)?,
+                    translated_title: r.get(3)?,
+                    status: r.get(4)?,
+                    origin: r.get(5)?,
+                    lang_issues: r.get(6)?,
+                })
             })?
             .collect::<rusqlite::Result<Vec<_>>>()?;
         Ok(rows)
     }
 
-    /// Full chapter view:
-    /// `(number, source_title, source, status, translated_title, translated, origin, user_prompt)`.
-    #[allow(clippy::type_complexity)]
-    pub fn chapter_full(
-        &self,
-        index: usize,
-    ) -> Result<
-        Option<(
-            Option<usize>,
-            String,
-            String,
-            String,
-            Option<String>,
-            Option<String>,
-            Option<String>,
-            Option<String>,
-        )>,
-    > {
+    /// Full chapter view for the reader and translation coordinator.
+    pub fn chapter_full(&self, index: usize) -> Result<Option<ChapterRecord>> {
         let row = self
             .conn
             .query_row(
@@ -463,16 +445,16 @@ impl Store {
                  FROM chapters WHERE idx = ?1",
                 params![index as i64],
                 |r| {
-                    Ok((
-                        r.get::<_, Option<i64>>(0)?.map(|n| n as usize),
-                        r.get::<_, String>(1)?,
-                        r.get::<_, String>(2)?,
-                        r.get::<_, String>(3)?,
-                        r.get::<_, Option<String>>(4)?,
-                        r.get::<_, Option<String>>(5)?,
-                        r.get::<_, Option<String>>(6)?,
-                        r.get::<_, Option<String>>(7)?,
-                    ))
+                    Ok(ChapterRecord {
+                        number: r.get::<_, Option<i64>>(0)?.map(|n| n as usize),
+                        source_title: r.get(1)?,
+                        source: r.get(2)?,
+                        status: r.get(3)?,
+                        translated_title: r.get(4)?,
+                        translated: r.get(5)?,
+                        origin: r.get(6)?,
+                        user_prompt: r.get(7)?,
+                    })
                 },
             )
             .optional()?;

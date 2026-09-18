@@ -107,20 +107,36 @@ CREATE TABLE IF NOT EXISTS glossary (
 );
 "#;
 
-/// A chapter row for the list: `(idx, number, title, translated title, status,
-/// origin, language issues)`.
-pub type ChapterListRow = (
-    usize,
-    Option<usize>,
-    String,
-    Option<String>,
-    String,
-    Option<String>,
-    Option<String>,
-);
+/// Lightweight chapter row for list views.
+pub(crate) struct ChapterListRow {
+    pub(crate) idx: usize,
+    pub(crate) number: Option<usize>,
+    pub(crate) title: String,
+    pub(crate) translated_title: Option<String>,
+    pub(crate) status: String,
+    pub(crate) origin: Option<String>,
+    pub(crate) lang_issues: Option<String>,
+}
 
-/// A chapter's searchable text: `(idx, number, display title, text)`.
-pub type SearchableChapter = (usize, Option<usize>, String, String);
+/// Complete chapter data used by the reader and translation coordinator.
+pub(crate) struct ChapterRecord {
+    pub(crate) number: Option<usize>,
+    pub(crate) source_title: String,
+    pub(crate) source: String,
+    pub(crate) status: String,
+    pub(crate) translated_title: Option<String>,
+    pub(crate) translated: Option<String>,
+    pub(crate) origin: Option<String>,
+    pub(crate) user_prompt: Option<String>,
+}
+
+/// A chapter's searchable text.
+pub(crate) struct SearchableChapter {
+    pub(crate) idx: usize,
+    pub(crate) number: Option<usize>,
+    pub(crate) title: String,
+    pub(crate) text: String,
+}
 
 /// Progress store on top of SQLite.
 pub struct Store {
@@ -319,7 +335,10 @@ mod tests {
         // A concurrent reader, exactly as every Tauri command does it.
         let reader = Store::open(path_str).unwrap();
         assert_eq!(reader.stats().unwrap().in_progress, 1);
-        assert_eq!(reader.chapter_full(2).unwrap().unwrap().3, "in_progress");
+        assert_eq!(
+            reader.chapter_full(2).unwrap().unwrap().status,
+            "in_progress"
+        );
 
         // The translating connection still sees its own chapter as in flight.
         assert_eq!(running.stats().unwrap().in_progress, 1);
@@ -403,7 +422,10 @@ mod tests {
 
         assert_eq!(store.restore_reference_chapters().unwrap(), 1);
         assert_eq!(store.stats().unwrap().done, 1);
-        assert_eq!(store.chapter_full(1).unwrap().unwrap().6.unwrap(), "reference");
+        assert_eq!(
+            store.chapter_full(1).unwrap().unwrap().origin.unwrap(),
+            "reference"
+        );
     }
 
     fn glossary_sample() -> Vec<Term> {
@@ -625,9 +647,9 @@ mod tests {
             .save_manual_translation(1, "Заголовок", "ручной текст")
             .unwrap();
         let full = store.chapter_full(1).unwrap().unwrap();
-        assert_eq!(full.3, "done");
-        assert_eq!(full.5.as_deref(), Some("ручной текст"));
-        assert_eq!(full.6.as_deref(), Some("manual"));
+        assert_eq!(full.status, "done");
+        assert_eq!(full.translated.as_deref(), Some("ручной текст"));
+        assert_eq!(full.origin.as_deref(), Some("manual"));
     }
 
     #[test]
@@ -644,7 +666,7 @@ mod tests {
         );
         let full = store.chapter_full(1).unwrap().unwrap();
         assert_eq!(
-            full.7.as_deref(),
+            full.user_prompt.as_deref(),
             Some("Translate 她 as господин, not госпожа.")
         );
         store.set_chapter_user_prompt(1, "   ").unwrap();

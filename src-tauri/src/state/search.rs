@@ -19,12 +19,12 @@ impl Store {
         let mut stmt = self.conn.prepare(sql)?;
         let rows = stmt
             .query_map([], |r| {
-                Ok((
-                    r.get::<_, i64>(0)? as usize,
-                    r.get::<_, Option<i64>>(1)?.map(|n| n as usize),
-                    r.get::<_, String>(2)?,
-                    r.get::<_, String>(3)?,
-                ))
+                Ok(SearchableChapter {
+                    idx: r.get::<_, i64>(0)? as usize,
+                    number: r.get::<_, Option<i64>>(1)?.map(|n| n as usize),
+                    title: r.get(2)?,
+                    text: r.get(3)?,
+                })
             })?
             .collect::<rusqlite::Result<Vec<_>>>()?;
         Ok(rows)

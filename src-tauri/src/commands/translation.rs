@@ -201,8 +201,8 @@ pub async fn update_chapter_translation(
         .with(&project_id, |s| s.db_path.clone())
         .ok_or("no_source")?;
     let store = Store::open(&db).map_err(err)?;
-    if let Some((_, _, _, status, ..)) = store.chapter_full(index).map_err(err)? {
-        if status == "in_progress" {
+    if let Some(chapter) = store.chapter_full(index).map_err(err)? {
+        if chapter.status == "in_progress" {
             return Err("chapter_busy".into());
         }
     }

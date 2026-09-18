@@ -23,17 +23,15 @@ pub async fn list_chapters(
     let rows = store.list_chapters().map_err(err)?;
     Ok(rows
         .into_iter()
-        .map(
-            |(idx, number, title, translated_title, status, origin, lang_issues)| ChapterRow {
-                idx,
-                number,
-                title,
-                translated_title,
-                status,
-                origin,
-                lang_issues,
-            },
-        )
+        .map(|row| ChapterRow {
+            idx: row.idx,
+            number: row.number,
+            title: row.title,
+            translated_title: row.translated_title,
+            status: row.status,
+            origin: row.origin,
+            lang_issues: row.lang_issues,
+        })
         .collect())
 }
 
@@ -48,22 +46,21 @@ pub async fn get_chapter(
         .with(&project_id, |s| s.db_path.clone())
         .ok_or("no_source")?;
     let store = Store::open(&db).map_err(err)?;
-    let (number, source_title, source, status, translated_title, translated, origin, user_prompt) =
-        store
-            .chapter_full(index)
-            .map_err(err)?
-            .ok_or("chapter not found")?;
+    let row = store
+        .chapter_full(index)
+        .map_err(err)?
+        .ok_or("chapter not found")?;
     let (rolling_summary, prev_tail) = store.context_before(index).map_err(err)?;
     Ok(ChapterView {
         idx: index,
-        number,
-        source_title,
-        source,
-        translated_title,
-        translated,
-        status,
-        origin,
-        user_prompt,
+        number: row.number,
+        source_title: row.source_title,
+        source: row.source,
+        translated_title: row.translated_title,
+        translated: row.translated,
+        status: row.status,
+        origin: row.origin,
+        user_prompt: row.user_prompt,
         rolling_summary: if rolling_summary.trim().is_empty() {
             None
         } else {
@@ -157,10 +154,10 @@ fn search_all(
 
     let store = Store::open(db)?;
     let mut out = Vec::new();
-    for (idx, number, title, text) in store.searchable_chapters(in_source)? {
+    for chapter in store.searchable_chapters(in_source)? {
         let mut hits = Vec::new();
         let mut count = 0usize;
-        for (n, line) in text.lines().enumerate() {
+        for (n, line) in chapter.text.lines().enumerate() {
             let Some(m) = re.find(line) else { continue };
             count += re.find_iter(line).count();
             if hits.len() < MAX_HITS_PER_CHAPTER {
@@ -171,7 +168,13 @@ fn search_all(
             }
         }
         if count > 0 {
-            out.push(SearchChapter { idx, number, title, count, hits });
+            out.push(SearchChapter {
+                idx: chapter.idx,
+                number: chapter.number,
+                title: chapter.title,
+                count,
+                hits,
+            });
             if out.len() >= MAX_CHAPTERS {
                 break;
             }
