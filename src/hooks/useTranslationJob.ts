@@ -40,7 +40,7 @@ type TranslateOpts = {
   chapterNumberOf: (idx: number) => number | null;
   loadChapters: () => void | Promise<void>;
   /** Apply a saved manual edit locally (no refetch, keeps the editor mounted). */
-  applyChapterEdit: (idx: number, title: string, body: string) => void;
+  applyChapterEdit: (idx: number, title: string, body: string, langIssues: string | null) => void;
   errText: (raw: string) => string;
   limit: number | "";
 };
@@ -275,13 +275,15 @@ export function useTranslationJob({
    * the user is typing, so it must not reload the chapter or the whole tree.
    */
   async function saveChapterTranslation(idx: number, title: string, body: string) {
-    await call("update_chapter_translation", {
+    const langIssues = await call<string | null>("update_chapter_translation", {
       projectId: activeId,
       index: idx,
       translatedTitle: title,
       translated: body,
     });
-    applyChapterEdit(idx, title, body);
+    // `undefined` means the IPC failed; keep the previous tree flags.
+    if (langIssues === undefined) return;
+    applyChapterEdit(idx, title, body, langIssues);
   }
 
   // Reset chapters to pending for a fresh run with the current glossary. `pos` is

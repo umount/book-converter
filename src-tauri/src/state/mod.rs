@@ -380,7 +380,7 @@ mod tests {
         assert!(!store.has_translation(1).unwrap());
         store.save_translation(1, "Глава 1", "Текст главы.").unwrap();
         assert!(store.has_translation(1).unwrap());
-        store.save_manual_translation(2, "", "   ").unwrap();
+        store.save_manual_translation(2, "", "   ", &[]).unwrap();
         assert!(!store.has_translation(2).unwrap());
     }
 
@@ -644,12 +644,32 @@ mod tests {
         let store = Store::open(":memory:").unwrap();
         store.init_chapters(&sample()).unwrap();
         store
-            .save_manual_translation(1, "Заголовок", "ручной текст")
+            .save_manual_translation(1, "Заголовок", "ручной текст", &[])
             .unwrap();
         let full = store.chapter_full(1).unwrap().unwrap();
         assert_eq!(full.status, "done");
         assert_eq!(full.translated.as_deref(), Some("ручной текст"));
         assert_eq!(full.origin.as_deref(), Some("manual"));
+        assert_eq!(store.list_chapters().unwrap()[0].lang_issues, None);
+    }
+
+    #[test]
+    fn manual_translation_clears_or_keeps_language_issues() {
+        let store = Store::open(":memory:").unwrap();
+        store.init_chapters(&sample()).unwrap();
+        store.set_language_issues(1, &["王林".into()]).unwrap();
+        store
+            .save_manual_translation(1, "Глава 1", "Он посмотрел на него.", &[])
+            .unwrap();
+        assert_eq!(store.list_chapters().unwrap()[0].lang_issues, None);
+
+        store
+            .save_manual_translation(1, "Глава 1", "Он посмотрел на 王林.", &["王林".into()])
+            .unwrap();
+        assert_eq!(
+            store.list_chapters().unwrap()[0].lang_issues.as_deref(),
+            Some("王林")
+        );
     }
 
     #[test]

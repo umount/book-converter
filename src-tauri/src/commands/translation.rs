@@ -2,10 +2,12 @@
 
 use tauri::{AppHandle, Emitter, State};
 
+use crate::config::Config;
 use crate::dto::{err, Progress};
 use crate::jobs::{run_translation, spawn_project_job};
 use crate::session::AppState;
 use crate::state::Store;
+use crate::textutil;
 
 /// Start translating pending chapters (up to `limit`) on a background thread.
 #[tauri::command]
@@ -134,6 +136,9 @@ pub fn translate_chapter(
 /// Manually save an edited chapter translation (origin = `manual`).
 /// Allowed while a batch job runs, as long as this chapter is not the one
 /// currently being translated (`in_progress`).
+///
+/// Returns leftover foreign-script words still in the saved text (same check as
+/// the translation repair pass), or `None` when the warning can be cleared.
 #[tauri::command]
 pub async fn update_chapter_translation(
     project_id: String,
@@ -141,7 +146,7 @@ pub async fn update_chapter_translation(
     translated_title: String,
     translated: String,
     state: State<'_, AppState>,
-) -> Result<(), String> {
+) -> Result<Option<String>, String> {
     let db = state
         .with(&project_id, |s| s.db_path.clone())
         .ok_or("no_source")?;
@@ -162,8 +167,16 @@ pub async fn update_chapter_translation(
         tracing::warn!(chapter = index, "refused an empty overwrite of a translation");
         return Err("refuse_empty_overwrite".into());
     }
+    let title = translated_title.trim();
+    let body = translated.trim();
+    let source = store
+        .chapter(index)
+        .map_err(err)?
+        .map(|(_, source)| source)
+        .unwrap_or_default();
+    let issues = textutil::leftover_foreign(&Config::load().target_lang, title, body, &source);
     store
-        .save_manual_translation(index, translated_title.trim(), translated.trim())
+        .save_manual_translation(index, title, body, &issues)
         .map_err(err)?;
-    Ok(())
+    Ok((!issues.is_empty()).then(|| issues.join(", ")))
 }

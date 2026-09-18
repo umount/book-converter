@@ -119,6 +119,23 @@ pub enum Script {
     Han,
 }
 
+/// Shortest run of foreign-script letters that counts as leftover source text.
+/// Shared by the repair pass and the rescan after a manual edit.
+pub const MIN_FOREIGN_RUN: usize = 2;
+
+/// Words in `title`/`body` still written in the wrong script for `target_lang`.
+/// Empty when the language cannot be judged (mixed writing systems).
+pub fn leftover_foreign(target_lang: &str, title: &str, body: &str, source: &str) -> Vec<String> {
+    let Some(expected) = expected_script(target_lang) else {
+        return Vec::new();
+    };
+    let mut joined = String::with_capacity(title.len() + body.len() + 1);
+    joined.push_str(title);
+    joined.push('\n');
+    joined.push_str(body);
+    foreign_fragments(&joined, expected, source, MIN_FOREIGN_RUN)
+}
+
 /// The script a translation into `lang` should be written in, or `None` for
 /// languages this check cannot judge (mixed writing systems such as Japanese).
 pub fn expected_script(lang: &str) -> Option<Script> {
@@ -240,6 +257,24 @@ mod tests {
         let out = closing_excerpt(&text, 40);
         assert!(out.chars().count() <= 45);
         assert!(!out.starts_with("лово")); // not mid "слово"
+    }
+
+    #[test]
+    fn leftover_foreign_clears_when_han_is_gone() {
+        let dirty = leftover_foreign(
+            "Russian",
+            "Глава",
+            "Он посмотрел на 王林.",
+            "他看着王林",
+        );
+        assert!(dirty.contains(&"王林".to_string()), "got: {dirty:?}");
+        let clean = leftover_foreign(
+            "Russian",
+            "Глава",
+            "Он посмотрел на него.",
+            "他看着王林",
+        );
+        assert!(clean.is_empty(), "got: {clean:?}");
     }
 
     #[test]

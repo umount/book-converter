@@ -1,10 +1,9 @@
 //! Target-language validation and line-scoped repair stage.
 
 use crate::config::Config;
-use crate::textutil;
+use crate::textutil::{self, MIN_FOREIGN_RUN};
 use crate::translator::{repair, Translate};
 
-const MIN_FOREIGN_RUN: usize = 2;
 const MAX_LANGUAGE_REPAIRS: usize = 2;
 
 pub(super) struct LanguageRepairer<'a, C: Translate> {

@@ -319,18 +319,23 @@ impl Store {
     }
 
     /// Manually edit a chapter's translation (keeps/sets `origin = 'manual'`).
+    /// `lang_issues` is rescanned from the saved text so a human fix can clear
+    /// the leftover-foreign warning in the chapter tree.
     pub fn save_manual_translation(
         &self,
         index: usize,
         translated_title: &str,
         translated_body: &str,
+        lang_issues: &[String],
     ) -> Result<()> {
+        let issues = (!lang_issues.is_empty()).then(|| lang_issues.join(", "));
         self.conn.execute(
             "UPDATE chapters
              SET translated = ?3, translated_title = ?2,
-                 status = 'done', origin = 'manual', updated_at = datetime('now')
+                 status = 'done', origin = 'manual', lang_issues = ?4,
+                 updated_at = datetime('now')
              WHERE idx = ?1",
-            params![index as i64, translated_title, translated_body],
+            params![index as i64, translated_title, translated_body, issues],
         )?;
         Ok(())
     }
