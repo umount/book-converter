@@ -13,7 +13,6 @@ use crate::translator::DeepSeekClient;
 pub(crate) async fn run_job(
     project_id: &str,
     db: &str,
-    style: Option<String>,
     limit: Option<usize>,
     only_index: Option<usize>,
     cancel: &AtomicBool,
@@ -26,6 +25,7 @@ pub(crate) async fn run_job(
     // project (the session's `running` flag gates that), so anything still
     // marked `in_progress` is debris from a crash.
     let _ = store.recover();
+    let style = store.project_metadata()?.reference_style;
     let mut orch = Orchestrator::new(&cl, &store, &config, style)?;
     let emit = |ev: crate::orchestrator::ProgressEvent| {
         let _ = app.emit(

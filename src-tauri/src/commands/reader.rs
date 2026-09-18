@@ -8,7 +8,7 @@ use crate::export::fb2::Cover;
 use crate::session::AppState;
 use crate::state::Store;
 
-use super::util::{client, cover_mime, persist_meta};
+use super::util::{client, cover_mime};
 
 /// List chapters of the active project (for the reader).
 #[tauri::command]
@@ -262,14 +262,25 @@ pub async fn get_book_details(
     project_id: String,
     state: State<'_, AppState>,
 ) -> Result<BookDetails, String> {
-    Ok(state.with(&project_id, |s| BookDetails {
-        title: s.title.clone().unwrap_or_default(),
-        author: s.author.clone().unwrap_or_default(),
-        title_translated: s.title_translated.clone(),
-        author_translated: s.author_translated.clone(),
-        summary: s.summary.clone(),
-        cover: s.cover.as_ref().map(|c| c.data_url()),
-    }))
+    let db = state
+        .with(&project_id, |s| s.db_path.clone())
+        .ok_or("no_source")?;
+    let metadata = Store::open(&db)
+        .map_err(err)?
+        .project_metadata()
+        .map_err(err)?;
+    let cover = match (metadata.cover_content_type, metadata.cover_base64) {
+        (Some(content_type), Some(base64)) => Some(Cover { content_type, base64 }),
+        _ => None,
+    };
+    Ok(BookDetails {
+        title: metadata.title.unwrap_or_default(),
+        author: metadata.author.unwrap_or_default(),
+        title_translated: metadata.title_translated,
+        author_translated: metadata.author_translated,
+        summary: metadata.summary,
+        cover: cover.as_ref().map(Cover::data_url),
+    })
 }
 
 /// Translate the source book title and author (auto). Keeps reference-provided
@@ -280,14 +291,15 @@ pub async fn translate_title(
     project_id: String,
     state: State<'_, AppState>,
 ) -> Result<String, String> {
-    let (title, author, existing_title, existing_author) = state.with(&project_id, |s| {
-        (
-            s.title.clone(),
-            s.author.clone(),
-            s.title_translated.clone(),
-            s.author_translated.clone(),
-        )
-    });
+    let db = state
+        .with(&project_id, |s| s.db_path.clone())
+        .ok_or("no_source")?;
+    let store = Store::open(&db).map_err(err)?;
+    let metadata = store.project_metadata().map_err(err)?;
+    let title = metadata.title;
+    let author = metadata.author;
+    let existing_title = metadata.title_translated;
+    let existing_author = metadata.author_translated;
     let cfg = Config::load();
 
     // --- title ---
@@ -301,11 +313,7 @@ pub async fn translate_title(
             );
             let out = client()?.translate(&system, &title).await.map_err(err)?;
             let out = out.trim().trim_matches('"').trim().to_string();
-            let db = state.with(&project_id, |s| {
-                s.title_translated = Some(out.clone());
-                s.db_path.clone()
-            });
-            persist_meta(&db, "title_translated", &out);
+            store.set_meta("title_translated", &out).map_err(err)?;
             out
         }
     };
@@ -320,11 +328,7 @@ pub async fn translate_title(
             if let Ok(out) = client()?.translate(&system, &author).await {
                 let out = out.trim().trim_matches('"').trim().to_string();
                 if !out.is_empty() {
-                    let db = state.with(&project_id, |s| {
-                        s.author_translated = Some(out.clone());
-                        s.db_path.clone()
-                    });
-                    persist_meta(&db, "author_translated", &out);
+                    store.set_meta("author_translated", &out).map_err(err)?;
                 }
             }
         }
@@ -340,15 +344,13 @@ pub async fn set_summary(
     summary: String,
     state: State<'_, AppState>,
 ) -> Result<(), String> {
-    let db = state.with(&project_id, |s| {
-        s.summary = if summary.trim().is_empty() {
-            None
-        } else {
-            Some(summary.clone())
-        };
-        s.db_path.clone()
-    });
-    persist_meta(&db, "summary", &summary);
+    let db = state
+        .with(&project_id, |s| s.db_path.clone())
+        .ok_or("no_source")?;
+    Store::open(&db)
+        .map_err(err)?
+        .set_meta("summary", summary.trim())
+        .map_err(err)?;
     Ok(())
 }
 
@@ -359,9 +361,14 @@ pub async fn generate_summary(
     project_id: String,
     state: State<'_, AppState>,
 ) -> Result<String, String> {
-    let (title, title_tr, author) = state.with(&project_id, |s| {
-        (s.title.clone(), s.title_translated.clone(), s.author.clone())
-    });
+    let db = state
+        .with(&project_id, |s| s.db_path.clone())
+        .ok_or("no_source")?;
+    let store = Store::open(&db).map_err(err)?;
+    let metadata = store.project_metadata().map_err(err)?;
+    let title = metadata.title;
+    let title_tr = metadata.title_translated;
+    let author = metadata.author;
     let title = title.filter(|t| !t.trim().is_empty()).ok_or("no_title")?;
     let cfg = Config::load();
 
@@ -391,11 +398,7 @@ pub async fn generate_summary(
     if out.is_empty() || out.trim_start().to_uppercase().starts_with("NOT_FOUND") {
         return Err("book_not_found".into());
     }
-    let db = state.with(&project_id, |s| {
-        s.summary = Some(out.clone());
-        s.db_path.clone()
-    });
-    persist_meta(&db, "summary", &out);
+    store.set_meta("summary", &out).map_err(err)?;
     Ok(out)
 }
 
@@ -413,15 +416,12 @@ pub async fn set_cover(
         base64: base64::engine::general_purpose::STANDARD.encode(&bytes),
     };
     let url = cover.data_url();
-    let db = state.with(&project_id, |s| {
-        s.cover = Some(cover.clone());
-        s.db_path.clone()
-    });
-    if let Some(db) = db {
-        if let Ok(store) = Store::open(&db) {
-            let _ = store.set_meta("cover_ct", &cover.content_type);
-            let _ = store.set_meta("cover_b64", &cover.base64);
-        }
-    }
+    let db = state
+        .with(&project_id, |s| s.db_path.clone())
+        .ok_or("no_source")?;
+    Store::open(&db)
+        .map_err(err)?
+        .set_cover_meta(Some(&cover.content_type), Some(&cover.base64))
+        .map_err(err)?;
     Ok(url)
 }

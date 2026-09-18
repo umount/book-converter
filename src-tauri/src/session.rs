@@ -8,32 +8,18 @@ use std::sync::{Arc, Mutex};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
-use crate::export::fb2::Cover;
 use crate::paths::app_data_dir;
-use crate::reference::Reference;
 
-/// Per-project session state.
+/// Ephemeral per-project runtime state.
+///
+/// Durable book data belongs to `progress.db` / `project.json`; keeping another
+/// copy here previously created two sources of truth after failed writes or a
+/// restart.
 #[derive(Default)]
 pub struct Session {
     pub(crate) db_path: Option<String>,
-    pub(crate) source_path: Option<String>,
-    pub(crate) title: Option<String>,
-    pub(crate) author: Option<String>,
-    pub(crate) reference: Option<Reference>,
-    pub(crate) style: Option<String>,
     pub(crate) cancel: Option<Arc<AtomicBool>>,
     pub(crate) running: bool,
-    /// Source or reference was a `.zip` → default to a zipped output.
-    pub(crate) zipped_input: bool,
-    /// Translated book title shown in the UI and written to output.
-    pub(crate) title_translated: Option<String>,
-    /// Translated / transliterated author, so a Chinese name is not rendered as
-    /// boxes in the Latin/Cyrillic-only PDF font.
-    pub(crate) author_translated: Option<String>,
-    /// Annotation / summary (auto from a source FB2, or edited by the user).
-    pub(crate) summary: Option<String>,
-    /// Cover image (auto from a source FB2, or replaced by the user).
-    pub(crate) cover: Option<Cover>,
 }
 
 /// Managed app state: one `Session` per open project, keyed by project id, so
@@ -112,6 +98,11 @@ pub(crate) struct Manifest {
     pub(crate) ref_path: Option<String>,
 }
 
+pub(crate) fn read_manifest(id: &str) -> anyhow::Result<Manifest> {
+    let bytes = std::fs::read(project_dir(id)?.join("project.json"))?;
+    Ok(serde_json::from_slice(&bytes)?)
+}
+
 /// Whether output should default to a zip: "zip in, zip out".
 ///
 /// True when either input the project was built from was zipped, the reference
@@ -129,8 +120,7 @@ pub(crate) fn zipped_input_for(source_path: Option<&str>, ref_path: Option<&str>
 
 /// The reference file recorded in a project's manifest, if one was attached.
 pub(crate) fn manifest_ref_path(id: &str) -> anyhow::Result<Option<String>> {
-    let bytes = std::fs::read(project_dir(id)?.join("project.json"))?;
-    Ok(serde_json::from_slice::<Manifest>(&bytes)?.ref_path)
+    Ok(read_manifest(id)?.ref_path)
 }
 
 pub(crate) fn write_manifest(

@@ -26,9 +26,9 @@ pub fn start_translation(
         let cancel = Arc::new(AtomicBool::new(false));
         s.cancel = Some(cancel.clone());
         s.running = true;
-        Ok((db, s.style.clone(), cancel))
+        Ok((db, cancel))
     });
-    let (db, style, cancel) = res?;
+    let (db, cancel) = res?;
 
     let app2 = app.clone();
     let pid = project_id.clone();
@@ -37,7 +37,7 @@ pub fn start_translation(
             .enable_all()
             .build()
             .expect("current-thread runtime");
-        let result = rt.block_on(run_job(&pid, &db, style, limit, None, &cancel, &app2));
+        let result = rt.block_on(run_job(&pid, &db, limit, None, &cancel, &app2));
 
         if let Some(st) = app2.try_state::<AppState>() {
             st.with(&pid, |s| s.running = false);
@@ -146,9 +146,9 @@ pub fn translate_chapter(
         let cancel = Arc::new(AtomicBool::new(false));
         s.cancel = Some(cancel.clone());
         s.running = true;
-        Ok((db, s.style.clone(), cancel))
+        Ok((db, cancel))
     });
-    let (db, style, cancel) = res?;
+    let (db, cancel) = res?;
 
     let app2 = app.clone();
     let pid = project_id.clone();
@@ -160,7 +160,6 @@ pub fn translate_chapter(
         let result = rt.block_on(run_job(
             &pid,
             &db,
-            style,
             None,
             Some(index),
             &cancel,

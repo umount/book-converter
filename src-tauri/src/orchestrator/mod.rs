@@ -86,7 +86,7 @@ impl<'a, C: Translate> Orchestrator<'a, C> {
     ) -> Result<Self> {
         let glossary = store.load_glossary()?;
         let summary = store.get_meta("running_summary")?.unwrap_or_default();
-        let meta = |k: &str| store.get_meta(k).ok().flatten().filter(|v| !v.trim().is_empty());
+        let metadata = store.project_metadata()?;
         Ok(Self {
             client,
             store,
@@ -97,9 +97,9 @@ impl<'a, C: Translate> Orchestrator<'a, C> {
             summary,
             prev_tail: None,
             book: BookIdentity {
-                title: meta("title"),
-                author: meta("author"),
-                title_translated: meta("title_translated"),
+                title: metadata.title,
+                author: metadata.author,
+                title_translated: metadata.title_translated,
             },
         })
     }

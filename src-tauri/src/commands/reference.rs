@@ -9,7 +9,7 @@ use crate::reference::{self};
 use crate::session::{write_manifest, AppState};
 use crate::state::Store;
 
-use super::util::{client, import_reference_pending, persist_meta};
+use super::util::{client, import_reference_pending};
 
 /// How much professional text is quoted as a style exemplar in prompts.
 const STYLE_CHARS: usize = 600;
@@ -24,16 +24,13 @@ pub async fn load_reference(
 ) -> Result<RefInfo, String> {
     let reference = reference::load_reference(Path::new(&path)).map_err(err)?;
 
-    // Seed pending chapters from the reference, if a source book is open.
-    let (db, source_path) =
-        state.with(&project_id, |s| (s.db_path.clone(), s.source_path.clone()));
-    let imported = match (&db, &source_path) {
-        (Some(db), Some(sp)) => import_reference_pending(db, sp, &reference).map_err(err)?,
-        _ => 0,
-    };
-    if let Some(sp) = &source_path {
-        write_manifest(&project_id, sp, Some(&path)).map_err(err)?;
-    }
+    let db = state
+        .with(&project_id, |s| s.db_path.clone())
+        .ok_or("no_source")?;
+    let imported = import_reference_pending(&db, &reference).map_err(err)?;
+    let manifest = crate::session::read_manifest(&project_id).map_err(err)?;
+    write_manifest(&project_id, &manifest.source_path, Some(&path)).map_err(err)?;
+    let store = Store::open(&db).map_err(err)?;
 
     let info = RefInfo {
         title: reference.meta.title.clone().unwrap_or_default(),
@@ -51,60 +48,48 @@ pub async fn load_reference(
     // the style exemplar and a few counters. Persist them, so opening the
     // project later restores them from the database instead of re-reading and
     // re-parsing the reference file (and the source book with it).
-    persist_meta(&db, "ref_title", &info.title);
-    persist_meta(&db, "ref_chapters", &info.chapters.to_string());
-    persist_meta(
-        &db,
-        "ref_max_covered",
-        &info.max_covered.map(|n| n.to_string()).unwrap_or_default(),
-    );
-    if let Some(style) = &style {
-        persist_meta(&db, "ref_style", style);
-    }
-
-    let adopted = state.with(&project_id, |s| {
-        s.zipped_input |= crate::book::source::is_zip(Path::new(&path));
-        // A reference is a translation, so its title/summary/cover are already in the
-        // target language: adopt them unless the user has set their own.
-        if s.summary.is_none() {
-            s.summary = annotation;
-        }
-        if s.cover.is_none() {
-            s.cover = cover;
-        }
-        if s.title_translated.is_none() {
-            s.title_translated = ref_title;
-        }
-        if s.author_translated.is_none() {
-            s.author_translated = ref_author.filter(|a| !a.trim().is_empty());
-        }
-        s.reference = Some(reference);
-        s.style = style;
-        (
-            s.summary.clone(),
-            s.title_translated.clone(),
-            s.author_translated.clone(),
-            s.cover.clone(),
+    store.set_meta("ref_title", &info.title).map_err(err)?;
+    store
+        .set_meta("ref_chapters", &info.chapters.to_string())
+        .map_err(err)?;
+    store
+        .set_meta(
+            "ref_max_covered",
+            &info.max_covered.map(|n| n.to_string()).unwrap_or_default(),
         )
-    });
+        .map_err(err)?;
+    if let Some(style) = &style {
+        store.set_meta("ref_style", style).map_err(err)?;
+    }
 
-    // What was adopted has to be persisted too: it used to survive only because
-    // the reference was re-parsed on every activation.
-    let (summary, title_translated, author_translated, cover) = adopted;
-    if let Some(v) = &summary {
-        persist_meta(&db, "summary", v);
+    // A reference is already in the target language. Adopt only metadata the
+    // user/project does not already have; SQLite remains the sole source of truth.
+    let current = store.project_metadata().map_err(err)?;
+    if current.summary.is_none() {
+        if let Some(v) = &annotation {
+            store.set_meta("summary", v).map_err(err)?;
+        }
     }
-    if let Some(v) = &title_translated {
-        persist_meta(&db, "title_translated", v);
+    if current.title_translated.is_none() {
+        if let Some(v) = &ref_title {
+            store.set_meta("title_translated", v).map_err(err)?;
+        }
     }
-    if let Some(v) = &author_translated {
-        persist_meta(&db, "author_translated", v);
+    if current.author_translated.is_none() {
+        if let Some(v) = ref_author.filter(|a| !a.trim().is_empty()) {
+            store.set_meta("author_translated", &v).map_err(err)?;
+        }
     }
-    if let Some(c) = &cover {
-        persist_meta(&db, "cover_ct", &c.content_type);
-        persist_meta(&db, "cover_b64", &c.base64);
+    if current.cover_base64.is_none() {
+        if let Some(c) = &cover {
+            store
+                .set_cover_meta(Some(&c.content_type), Some(&c.base64))
+                .map_err(err)?;
+        }
     }
-    persist_meta(&db, HEAD_IMPORTED, &HEAD_IMPORT_VERSION.to_string());
+    store
+        .set_meta(HEAD_IMPORTED, &HEAD_IMPORT_VERSION.to_string())
+        .map_err(err)?;
     Ok(info)
 }
 
@@ -132,29 +117,27 @@ pub async fn get_reference_info(
     if chapters == 0 {
         return Ok(None); // no reference has ever been applied to this project
     }
-    let meta = |k: &str| store.get_meta(k).ok().flatten().filter(|v| !v.trim().is_empty());
+    let non_empty_meta = |key: &str| -> Result<Option<String>, String> {
+        store
+            .get_meta(key)
+            .map_err(err)
+            .map(|value| value.filter(|v| !v.trim().is_empty()))
+    };
 
     // The style exemplar feeds every translation prompt. Stored when the
     // reference was loaded; derived from the imported chapters (and stored) for
     // projects that predate that.
-    let style = match meta("ref_style") {
-        Some(style) => Some(style),
+    match non_empty_meta("ref_style")? {
+        Some(_) => {}
         None => {
             let derived = store.reference_style(STYLE_CHARS).map_err(err)?;
             if let Some(style) = &derived {
-                persist_meta(&Some(db.clone()), "ref_style", style);
+                store.set_meta("ref_style", style).map_err(err)?;
             }
-            derived
         }
-    };
-    state.with(&project_id, |s| {
-        if s.style.is_none() {
-            s.style = style;
-        }
-    });
-
+    }
     Ok(Some(RefInfo {
-        title: meta("ref_title").unwrap_or_default(),
+        title: non_empty_meta("ref_title")?.unwrap_or_default(),
         chapters,
         max_covered,
         // Importing happens when the reference is loaded, not when it is reopened.
@@ -200,7 +183,10 @@ pub async fn backfill_reference_head(
     let Some(ref_path) = crate::session::manifest_ref_path(&project_id)
         .map_err(err)?
     else {
-        persist_meta(&Some(db), HEAD_IMPORTED, &HEAD_IMPORT_VERSION.to_string());
+        Store::open(&db)
+            .map_err(err)?
+            .set_meta(HEAD_IMPORTED, &HEAD_IMPORT_VERSION.to_string())
+            .map_err(err)?;
         return Ok(false);
     };
 
@@ -227,12 +213,10 @@ pub async fn backfill_reference_head(
         if let Some(cover) = head.cover.filter(|_| missing("cover_b64")) {
             store.set_meta("cover_ct", &cover.content_type).map_err(err)?;
             store.set_meta("cover_b64", &cover.base64).map_err(err)?;
-            state.with(&project_id, |s| s.cover = Some(cover));
             wrote = true;
         }
         if let Some(annotation) = head.annotation.filter(|_| missing("summary")) {
             store.set_meta("summary", &annotation).map_err(err)?;
-            state.with(&project_id, |s| s.summary = Some(annotation));
             wrote = true;
         }
         // The reference's own title, shown in the overview's Reference panel.

@@ -3,7 +3,6 @@
 use std::collections::HashMap;
 use std::path::Path;
 
-use crate::book::load_book;
 use crate::config::Config;
 use crate::dto::err;
 use crate::export::OutputFormat;
@@ -12,15 +11,6 @@ use crate::translator::DeepSeekClient;
 
 pub(crate) fn client() -> Result<DeepSeekClient, String> {
     DeepSeekClient::new(Config::load()).map_err(err)
-}
-
-/// Persist a single meta value to the current project's DB (best-effort).
-pub(crate) fn persist_meta(db: &Option<String>, key: &str, value: &str) {
-    if let Some(db) = db {
-        if let Ok(store) = Store::open(db) {
-            let _ = store.set_meta(key, value);
-        }
-    }
 }
 
 pub(crate) fn cover_mime(path: &str) -> String {
@@ -109,17 +99,15 @@ pub(crate) async fn ensure_chapters(path: &str, book: &mut crate::book::LoadedBo
 /// already done. Returns how many chapters were filled.
 pub(crate) fn import_reference_pending(
     db: &str,
-    source_path: &str,
     reference: &crate::reference::Reference,
 ) -> anyhow::Result<usize> {
-    let source = load_book(Path::new(source_path))?;
     let store = Store::open(db)?;
+    let source = store.list_chapters()?;
 
     // Prefer chapter numbers: they survive different editions and languages.
     let idx_by_number: HashMap<usize, usize> = source
-        .chapters
         .iter()
-        .filter_map(|c| c.number.map(|n| (n, c.index)))
+        .filter_map(|row| row.number.map(|n| (n, row.idx)))
         .collect();
 
     let mut count = 0;
@@ -138,8 +126,8 @@ pub(crate) fn import_reference_pending(
     // has to live here: everything downstream reads the aligned pairs from the
     // database.
     if count == 0 {
-        for (sc, rc) in source.chapters.iter().zip(reference.chapters.iter()) {
-            if store.save_reference_chapter(sc.index, &rc.title, &rc.body)? {
+        for (source, rc) in source.iter().zip(reference.chapters.iter()) {
+            if store.save_reference_chapter(source.idx, &rc.title, &rc.body)? {
                 count += 1;
             }
         }

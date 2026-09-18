@@ -64,17 +64,18 @@ pub async fn load_source(
     };
 
     // Per-project details persisted in this book's DB (survive project switches).
-    let saved_title = store.get_meta("title_translated").ok().flatten();
-    let saved_author = store.get_meta("author_translated").ok().flatten();
-    let saved_summary = store.get_meta("summary").ok().flatten();
+    let saved = store.project_metadata().map_err(err)?;
     let saved_cover = match (
-        store.get_meta("cover_ct").ok().flatten(),
-        store.get_meta("cover_b64").ok().flatten(),
+        saved.cover_content_type.clone(),
+        saved.cover_base64.clone(),
     ) {
         (Some(content_type), Some(base64)) => Some(Cover { content_type, base64 }),
         _ => None,
     };
-    let summary = saved_summary.or_else(|| head.as_ref().and_then(|h| h.annotation.clone()));
+    let summary = saved
+        .summary
+        .clone()
+        .or_else(|| head.as_ref().and_then(|h| h.annotation.clone()));
     let cover = saved_cover
         .or_else(|| head.as_ref().and_then(|h| h.cover.clone()))
         .or(pdf_cover);
@@ -82,32 +83,22 @@ pub async fn load_source(
     // Persist the source metadata + resolved cover to the DB so a project is fully
     // self-contained (openable from its DB alone, and portable in an archive).
     let format = format!("{:?}", book.format);
-    let _ = store.set_meta("title", &title);
-    let _ = store.set_meta("author", &author);
-    let _ = store.set_meta("format", &format);
-    let _ = store.set_meta("encoding", &book.encoding);
+    store
+        .set_source_metadata(&title, &author, &format, &book.encoding)
+        .map_err(err)?;
     if let Some(s) = &summary {
-        let _ = store.set_meta("summary", s);
+        store.set_meta("summary", s).map_err(err)?;
     }
     if let Some(c) = &cover {
-        let _ = store.set_meta("cover_ct", &c.content_type);
-        let _ = store.set_meta("cover_b64", &c.base64);
+        store
+            .set_cover_meta(Some(&c.content_type), Some(&c.base64))
+            .map_err(err)?;
     }
 
     state.with(&project_id, |s| {
-        s.reference = None;
-        s.style = None;
         s.cancel = None;
         s.running = false;
-        s.zipped_input = crate::book::source::is_zip(Path::new(&path));
         s.db_path = Some(db);
-        s.source_path = Some(path);
-        s.title = book.meta.title.clone();
-        s.author = book.meta.author.clone();
-        s.title_translated = saved_title;
-        s.author_translated = saved_author;
-        s.summary = summary;
-        s.cover = cover;
     });
 
     Ok(BookInfo {
@@ -143,45 +134,15 @@ pub async fn open_project(
     if stats.total == 0 {
         return Err("no_source".into());
     }
-    let g = |k: &str| store.get_meta(k).ok().flatten();
-    let title = g("title").unwrap_or_default();
-    let author = g("author").unwrap_or_default();
-    let format = g("format").unwrap_or_else(|| "-".into());
-    let encoding = g("encoding").unwrap_or_else(|| "-".into());
-    let cover = match (g("cover_ct"), g("cover_b64")) {
-        (Some(content_type), Some(base64)) => Some(Cover { content_type, base64 }),
-        _ => None,
-    };
-    let manifest: Option<Manifest> = std::fs::read(
-        project_dir(&project_id)
-            .map_err(err)?
-            .join("project.json"),
-    )
-        .ok()
-        .and_then(|b| serde_json::from_slice(&b).ok());
-    let source_path = manifest.as_ref().map(|m| m.source_path.clone());
-    // "zip in, zip out" has to survive a restart. It used to be set as a side
-    // effect of re-parsing the reference on every activation, so it was lost
-    // when that stopped; the manifest records both inputs, so ask it.
-    let zipped = crate::session::zipped_input_for(
-        source_path.as_deref(),
-        manifest.as_ref().and_then(|m| m.ref_path.as_deref()),
-    );
-
+    let metadata = store.project_metadata().map_err(err)?;
+    let title = metadata.title.unwrap_or_default();
+    let author = metadata.author.unwrap_or_default();
+    let format = metadata.format.unwrap_or_else(|| "-".into());
+    let encoding = metadata.encoding.unwrap_or_else(|| "-".into());
     state.with(&project_id, |s| {
-        s.reference = None;
-        s.style = None;
         s.cancel = None;
         s.running = false;
-        s.zipped_input = zipped;
         s.db_path = Some(db.clone());
-        s.source_path = source_path;
-        s.title = (!title.is_empty()).then(|| title.clone());
-        s.author = (!author.is_empty()).then(|| author.clone());
-        s.title_translated = g("title_translated");
-        s.author_translated = g("author_translated");
-        s.summary = g("summary");
-        s.cover = cover;
     });
 
     Ok(BookInfo {

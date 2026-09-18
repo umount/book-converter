@@ -245,10 +245,10 @@ impl Store {
             return Ok((summary, prev_tail));
         };
 
-        let summary = summary
-            .filter(|s| !s.trim().is_empty())
-            .or_else(|| self.get_meta("running_summary").ok().flatten())
-            .unwrap_or_default();
+        let summary = match summary.filter(|s| !s.trim().is_empty()) {
+            Some(summary) => summary,
+            None => self.get_meta("running_summary")?.unwrap_or_default(),
+        };
 
         let prev_tail = prev_tail
             .filter(|s| !s.trim().is_empty())
@@ -288,14 +288,33 @@ impl Store {
             )
             .optional()?;
 
+        let tx = self.conn.unchecked_transaction()?;
         if let Some(prev) = prev_idx {
-            self.save_chapter_context(prev as usize, summary, prev_tail)?;
+            tx.execute(
+                "UPDATE chapters
+                 SET rolling_summary = ?2, prev_tail = ?3, updated_at = datetime('now')
+                 WHERE idx = ?1",
+                params![prev, summary, prev_tail],
+            )?;
             // Clear a leftover boot tail so context_before prefers the chapter row.
-            let _ = self.set_meta("boot_prev_tail", "");
+            tx.execute(
+                "INSERT INTO meta (key, value) VALUES ('boot_prev_tail', '')
+                 ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+                [],
+            )?;
         } else {
-            let _ = self.set_meta("boot_prev_tail", prev_tail);
+            tx.execute(
+                "INSERT INTO meta (key, value) VALUES ('boot_prev_tail', ?1)
+                 ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+                params![prev_tail],
+            )?;
         }
-        self.set_meta("running_summary", summary)?;
+        tx.execute(
+            "INSERT INTO meta (key, value) VALUES ('running_summary', ?1)
+             ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+            params![summary],
+        )?;
+        tx.commit()?;
         Ok(())
     }
 
