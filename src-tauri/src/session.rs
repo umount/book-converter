@@ -44,6 +44,39 @@ impl AppState {
             .unwrap_or_else(|poisoned| poisoned.into_inner())
             .remove(id)
     }
+
+    /// Atomically reserve the project's single background-job slot.
+    pub(crate) fn begin_job(
+        &self,
+        id: &str,
+        already_running: &str,
+    ) -> Result<(String, Arc<AtomicBool>), String> {
+        self.with(id, |session| {
+            if session.running {
+                return Err(already_running.to_string());
+            }
+            let db = session.db_path.clone().ok_or("no_source")?;
+            let cancel = Arc::new(AtomicBool::new(false));
+            session.cancel = Some(cancel.clone());
+            session.running = true;
+            Ok((db, cancel))
+        })
+    }
+
+    pub(crate) fn finish_job(&self, id: &str) {
+        self.with(id, |session| {
+            session.running = false;
+            session.cancel = None;
+        });
+    }
+
+    pub(crate) fn request_cancel(&self, id: &str) {
+        self.with(id, |session| {
+            if let Some(cancel) = &session.cancel {
+                cancel.store(true, std::sync::atomic::Ordering::Relaxed);
+            }
+        });
+    }
 }
 
 #[derive(Debug, Error, PartialEq, Eq)]
@@ -186,6 +219,21 @@ mod tests {
         for id in ["550e8400-e29b-41d4-a716-446655440000", "p-123_abc"] {
             assert!(validate_project_id(id).is_ok(), "{id:?}");
         }
+    }
+
+    #[test]
+    fn one_background_job_slot_per_project() {
+        let state = AppState::new();
+        state.with("project-a", |session| {
+            session.db_path = Some("/tmp/project-a.db".into())
+        });
+
+        let (db, _) = state.begin_job("project-a", "busy").unwrap();
+        assert_eq!(db, "/tmp/project-a.db");
+        assert_eq!(state.begin_job("project-a", "busy").unwrap_err(), "busy");
+
+        state.finish_job("project-a");
+        assert!(state.begin_job("project-a", "busy").is_ok());
     }
 }
 

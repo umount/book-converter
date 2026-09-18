@@ -1,12 +1,9 @@
 //! Translation job control commands.
 
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::Arc;
-
-use tauri::{AppHandle, Emitter, Manager, State};
+use tauri::{AppHandle, Emitter, State};
 
 use crate::dto::{err, Progress};
-use crate::jobs::run_job;
+use crate::jobs::{run_translation, spawn_project_job};
 use crate::session::AppState;
 use crate::state::Store;
 
@@ -18,42 +15,18 @@ pub fn start_translation(
     app: AppHandle,
     state: State<'_, AppState>,
 ) -> Result<(), String> {
-    let res: Result<_, String> = state.with(&project_id, |s| {
-        if s.running {
-            return Err("translation_running".to_string());
-        }
-        let db = s.db_path.clone().ok_or("no_source")?;
-        let cancel = Arc::new(AtomicBool::new(false));
-        s.cancel = Some(cancel.clone());
-        s.running = true;
-        Ok((db, cancel))
-    });
-    let (db, cancel) = res?;
-
-    let app2 = app.clone();
-    let pid = project_id.clone();
-    std::thread::spawn(move || {
-        let rt = tokio::runtime::Builder::new_current_thread()
-            .enable_all()
-            .build()
-            .expect("current-thread runtime");
-        let result = rt.block_on(run_job(&pid, &db, limit, None, &cancel, &app2));
-
-        if let Some(st) = app2.try_state::<AppState>() {
-            st.with(&pid, |s| s.running = false);
-        }
-        match result {
-            Ok(()) => {
-                let _ = app2.emit("done", serde_json::json!({ "project": pid }));
-            }
-            Err(e) => {
-                let _ = app2.emit(
-                    "job_error",
-                    serde_json::json!({ "project": pid, "message": e.to_string() }),
-                );
-            }
-        }
-    });
+    let (db, cancel) = state.begin_job(&project_id, "translation_running")?;
+    spawn_project_job(
+        app,
+        project_id,
+        cancel,
+        move |app, project_id, cancel| async move {
+            run_translation(&project_id, &db, limit, None, &cancel, &app).await
+        },
+        |app, project_id, ()| {
+            let _ = app.emit("done", serde_json::json!({ "project": project_id }));
+        },
+    );
 
     Ok(())
 }
@@ -61,11 +34,7 @@ pub fn start_translation(
 /// Request a pause: the run stops after the current chapter.
 #[tauri::command]
 pub fn pause_translation(project_id: String, state: State<'_, AppState>) -> Result<(), String> {
-    state.with(&project_id, |s| {
-        if let Some(c) = &s.cancel {
-            c.store(true, Ordering::Relaxed);
-        }
-    });
+    state.request_cancel(&project_id);
     Ok(())
 }
 
@@ -138,49 +107,26 @@ pub fn translate_chapter(
     app: AppHandle,
     state: State<'_, AppState>,
 ) -> Result<(), String> {
-    let res: Result<_, String> = state.with(&project_id, |s| {
-        if s.running {
-            return Err("translation_running".to_string());
-        }
-        let db = s.db_path.clone().ok_or("no_source")?;
-        let cancel = Arc::new(AtomicBool::new(false));
-        s.cancel = Some(cancel.clone());
-        s.running = true;
-        Ok((db, cancel))
-    });
-    let (db, cancel) = res?;
-
-    let app2 = app.clone();
-    let pid = project_id.clone();
-    std::thread::spawn(move || {
-        let rt = tokio::runtime::Builder::new_current_thread()
-            .enable_all()
-            .build()
-            .expect("current-thread runtime");
-        let result = rt.block_on(run_job(
-            &pid,
-            &db,
-            None,
-            Some(index),
-            &cancel,
-            &app2,
-        ));
-
-        if let Some(st) = app2.try_state::<AppState>() {
-            st.with(&pid, |s| s.running = false);
-        }
-        match result {
-            Ok(()) => {
-                let _ = app2.emit("done", serde_json::json!({ "project": pid }));
-            }
-            Err(e) => {
-                let _ = app2.emit(
-                    "job_error",
-                    serde_json::json!({ "project": pid, "message": e.to_string() }),
-                );
-            }
-        }
-    });
+    let (db, cancel) = state.begin_job(&project_id, "translation_running")?;
+    spawn_project_job(
+        app,
+        project_id,
+        cancel,
+        move |app, project_id, cancel| async move {
+            run_translation(
+                &project_id,
+                &db,
+                None,
+                Some(index),
+                &cancel,
+                &app,
+            )
+            .await
+        },
+        |app, project_id, ()| {
+            let _ = app.emit("done", serde_json::json!({ "project": project_id }));
+        },
+    );
 
     Ok(())
 }
