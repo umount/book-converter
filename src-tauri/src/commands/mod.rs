@@ -14,11 +14,13 @@ mod translation;
 mod glossary;
 mod export_cmd;
 mod reader;
+mod assistant;
 
 pub use crate::session::{cleanup_legacy_data, AppState};
 // Tauri's command macro generates hidden companion symbols next to each
 // function; wildcard re-exports intentionally carry those symbols to the flat
 // namespace consumed by `generate_handler!`.
+pub use assistant::*;
 pub use export_cmd::*;
 pub use glossary::*;
 pub use project::*;

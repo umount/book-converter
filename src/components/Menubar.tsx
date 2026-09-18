@@ -21,6 +21,7 @@ type Props = {
   onShowBothPanes: () => void;
   onToggleHighlight: () => void;
   onToggleConsole: () => void;
+  onToggleAssistant: () => void;
   onOpenCommandPalette: () => void;
   onOpenSettings: () => void;
   onOpenLegend: () => void;
@@ -30,7 +31,7 @@ type Props = {
 export function Menubar({
   t, menu, setMenu, busy, canExport, hasActive,
   onOpenBook, onOpenReference, onOpenProject, onSaveProject, onExport, onFind, onReplace, onSearchBook,
-  onToggleSidebar, onShowBothPanes, onToggleHighlight, onToggleConsole,
+  onToggleSidebar, onShowBothPanes, onToggleHighlight, onToggleConsole, onToggleAssistant,
   onOpenCommandPalette, onOpenSettings, onOpenLegend, onOpenAbout,
 }: Props) {
   return (
@@ -82,6 +83,7 @@ export function Menubar({
               <div className="mi" onClick={() => { onShowBothPanes(); setMenu(null); }}>{t("view.showBothPanes")}</div>
               <div className="mi" onClick={() => { onToggleHighlight(); setMenu(null); }}>{t("view.toggleHighlight")}</div>
               <div className="mi" onClick={() => { onToggleConsole(); setMenu(null); }}>{t("view.toggleConsole")}<span className="mi-key">⌘J</span></div>
+              <div className="mi" onClick={() => { onToggleAssistant(); setMenu(null); }}>{t("view.toggleAssistant")}<span className="mi-key">⌘L</span></div>
             </div>
           )}
         </div>

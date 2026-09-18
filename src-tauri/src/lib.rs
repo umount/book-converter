@@ -24,6 +24,7 @@ mod settings;
 mod state;
 mod textutil;
 mod translator;
+mod assistant;
 
 /// Full product name, shown in the window title and the About dialog. The
 /// package/bundle id stays `book-converter`; this is the human-facing name.
@@ -67,6 +68,7 @@ pub fn run() {
             Ok(())
         })
         .manage(commands::AppState::new())
+        .manage(std::sync::Arc::new(assistant::AssistantRuntime::new()))
         .invoke_handler(tauri::generate_handler![
             commands::load_source,
             commands::open_project,
@@ -108,6 +110,11 @@ pub fn run() {
             commands::delete_project,
             commands::export_project,
             commands::import_project,
+            commands::assistant_history,
+            commands::assistant_clear,
+            commands::assistant_send,
+            commands::assistant_approve,
+            commands::assistant_cancel,
         ])
         .run(tauri::generate_context!())
         .expect("failed to start the Tauri application");

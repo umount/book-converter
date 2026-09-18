@@ -12,10 +12,13 @@ import { SearchPanel } from "./components/SearchPanel";
 import { Sidebar } from "./components/Sidebar";
 import { Welcome } from "./components/Welcome";
 import { ActivityBar } from "./components/shell/ActivityBar";
+import { AssistantPanel } from "./components/shell/AssistantPanel";
 import { BottomPanel } from "./components/shell/BottomPanel";
 import { StatusBar } from "./components/shell/StatusBar";
 import { TabBar } from "./components/shell/TabBar";
 import { CommandPalette, type Command } from "./components/CommandPalette";
+import { ResizeHandle } from "./components/common/ResizeHandle";
+import { useAssistant } from "./hooks/useAssistant";
 import { useConsoleLog } from "./hooks/useConsoleLog";
 import { useFindReplace } from "./hooks/useFindReplace";
 import { useHotkeys } from "./hooks/useHotkeys";
@@ -54,6 +57,16 @@ export default function App() {
   const [sidebarView, setSidebarView] = useState<"explorer" | "search">("explorer");
   const [searchFocus, setSearchFocus] = useState(0);
   const [showConsole, setShowConsole] = useState(true);
+  const [showAssistant, setShowAssistant] = useState(() => {
+    try { return localStorage.getItem("bc.assistant.open") !== "0"; } catch { return true; }
+  });
+  const [assistantWidth, setAssistantWidth] = useState(() => {
+    try {
+      const n = Number(localStorage.getItem("bc.assistant.width"));
+      return Number.isFinite(n) && n >= 260 && n <= 560 ? n : 320;
+    } catch { return 320; }
+  });
+  const assistantWidthOrigin = useRef(assistantWidth);
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
   const toggle = (k: string) => setCollapsed((c) => ({ ...c, [k]: !c[k] }));
@@ -115,6 +128,26 @@ export default function App() {
     call, t, errText, addLog, addLogTo, logError,
     setBusyFor, setBusyById, setError, setView, setMenu,
     list, book, glossary, job,
+  });
+
+  const assistant = useAssistant({
+    call,
+    activeId,
+    enabled: !!activeProject,
+    onMutated: async (tools) => {
+      const glossaryTouched = tools.some((n) =>
+        /term|glossary|retarget|bootstrap|harvest/.test(n));
+      const chaptersTouched = tools.some((n) =>
+        /chapter|translation|replace|reset|reference|start_translation|translate_chapter/.test(n));
+      if (glossaryTouched) await glossary.refreshGlossary();
+      if (chaptersTouched) {
+        await book.loadChapters();
+        await job.refreshProgress();
+        if (book.chapterIdx != null) await book.openChapter(book.chapterIdx);
+      } else {
+        await job.refreshProgress();
+      }
+    },
   });
 
   // Find/replace lives here (not in Reader) so the Edit menu, the command
@@ -214,6 +247,7 @@ export default function App() {
     { id: "legend", label: t("palette.legend"), run: () => setShowLegend(true) },
     { id: "settings", label: t("palette.settings"), hint: "⌘,", run: () => setShowSettings(true) },
     { id: "toggleConsole", label: t("palette.toggleConsole"), hint: "⌘J", run: () => setShowConsole((s) => !s) },
+    { id: "toggleAssistant", label: t("palette.toggleAssistant"), hint: "⌘L", run: () => setShowAssistant((s) => !s) },
   ];
 
   // Language: localStorage is an instant cache to avoid a flash on load; the DB
@@ -262,6 +296,13 @@ export default function App() {
     "mod+p": (e) => { e.preventDefault(); setPaletteOpen((o) => !o); },
     "mod+b": (e) => { e.preventDefault(); setSidebar((s) => !s); },
     "mod+j": (e) => { e.preventDefault(); setShowConsole((s) => !s); },
+    "mod+l": (e) => {
+      e.preventDefault();
+      setShowAssistant((s) => {
+        localStorage.setItem("bc.assistant.open", s ? "0" : "1");
+        return !s;
+      });
+    },
     "mod+,": (e) => { e.preventDefault(); setShowSettings((s) => !s); },
     "alt+arrowdown": (e) => { if (view === "reader") { e.preventDefault(); stepChapter(1); } },
     "alt+arrowup": (e) => { if (view === "reader") { e.preventDefault(); stepChapter(-1); } },
@@ -288,6 +329,10 @@ export default function App() {
         onShowBothPanes={() => book.setPanes({ orig: true, transl: true })}
         onToggleHighlight={() => changeHighlight(!hl)}
         onToggleConsole={() => setShowConsole((s) => !s)}
+        onToggleAssistant={() => setShowAssistant((s) => {
+          localStorage.setItem("bc.assistant.open", s ? "0" : "1");
+          return !s;
+        })}
         onOpenCommandPalette={() => setPaletteOpen(true)}
         onFind={() => { openFind("find"); setMenu(null); }}
         onReplace={() => { openFind("replace"); setMenu(null); }}
@@ -311,6 +356,11 @@ export default function App() {
           onToggleSettings={() => setShowSettings((s) => !s)}
           consoleOpen={showConsole}
           onToggleConsole={() => setShowConsole((s) => !s)}
+          assistantOpen={showAssistant}
+          onToggleAssistant={() => setShowAssistant((s) => {
+            localStorage.setItem("bc.assistant.open", s ? "0" : "1");
+            return !s;
+          })}
         />
         {sidebar && sidebarView === "search" ? (
           <aside className="sidebar">
@@ -444,6 +494,37 @@ export default function App() {
             </BottomPanel>
           )}
         </div>
+
+        {showAssistant && (
+          <ResizeHandle
+            axis="x"
+            onStart={() => { assistantWidthOrigin.current = assistantWidth; }}
+            onDrag={(delta) => {
+              // Dragging the left edge of the dock: positive delta shrinks it.
+              const next = Math.min(560, Math.max(260, assistantWidthOrigin.current - delta));
+              setAssistantWidth(next);
+              localStorage.setItem("bc.assistant.width", String(next));
+            }}
+          />
+        )}
+        <AssistantPanel
+          t={t}
+          open={showAssistant}
+          width={assistantWidth}
+          enabled={!!activeProject}
+          messages={assistant.messages}
+          status={assistant.status}
+          pendingConfirm={assistant.pendingConfirm}
+          onClose={() => {
+            setShowAssistant(false);
+            localStorage.setItem("bc.assistant.open", "0");
+          }}
+          onClear={() => void assistant.clear()}
+          onSend={(text) => void assistant.sendWithChapter(text, book.chapterIdx)}
+          onApprove={(id) => void assistant.approve(id)}
+          onDeny={(id) => void assistant.deny(id)}
+          onCancel={() => void assistant.cancel()}
+        />
       </div>
       <StatusBar
         t={t} progress={progress} book={book.book}

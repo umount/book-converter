@@ -5,11 +5,14 @@
 //! limit (`finish_reason = length`), the client continues the completion so long
 //! chapters are not silently truncated. Concurrency and queueing live in the
 //! orchestration layer, not here.
+//!
+//! Also supports OpenAI-style tool/function calling for the project assistant.
 
 use std::time::Duration;
 
 use anyhow::{anyhow, Context, Result};
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
 
 use crate::config::Config;
 
@@ -23,7 +26,7 @@ pub struct DeepSeekClient {
 #[derive(Serialize)]
 struct ChatRequest<'a> {
     model: &'a str,
-    messages: Vec<MessageOwned>,
+    messages: Vec<ChatMessage>,
     temperature: f32,
     /// Cap output tokens at the API maximum so long chapters are not truncated.
     /// DeepSeek V4 allows up to 384K.
@@ -31,6 +34,10 @@ struct ChatRequest<'a> {
     stream: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     response_format: Option<ResponseFormat>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    tools: Option<&'a [ToolSpec]>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    tool_choice: Option<&'a str>,
 }
 
 /// OpenAI-compatible structured-output selector. `json_object` makes the model
@@ -47,10 +54,103 @@ impl ResponseFormat {
     const JSON: Self = ResponseFormat { kind: "json_object" };
 }
 
-#[derive(Serialize, Clone)]
-struct MessageOwned {
-    role: String,
-    content: String,
+/// One chat message for the API (prose, tool calls, or tool results).
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct ChatMessage {
+    pub role: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub content: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tool_calls: Option<Vec<ToolCall>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tool_call_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
+}
+
+impl ChatMessage {
+    pub fn system(content: impl Into<String>) -> Self {
+        Self {
+            role: "system".into(),
+            content: Some(content.into()),
+            tool_calls: None,
+            tool_call_id: None,
+            name: None,
+        }
+    }
+
+    pub fn user(content: impl Into<String>) -> Self {
+        Self {
+            role: "user".into(),
+            content: Some(content.into()),
+            tool_calls: None,
+            tool_call_id: None,
+            name: None,
+        }
+    }
+
+    pub fn assistant_text(content: impl Into<String>) -> Self {
+        Self {
+            role: "assistant".into(),
+            content: Some(content.into()),
+            tool_calls: None,
+            tool_call_id: None,
+            name: None,
+        }
+    }
+
+    pub fn assistant_tools(tool_calls: Vec<ToolCall>) -> Self {
+        Self {
+            role: "assistant".into(),
+            content: None,
+            tool_calls: Some(tool_calls),
+            tool_call_id: None,
+            name: None,
+        }
+    }
+
+    pub fn tool_result(tool_call_id: impl Into<String>, content: impl Into<String>) -> Self {
+        Self {
+            role: "tool".into(),
+            content: Some(content.into()),
+            tool_calls: None,
+            tool_call_id: Some(tool_call_id.into()),
+            name: None,
+        }
+    }
+}
+
+/// OpenAI-compatible tool definition.
+#[derive(Serialize, Clone, Debug)]
+pub struct ToolSpec {
+    #[serde(rename = "type")]
+    pub kind: &'static str,
+    pub function: ToolFunction,
+}
+
+#[derive(Serialize, Clone, Debug)]
+pub struct ToolFunction {
+    pub name: String,
+    pub description: String,
+    pub parameters: Value,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct ToolCall {
+    pub id: String,
+    #[serde(rename = "type", default = "default_tool_type")]
+    pub kind: String,
+    pub function: ToolCallFunction,
+}
+
+fn default_tool_type() -> String {
+    "function".into()
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct ToolCallFunction {
+    pub name: String,
+    pub arguments: String,
 }
 
 #[derive(Deserialize)]
@@ -67,7 +167,19 @@ struct Choice {
 
 #[derive(Deserialize)]
 struct ResponseMessage {
-    content: String,
+    #[serde(default)]
+    content: Option<String>,
+    #[serde(default)]
+    tool_calls: Option<Vec<ToolCall>>,
+}
+
+/// Outcome of a tools-capable chat turn.
+#[derive(Debug, Clone)]
+pub struct ToolsCompletion {
+    pub content: Option<String>,
+    pub tool_calls: Vec<ToolCall>,
+    #[allow(dead_code)]
+    pub finish_reason: Option<String>,
 }
 
 struct Completion {
@@ -105,18 +217,9 @@ impl DeepSeekClient {
             return Err(anyhow!("DEEPSEEK_API_KEY is not set"));
         }
 
-        let mut messages = vec![
-            MessageOwned {
-                role: "system".into(),
-                content: system.to_string(),
-            },
-            MessageOwned {
-                role: "user".into(),
-                content: user.to_string(),
-            },
-        ];
+        let mut messages = vec![ChatMessage::system(system), ChatMessage::user(user)];
 
-        let mut first = self.chat_with_retries(&messages, None).await?;
+        let mut first = self.chat_with_retries(&messages, None, None).await?;
         let mut full = first.content;
 
         let mut cont = 0;
@@ -126,15 +229,9 @@ impl DeepSeekClient {
                 so_far_chars = full.chars().count(),
                 "DeepSeek output truncated (finish_reason=length); continuing"
             );
-            messages.push(MessageOwned {
-                role: "assistant".into(),
-                content: full.clone(),
-            });
-            messages.push(MessageOwned {
-                role: "user".into(),
-                content: continuation_prompt(),
-            });
-            first = self.chat_with_retries(&messages, None).await?;
+            messages.push(ChatMessage::assistant_text(full.clone()));
+            messages.push(ChatMessage::user(continuation_prompt()));
+            first = self.chat_with_retries(&messages, None, None).await?;
             // Drop the continuation instruction before the next loop turn; keep
             // the growing assistant text as a single assistant message.
             messages.pop(); // continuation user
@@ -170,18 +267,9 @@ impl DeepSeekClient {
         if !self.config.has_key() {
             return Err(anyhow!("DEEPSEEK_API_KEY is not set"));
         }
-        let messages = vec![
-            MessageOwned {
-                role: "system".into(),
-                content: system.to_string(),
-            },
-            MessageOwned {
-                role: "user".into(),
-                content: user.to_string(),
-            },
-        ];
+        let messages = vec![ChatMessage::system(system), ChatMessage::user(user)];
         let completion = self
-            .chat_with_retries(&messages, Some(ResponseFormat::JSON))
+            .chat_with_retries(&messages, Some(ResponseFormat::JSON), None)
             .await?;
         if completion.finish_reason.as_deref() == Some("length") {
             return Err(anyhow!(
@@ -192,14 +280,45 @@ impl DeepSeekClient {
         Ok(completion.content)
     }
 
+    /// One chat turn that may return tool calls (OpenAI-compatible function calling).
+    pub async fn chat_tools(
+        &self,
+        messages: &[ChatMessage],
+        tools: &[ToolSpec],
+    ) -> Result<ToolsCompletion> {
+        if !self.config.has_key() {
+            return Err(anyhow!("DEEPSEEK_API_KEY is not set"));
+        }
+        let mut attempt = 0;
+        loop {
+            match self.try_once_tools(messages, tools).await {
+                Ok(c) => return Ok(c),
+                Err(ApiError { retryable, error }) => {
+                    if !retryable || attempt >= self.config.max_retries {
+                        return Err(error);
+                    }
+                    let delay = backoff_delay(attempt);
+                    tracing::warn!(
+                        attempt,
+                        ?delay,
+                        "DeepSeek tools request failed, retrying: {error:#}"
+                    );
+                    tokio::time::sleep(delay).await;
+                    attempt += 1;
+                }
+            }
+        }
+    }
+
     async fn chat_with_retries(
         &self,
-        messages: &[MessageOwned],
+        messages: &[ChatMessage],
         response_format: Option<ResponseFormat>,
+        tools: Option<&[ToolSpec]>,
     ) -> Result<Completion> {
         let mut attempt = 0;
         loop {
-            match self.try_once(messages, response_format).await {
+            match self.try_once(messages, response_format, tools).await {
                 Ok(c) => return Ok(c),
                 Err(ApiError { retryable, error }) => {
                     if !retryable || attempt >= self.config.max_retries {
@@ -221,9 +340,53 @@ impl DeepSeekClient {
     /// One attempt. Classifies the outcome as retryable or fatal.
     async fn try_once(
         &self,
-        messages: &[MessageOwned],
+        messages: &[ChatMessage],
         response_format: Option<ResponseFormat>,
+        tools: Option<&[ToolSpec]>,
     ) -> std::result::Result<Completion, ApiError> {
+        let parsed = self
+            .post_chat(messages, response_format, tools, None)
+            .await?;
+        let choice = parsed.choices.into_iter().next().ok_or_else(|| ApiError {
+            retryable: false,
+            error: anyhow!("DeepSeek response had no choices"),
+        })?;
+
+        Ok(Completion {
+            content: choice.message.content.unwrap_or_default(),
+            finish_reason: choice.finish_reason,
+        })
+    }
+
+    async fn try_once_tools(
+        &self,
+        messages: &[ChatMessage],
+        tools: &[ToolSpec],
+    ) -> std::result::Result<ToolsCompletion, ApiError> {
+        let parsed = self
+            .post_chat(messages, None, Some(tools), Some("auto"))
+            .await?;
+        let choice = parsed.choices.into_iter().next().ok_or_else(|| ApiError {
+            retryable: false,
+            error: anyhow!("DeepSeek response had no choices"),
+        })?;
+        Ok(ToolsCompletion {
+            content: choice
+                .message
+                .content
+                .filter(|s| !s.trim().is_empty()),
+            tool_calls: choice.message.tool_calls.unwrap_or_default(),
+            finish_reason: choice.finish_reason,
+        })
+    }
+
+    async fn post_chat(
+        &self,
+        messages: &[ChatMessage],
+        response_format: Option<ResponseFormat>,
+        tools: Option<&[ToolSpec]>,
+        tool_choice: Option<&str>,
+    ) -> std::result::Result<ChatResponse, ApiError> {
         let url = format!(
             "{}/chat/completions",
             self.config.base_url.trim_end_matches('/')
@@ -235,6 +398,8 @@ impl DeepSeekClient {
             max_tokens: self.config.max_output_tokens,
             stream: false,
             response_format,
+            tools,
+            tool_choice,
         };
 
         let resp = self
@@ -259,19 +424,9 @@ impl DeepSeekClient {
             });
         }
 
-        let parsed: ChatResponse = resp.json().await.map_err(|e| ApiError {
+        resp.json().await.map_err(|e| ApiError {
             retryable: false,
             error: anyhow::Error::new(e).context("decoding DeepSeek response"),
-        })?;
-
-        let choice = parsed.choices.into_iter().next().ok_or_else(|| ApiError {
-            retryable: false,
-            error: anyhow!("DeepSeek response had no choices"),
-        })?;
-
-        Ok(Completion {
-            content: choice.message.content,
-            finish_reason: choice.finish_reason,
         })
     }
 }
@@ -299,5 +454,36 @@ mod tests {
         let p = continuation_prompt();
         assert!(p.contains("Continue"));
         assert!(p.contains("Do not repeat"));
+    }
+
+    #[test]
+    fn parses_tool_calls_payload() {
+        let raw = r#"{
+          "choices": [{
+            "finish_reason": "tool_calls",
+            "message": {
+              "role": "assistant",
+              "content": null,
+              "tool_calls": [{
+                "id": "call_1",
+                "type": "function",
+                "function": { "name": "get_progress", "arguments": "{}" }
+              }]
+            }
+          }]
+        }"#;
+        let parsed: ChatResponse = serde_json::from_str(raw).unwrap();
+        let calls = parsed.choices[0].message.tool_calls.as_ref().unwrap();
+        assert_eq!(calls[0].function.name, "get_progress");
+        assert_eq!(calls[0].id, "call_1");
+    }
+
+    #[test]
+    fn chat_message_tool_result_serializes() {
+        let m = ChatMessage::tool_result("call_1", r#"{"ok":true}"#);
+        let v = serde_json::to_value(&m).unwrap();
+        assert_eq!(v["role"], "tool");
+        assert_eq!(v["tool_call_id"], "call_1");
+        assert!(v.get("tool_calls").is_none());
     }
 }

@@ -11,6 +11,8 @@ type Props = {
   onToggleSettings: () => void;
   consoleOpen: boolean;
   onToggleConsole: () => void;
+  assistantOpen: boolean;
+  onToggleAssistant: () => void;
 };
 
 function IconBtn({
@@ -23,10 +25,11 @@ function IconBtn({
   );
 }
 
-/** Far-left icon rail: toggles the explorer, console, and settings. */
+/** Far-left icon rail: toggles the explorer, console, assistant, and settings. */
 export function ActivityBar({
   t, sidebarOpen, onToggleSidebar, sidebarView, onShowSearch,
   settingsOpen, onToggleSettings, consoleOpen, onToggleConsole,
+  assistantOpen, onToggleAssistant,
 }: Props) {
   return (
     <nav className="activitybar">
@@ -45,6 +48,11 @@ export function ActivityBar({
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
           <rect x="3" y="4.5" width="18" height="15" rx="1.6" />
           <path d="M7 9l3 3-3 3M13 15h4" />
+        </svg>
+      </IconBtn>
+      <IconBtn active={assistantOpen} title={t("activity.assistant")} onClick={onToggleAssistant}>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
         </svg>
       </IconBtn>
       <div className="spacer" />

@@ -1,7 +1,7 @@
 # book-converter — Documentation
 
 > Design reference for book-converter.
-> Last updated 2026-07-22
+> Last updated 2026-09-18
 
 ## Navigation
 
@@ -12,6 +12,7 @@
 | **[PROJECT_ISOLATION.md](PROJECT_ISOLATION.md)** | Per-project data dirs, parallel runs, `.bcproj` |
 | **[SETTINGS.md](SETTINGS.md)** | Where configuration lives (env, settings DB, localStorage, project meta) |
 | **[FRONTEND_REDESIGN.md](FRONTEND_REDESIGN.md)** | Planned Cursor-style IDE frontend rework: shell, editor, highlight, find/replace, settings |
+| **[ASSISTANT.md](ASSISTANT.md)** | Living plan: right-side project assistant chat (agent + tools + confirm) |
 | **[../README.md](../README.md)** | Product overview, requirements, setup, usage |
 
 ## At a glance

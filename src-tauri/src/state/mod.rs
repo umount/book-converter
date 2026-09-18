@@ -144,6 +144,11 @@ pub struct Store {
 }
 
 impl Store {
+    /// Borrow the underlying connection (migrations / assistant history).
+    pub(crate) fn conn(&self) -> &Connection {
+        &self.conn
+    }
+
     /// Open/create the database and apply the schema and migrations.
     ///
     /// Opening is **read-only in effect**: it never changes chapter data. Crash

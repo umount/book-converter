@@ -1,6 +1,6 @@
 # book-converter — Architecture
 
-> Last updated 2026-08-21, synced with the implemented codebase.
+> Last updated 2026-09-18, synced with the implemented codebase.
 
 ## Overview
 
@@ -100,7 +100,8 @@ thing the frontend knows about; session/job helpers sit beside it.
 | **translator::prompt** | System/user prompts: book identity + glossary + rolling summary + style; strict target-language rules |
 | **translator::reply** | The `<<<TITLE>>>` / `<<<BODY>>>` reply envelope, with the old first-line heuristic as fallback |
 | **translator::repair** | Line-scoped language repair: which lines to send, the JSON prompt, and splicing replies back by line number |
-| **translator::deepseek** | DeepSeek HTTP client, retry + backoff, continue on output truncation, `json_object` mode |
+| **translator::deepseek** | DeepSeek HTTP client, retry + backoff, continue on output truncation, `json_object` mode, OpenAI-style tool calling for the assistant |
+| **assistant** | Project chat agent: compact snapshot + tool loop over Store/jobs, confirm gate for mutations, history in `assistant_messages` |
 | **orchestrator** | Sequential translation facade; delegates glossary learning and target-language repair to focused stages |
 | **state** | Per-project SQLite: `chapters` / `glossary` / `meta` / `search` submodules over one `Store` |
 | **settings** | App-wide key-value settings DB |
