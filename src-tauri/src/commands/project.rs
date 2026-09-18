@@ -32,10 +32,10 @@ pub async fn load_source(
     if book.chapters.is_empty() {
         return Err("no_text_extracted".into());
     }
-    let db = db_path_for_project(&project_id);
+    let db = db_path_for_project(&project_id).map_err(err)?;
     let store = Store::open(&db).map_err(err)?;
     store.init_chapters(&book.chapters).map_err(err)?;
-    write_manifest(&project_id, &path, None);
+    write_manifest(&project_id, &path, None).map_err(err)?;
 
     let title = book.meta.title.clone().unwrap_or_default();
     let author = book.meta.author.clone().unwrap_or_default();
@@ -131,7 +131,7 @@ pub async fn open_project(
     project_id: String,
     state: State<'_, AppState>,
 ) -> Result<BookInfo, String> {
-    let db = db_path_for_project(&project_id);
+    let db = db_path_for_project(&project_id).map_err(err)?;
     if !Path::new(&db).exists() {
         return Err("no_source".into());
     }
@@ -152,7 +152,11 @@ pub async fn open_project(
         (Some(content_type), Some(base64)) => Some(Cover { content_type, base64 }),
         _ => None,
     };
-    let manifest: Option<Manifest> = std::fs::read(project_dir(&project_id).join("project.json"))
+    let manifest: Option<Manifest> = std::fs::read(
+        project_dir(&project_id)
+            .map_err(err)?
+            .join("project.json"),
+    )
         .ok()
         .and_then(|b| serde_json::from_slice(&b).ok());
     let source_path = manifest.as_ref().map(|m| m.source_path.clone());
@@ -217,6 +221,9 @@ pub async fn list_projects() -> Result<Vec<ProjectSummary>, String> {
             continue;
         }
         let id = entry.file_name().to_string_lossy().into_owned();
+        if crate::session::validate_project_id(&id).is_err() {
+            continue;
+        }
         let db = entry.path().join("progress.db");
         if !db.exists() {
             continue;
@@ -262,8 +269,8 @@ pub async fn list_projects() -> Result<Vec<ProjectSummary>, String> {
 /// Delete a project and all of its data (progress DB, manifest, extracted files).
 #[tauri::command]
 pub async fn delete_project(project_id: String, state: State<'_, AppState>) -> Result<(), String> {
-    state.0.lock().unwrap().remove(&project_id);
-    let dir = project_dir(&project_id);
+    state.remove(&project_id);
+    let dir = project_dir(&project_id).map_err(err)?;
     if dir.exists() {
         std::fs::remove_dir_all(&dir).map_err(err)?;
     }
@@ -283,7 +290,7 @@ pub async fn export_project(
     // The database is self-contained (chapter source text, translations, glossary,
     // cover, metadata all live in it), so the archive needs only the manifest and the
     // DB — not a copy of the original book.
-    let dir = project_dir(&project_id);
+    let dir = project_dir(&project_id).map_err(err)?;
     let manifest_bytes = std::fs::read(dir.join("project.json")).map_err(err)?;
     let db_bytes = std::fs::read(dir.join("progress.db")).map_err(err)?;
 
@@ -308,7 +315,7 @@ pub async fn import_project(
 ) -> Result<ImportedProject, String> {
     use std::io::Read as _;
 
-    let dir = project_dir(&project_id);
+    let dir = project_dir(&project_id).map_err(err)?;
     std::fs::create_dir_all(&dir).map_err(err)?;
     let file = std::fs::File::open(&archive_path).map_err(err)?;
     let mut zip = zip::ZipArchive::new(file).map_err(err)?;

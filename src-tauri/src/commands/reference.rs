@@ -32,7 +32,7 @@ pub async fn load_reference(
         _ => 0,
     };
     if let Some(sp) = &source_path {
-        write_manifest(&project_id, sp, Some(&path));
+        write_manifest(&project_id, sp, Some(&path)).map_err(err)?;
     }
 
     let info = RefInfo {
@@ -197,7 +197,9 @@ pub async fn backfill_reference_head(
             return Ok(false);
         }
     }
-    let Some(ref_path) = crate::session::manifest_ref_path(&project_id) else {
+    let Some(ref_path) = crate::session::manifest_ref_path(&project_id)
+        .map_err(err)?
+    else {
         persist_meta(&Some(db), HEAD_IMPORTED, &HEAD_IMPORT_VERSION.to_string());
         return Ok(false);
     };
