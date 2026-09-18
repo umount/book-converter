@@ -1,9 +1,9 @@
 //! Exporting the translated book to a chosen format (TXT, FB2, EPUB, PDF).
 
-pub mod epub;
-pub mod fb2;
-pub mod pdf;
-pub mod txt;
+pub(crate) mod epub;
+pub(crate) mod fb2;
+pub(crate) mod pdf;
+pub(crate) mod txt;
 
 use std::path::Path;
 

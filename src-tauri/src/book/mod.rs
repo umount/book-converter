@@ -1,11 +1,11 @@
 //! Working with the source book: decoding, format detection, parsing, chunking.
 
-pub mod chunker;
-pub mod fb2;
-pub mod load;
-pub mod parser;
-pub mod pdf;
-pub mod source;
+pub(crate) mod chunker;
+pub(crate) mod fb2;
+pub(crate) mod load;
+pub(crate) mod parser;
+pub(crate) mod pdf;
+pub(crate) mod source;
 
 pub use chunker::split_chapter;
 pub use load::{detect_format, load_book, load_book_text, InputFormat, LoadedBook};

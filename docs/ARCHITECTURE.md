@@ -85,8 +85,8 @@ thing the frontend knows about; session/job helpers sit beside it.
 |--------|----------------|
 | **config** | Configuration: DeepSeek API key (settings DB, falling back to env `DEEPSEEK_API_KEY`), base_url, model, languages, `max_chunk_chars`, `max_retries` |
 | **paths** | Shared app data directory (`XDG_DATA_HOME` / `~/.local/share/book-converter`) |
-| **session** | Per-project `Session` + `AppState` map; project dirs; legacy cleanup |
-| **jobs** | Background OS-thread runners for translation and glossary retarget |
+| **session** | Ephemeral per-project job state (`db_path`, cancel, running); validated project dirs / manifests |
+| **jobs** | Shared background lifecycle + `jobs::translation` / `jobs::retarget` runners |
 | **dto** | IPC response/request types shared by commands |
 | **book::source** | Detect encoding (`chardetng`), decode (`encoding_rs`), zip unpack, PDF branch |
 | **book::parser** | Chaptering via `assets/chapter_patterns.json`; model-inferred delimiter fallback |
@@ -101,12 +101,12 @@ thing the frontend knows about; session/job helpers sit beside it.
 | **translator::reply** | The `<<<TITLE>>>` / `<<<BODY>>>` reply envelope, with the old first-line heuristic as fallback |
 | **translator::repair** | Line-scoped language repair: which lines to send, the JSON prompt, and splicing replies back by line number |
 | **translator::deepseek** | DeepSeek HTTP client, retry + backoff, continue on output truncation, `json_object` mode |
-| **orchestrator** | Sequential translation loop (glossary + summary + enrich + target-language check) |
+| **orchestrator** | Sequential translation facade; delegates glossary learning and target-language repair to focused stages |
 | **state** | Per-project SQLite: `chapters` / `glossary` / `meta` / `search` submodules over one `Store` |
 | **settings** | App-wide key-value settings DB |
 | **export::txt** / **fb2** / **epub** / **pdf** | Assemble output formats |
 | **i18n** | Output-facing localization from `assets/locales.json` |
-| **commands/** | Tauri IPC — thin bridge; progress via events (`emit`) |
+| **commands/** | Tauri IPC — thin bridge; reader metadata/search and project catalog/archive are separate submodules |
 
 ## Translation Pipeline
 
@@ -194,7 +194,7 @@ App data layout (see also `PROJECT_ISOLATION.md`):
 |-------|---------|
 | **chapters** | Source, status (`pending` / `in_progress` / `done` / `failed`), translation, origin |
 | **glossary** | Canonical terms (`source`, `target`, `kind`, `frequency`, `pinned`) |
-| **meta** | Title/author/cover/summary, `running_summary`, format, encoding |
+| **meta** | Sole durable source for title/author/cover/summary, `running_summary`, format, encoding |
 
 Every connection runs in WAL with a busy timeout: a translation run holds a
 writer on a background thread while the UI opens short-lived readers, which the
@@ -283,7 +283,9 @@ state of a run in flight.
 | `export_book` | Export to path; format from extension |
 
 Projects are isolated: `AppState` holds one `Session` per `project_id`. Events carry
-`project`. See `docs/PROJECT_ISOLATION.md`.
+`project`. A `Session` contains only ephemeral job state; durable project data is
+read from SQLite/manifest. Project ids are validated before they enter filesystem
+paths. See `docs/PROJECT_ISOLATION.md`.
 
 ## Deliberately Out of Scope (current)
 

@@ -36,13 +36,15 @@ Legacy flat `*.progress.db` files (old layout) are deleted on startup (allowed:
 
 ## Backend: from one session to many
 
-- `AppState(Mutex<HashMap<ProjectId, Session>>)` replaces the single `Session`.
+- `AppState(Mutex<HashMap<String, Session>>)` replaces the single `Session`; ids
+  are validated as one safe filename component before any filesystem access.
 - Every project-scoped command gains a `project_id` argument and operates on that
   entry (`map.entry(id).or_default()`). App-wide commands (`get_setting`,
   `set_setting`) are unchanged.
-- Each `Session` already owns its `cancel`/`running`; with one per project, jobs are
-  independent and may run concurrently. The DeepSeek client is stateless, so
-  parallel runs only share the network/rate budget.
+- Each `Session` contains only the DB path and its ephemeral job slot
+  (`cancel`/`running`). Durable book metadata is never duplicated in memory.
+  Jobs are independent and may run concurrently. The DeepSeek client is
+  stateless, so parallel runs only share the network/rate budget.
 - The translation and retarget jobs run on their own OS thread (as today), one per
   project; the per-project `running` flag prevents two jobs on the *same* project.
 

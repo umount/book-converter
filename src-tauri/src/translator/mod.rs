@@ -1,9 +1,9 @@
 //! Translating chunks via the DeepSeek API and building prompts.
 
-pub mod deepseek;
-pub mod prompt;
-pub mod repair;
-pub mod reply;
+pub(crate) mod deepseek;
+pub(crate) mod prompt;
+pub(crate) mod repair;
+pub(crate) mod reply;
 
 pub use deepseek::DeepSeekClient;
 
