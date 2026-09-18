@@ -105,7 +105,7 @@ pub fn cover(bytes: &[u8]) -> Option<(String, Vec<u8>)> {
                 continue;
             }
             let size = stream.content.len();
-            if best.as_ref().map_or(true, |(s, _)| size > *s) {
+            if best.as_ref().is_none_or(|(s, _)| size > *s) {
                 best = Some((size, stream.content.clone()));
             }
         }

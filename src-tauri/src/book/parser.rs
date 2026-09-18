@@ -194,7 +194,7 @@ pub fn parse_chapters_with(raw: &str, header: &Regex) -> Vec<Chapter> {
 fn split_on_pattern(text: &str, re: &Regex) -> Vec<Chapter> {
     // For each header line: (title_start, title_end, full_title, numeral).
     let headers: Vec<(usize, usize, String, Option<usize>)> = re
-        .captures_iter(&text)
+        .captures_iter(text)
         .map(|c| {
             let m = c.get(0).expect("group 0 always present");
             let numeral = c.get(1).and_then(|n| parse_chapter_number(n.as_str()));

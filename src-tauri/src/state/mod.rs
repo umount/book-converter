@@ -550,7 +550,7 @@ mod tests {
     fn upsert_terms_writes_only_what_it_is_given() {
         let store = Store::open(":memory:").unwrap();
         let keep = Term { source: "血湖".into(), target: "Кровавое озеро".into(), kind: TermKind::Location, frequency: 1, pinned: true };
-        store.save_glossary(&[keep.clone()]).unwrap();
+        store.save_glossary(std::slice::from_ref(&keep)).unwrap();
 
         let new_a = Term { source: "王林".into(), target: "Ван Линь".into(), kind: TermKind::Person, frequency: 4, pinned: false };
         let new_b = Term { source: "剑宗".into(), target: "Секта Меча".into(), kind: TermKind::Organization, frequency: 2, pinned: false };

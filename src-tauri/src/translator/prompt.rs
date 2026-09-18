@@ -3,6 +3,7 @@
 //! A chapter's prompt is assembled from: base instructions (system) + a mandatory
 //! glossary dictionary + an optional style exemplar (from a reference translation)
 //! + the rolling context (running summary + previous chapter tail) + the text.
+//!
 //! The glossary keeps terms consistent; the rolling context keeps the narrative
 //! consistent across a sequential run.
 

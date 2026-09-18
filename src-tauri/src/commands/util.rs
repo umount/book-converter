@@ -166,9 +166,7 @@ impl OutputTarget {
         } else {
             format!("{inner_stem}.{ext}")
         };
-        let path = if !zipped {
-            out_path.to_string()
-        } else if ends_zip {
+        let path = if !zipped || ends_zip {
             out_path.to_string()
         } else {
             format!("{out_path}.zip")

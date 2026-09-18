@@ -235,9 +235,11 @@ mod tests {
     /// when the project translates something else.
     #[test]
     fn extraction_prompt_follows_the_configured_pair() {
-        let mut config = Config::default();
-        config.source_lang = "Japanese".into();
-        config.target_lang = "German".into();
+        let config = Config {
+            source_lang: "Japanese".into(),
+            target_lang: "German".into(),
+            ..Config::default()
+        };
         let (system, user) = build_extraction_prompt(&config, "源", "Quelle");
         assert!(system.contains("Japanese") && system.contains("German"));
         assert!(!system.contains("Chinese") && !system.contains("Russian"));
