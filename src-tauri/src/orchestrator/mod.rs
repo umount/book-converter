@@ -13,26 +13,21 @@
 //! running summary, per-chapter status) lives in SQLite, so a run resumes with
 //! full context.
 
-use std::collections::HashSet;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Instant;
 
 use anyhow::{anyhow, Result};
 
+mod glossary;
+mod language;
+
+use self::glossary::GlossarySession;
+use self::language::LanguageRepairer;
 use crate::book::{split_chapter, Chapter};
 use crate::config::Config;
-use crate::glossary::{self, Term};
 use crate::state::{Stats, Status, Store};
-use crate::textutil;
 use crate::translator::prompt::ReplyShape;
-use crate::translator::{prompt, repair, reply, Translate};
-
-/// Shortest run of unexpected-script letters treated as a leftover foreign word.
-/// Single letters (an initial, a unit) are ignored; Han is always reported.
-const MIN_FOREIGN_RUN: usize = 2;
-
-/// How many repair passes a chapter may get before the leftovers are just logged.
-const MAX_LANGUAGE_REPAIRS: usize = 2;
+use crate::translator::{prompt, reply, Translate};
 
 /// Live progress callback payload for the UI / console.
 #[derive(Debug, Clone)]
@@ -56,10 +51,7 @@ pub struct Orchestrator<'a, C: Translate> {
     client: &'a C,
     store: &'a Store,
     config: &'a Config,
-    glossary: Vec<Term>,
-    /// Source forms whose glossary row changed during this run and has not been
-    /// written yet. See [`Orchestrator::flush_glossary`].
-    dirty_terms: HashSet<String>,
+    glossary: GlossarySession,
     style: Option<String>,
     summary: String,
     prev_tail: Option<String>,
@@ -84,7 +76,7 @@ impl<'a, C: Translate> Orchestrator<'a, C> {
         config: &'a Config,
         style: Option<String>,
     ) -> Result<Self> {
-        let glossary = store.load_glossary()?;
+        let glossary = GlossarySession::load(store)?;
         let summary = store.get_meta("running_summary")?.unwrap_or_default();
         let metadata = store.project_metadata()?;
         Ok(Self {
@@ -92,7 +84,6 @@ impl<'a, C: Translate> Orchestrator<'a, C> {
             store,
             config,
             glossary,
-            dirty_terms: HashSet::new(),
             style,
             summary,
             prev_tail: None,
@@ -124,9 +115,7 @@ impl<'a, C: Translate> Orchestrator<'a, C> {
 
     /// Translate pending chapters in order, at most `limit` of them (`None` = all).
     ///
-    /// Terms are written after each chapter; the flush here is the safety net
-    /// for a run that ended on a path which skipped one. See
-    /// [`Orchestrator::flush_glossary`].
+    /// Terms are written after each chapter; the final flush is a safety net.
     pub async fn run<F: FnMut(ProgressEvent)>(
         &mut self,
         limit: Option<usize>,
@@ -391,7 +380,7 @@ impl<'a, C: Translate> Orchestrator<'a, C> {
             body: source.to_string(),
         };
         let chunks = split_chapter(&chapter, self.config.max_chunk_chars);
-        let relevant = glossary::relevant_terms(&self.glossary, source);
+        let relevant = self.glossary.relevant(source);
         let ctx = prompt::PromptContext {
             terms: &relevant,
             summary: non_empty(&self.summary),
@@ -455,80 +444,9 @@ impl<'a, C: Translate> Orchestrator<'a, C> {
         body: &str,
         source: &str,
     ) -> (String, String, Vec<String>) {
-        let Some(expected) = textutil::expected_script(&self.config.target_lang) else {
-            return (title.to_string(), body.to_string(), Vec::new());
-        };
-
-        // Line 0 is the title; the body follows. Splitting on '\n' rather than
-        // `lines()` keeps blank lines, so paragraph structure survives the join.
-        let mut lines: Vec<String> = std::iter::once(title.to_string())
-            .chain(body.split('\n').map(|l| l.to_string()))
-            .collect();
-
-        let joined = |lines: &[String]| lines.join("\n");
-        let mut bad = textutil::foreign_fragments(&joined(&lines), expected, source, MIN_FOREIGN_RUN);
-
-        for attempt in 0..MAX_LANGUAGE_REPAIRS {
-            if bad.is_empty() {
-                break;
-            }
-            let targets = repair::lines_with_fragments(&lines, &bad);
-            if targets.is_empty() {
-                // The fragments live in whitespace-only or joined-away text; no
-                // line to send, so another pass cannot help.
-                break;
-            }
-            let numbered: Vec<repair::NumberedLine> = targets
-                .iter()
-                .map(|&n| repair::NumberedLine { n, text: lines[n].clone() })
-                .collect();
-            let sent_chars: usize = numbered.iter().map(|l| l.text.chars().count()).sum();
-            tracing::info!(
-                chapter = idx,
-                attempt,
-                fragments = ?bad,
-                lines = numbered.len(),
-                of_lines = lines.len(),
-                chars = sent_chars,
-                "translation kept foreign words; repairing the affected lines"
-            );
-
-            let mut changed = 0usize;
-            for batch in repair::batches(&numbered, repair::MAX_BATCH_CHARS) {
-                let (system, user) = repair::build_prompt(self.config, &bad, &batch);
-                let raw = match self.client.translate_json(&system, &user).await {
-                    Ok(raw) => raw,
-                    Err(e) => {
-                        tracing::warn!(chapter = idx, "language repair request failed: {e:#}");
-                        break;
-                    }
-                };
-                match repair::parse_reply(&raw) {
-                    // Per-line validation lives in `splice`: a mangled reply can
-                    // now only lose its own line, never the chapter.
-                    Ok(fixed) => changed += repair::splice(&mut lines, &fixed),
-                    Err(e) => tracing::warn!(chapter = idx, "unparseable repair reply: {e:#}"),
-                }
-            }
-            if changed == 0 {
-                // Nothing was accepted, so an identical request will not help.
-                break;
-            }
-
-            let still = textutil::foreign_fragments(&joined(&lines), expected, source, MIN_FOREIGN_RUN);
-            let progressed = still.len() < bad.len();
-            bad = still;
-            if !progressed {
-                break;
-            }
-        }
-
-        if !bad.is_empty() {
-            tracing::warn!(chapter = idx, fragments = ?bad, "foreign words remain after repair");
-        }
-
-        let title = lines.remove(0);
-        (title, lines.join("\n").trim().to_string(), bad)
+        LanguageRepairer::new(self.client, self.config)
+            .enforce(idx, title, body, source)
+            .await
     }
 
     async fn update_summary(&self, translation: &str) -> Result<String> {
@@ -546,15 +464,15 @@ impl<'a, C: Translate> Orchestrator<'a, C> {
     /// What changed is that only the terms this chapter touched are written,
     /// instead of the entire list.
     async fn enrich_glossary(&mut self, source: &str, translation: &str) -> Result<()> {
-        let new_terms =
-            crate::translator::extract_terms(self.client, self.config, source, translation, 2)
-                .await?;
-        for t in &new_terms {
-            self.dirty_terms.insert(t.source.clone());
-        }
-        glossary::merge(&mut self.glossary, new_terms);
-        self.flush_glossary()?;
-        Ok(())
+        self.glossary
+            .learn(
+                self.client,
+                self.config,
+                self.store,
+                source,
+                translation,
+            )
+            .await
     }
 
     /// Write the terms learned since the last flush, and clear the dirty set.
@@ -565,32 +483,7 @@ impl<'a, C: Translate> Orchestrator<'a, C> {
     /// changed are written, so the cost is proportional to what was learned
     /// rather than to the size of the glossary.
     fn flush_glossary(&mut self) -> Result<usize> {
-        if self.dirty_terms.is_empty() {
-            return Ok(0);
-        }
-        // The in-memory glossary was read when the run started and can be hours
-        // old. A term the user edited in the UI meanwhile must keep the
-        // rendering they chose; only the frequency this run counted is ours to
-        // write. New terms are inserted as extracted.
-        let mut rows: Vec<Term> = Vec::with_capacity(self.dirty_terms.len());
-        for term in self
-            .glossary
-            .iter()
-            .filter(|t| self.dirty_terms.contains(&t.source))
-        {
-            match self.store.term(&term.source)? {
-                Some(stored) => rows.push(Term {
-                    frequency: term.frequency.max(stored.frequency),
-                    ..stored
-                }),
-                None => rows.push(term.clone()),
-            }
-        }
-        let refs: Vec<&Term> = rows.iter().collect();
-        self.store.upsert_terms(&refs)?;
-        self.dirty_terms.clear();
-        tracing::info!(terms = rows.len(), "glossary flushed at end of run");
-        Ok(rows.len())
+        self.glossary.flush(self.store)
     }
 
 }
