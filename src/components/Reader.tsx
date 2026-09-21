@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type Dispatch, type SetStateAction } from "react";
+import { useEffect, useMemo, useRef, useState, type Dispatch, type MutableRefObject, type SetStateAction } from "react";
 import { countMatches, isBadPattern, replaceAllText, replaceNth, selectedText, type FindOpts } from "../lib/find";
 import { tokenizeLines } from "../lib/highlight";
 import type { FindApi } from "../hooks/useFindReplace";
@@ -36,6 +36,8 @@ type Props = {
   onSaveChapterPrompt: (idx: number, prompt: string) => Promise<void>;
   onSaveChapterContext: (idx: number, summary: string, prevTail: string) => Promise<void>;
   onRetranslateWithPrompt: (idx: number, prompt: string) => Promise<void>;
+  /** Lets App flush the editor draft before the assistant reloads the chapter. */
+  flushRef?: MutableRefObject<null | (() => Promise<void>)>;
 };
 
 /** Idle time after the last keystroke before the translation is persisted. */
@@ -67,8 +69,8 @@ function PaneToggle({
 export function Reader({
   t, chapters, chapterIdx, setChapterIdx, chapter, chapterLoading,
   panes, setPanes, hl, find, terms, onOpenGlossaryTerm, onReplaceInBook,
-  translating, onTranslateChapter, onSaveTranslation,
-  onSaveChapterPrompt, onSaveChapterContext, onRetranslateWithPrompt,
+  translating, onTranslateChapter, onSaveTranslation, onSaveChapterPrompt,
+  onSaveChapterContext, onRetranslateWithPrompt, flushRef,
 }: Props) {
   // The translation pane is always editable (no edit mode): the text lives in a
   // draft that is autosaved, and flushed when leaving the chapter.
@@ -155,6 +157,7 @@ export function Reader({
   saveRef.current = onSaveTranslation;
   useEffect(() => {
     pendingRef.current = dirty && chapterIdx != null ? { idx: chapterIdx, title: titleDraft, body: bodyDraft } : null;
+    if (flushRef) flushRef.current = flushEdits;
   });
 
   async function flushEdits() {

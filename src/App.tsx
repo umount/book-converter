@@ -30,7 +30,7 @@ import { useProjectActions } from "./hooks/useProjectActions";
 import { useProjectList } from "./hooks/useProjectList";
 import { useTranslationJob } from "./hooks/useTranslationJob";
 import { LS_LANG, normalizeLang, translate, type Lang } from "./i18n";
-import type { ViewId } from "./types";
+import type { RefInfo, ViewId } from "./types";
 
 export default function App() {
   const [view, setView] = useState<ViewId>("overview");
@@ -130,22 +130,23 @@ export default function App() {
     list, book, glossary, job,
   });
 
+  const readerFlushRef = useRef<null | (() => Promise<void>)>(null);
   const assistant = useAssistant({
     call,
     activeId,
     enabled: !!activeProject,
-    onMutated: async (tools) => {
-      const glossaryTouched = tools.some((n) =>
-        /term|glossary|retarget|bootstrap|harvest/.test(n));
-      const chaptersTouched = tools.some((n) =>
-        /chapter|translation|replace|reset|reference|start_translation|translate_chapter/.test(n));
-      if (glossaryTouched) await glossary.refreshGlossary();
-      if (chaptersTouched) {
-        await book.loadChapters();
-        await job.refreshProgress();
-        if (book.chapterIdx != null) await book.openChapter(book.chapterIdx);
-      } else {
-        await job.refreshProgress();
+    onInvalidated: async (areas) => {
+      if (areas.includes("glossary")) await glossary.refreshGlossary();
+      if (areas.includes("chapters")) await book.loadChapters();
+      if (areas.includes("progress")) await job.refreshProgress();
+      if (areas.includes("book_details")) await book.refreshDetails();
+      if (areas.includes("reference")) {
+        const info = await call<RefInfo | null>("get_reference_info", { projectId: activeId });
+        if (info) book.setRef(info);
+      }
+      if (areas.includes("open_chapter") && book.chapterIdx != null) {
+        await readerFlushRef.current?.();
+        await book.openChapter(book.chapterIdx);
       }
     },
   });
@@ -477,6 +478,7 @@ export default function App() {
                       onSaveChapterPrompt={job.saveChapterPrompt}
                       onSaveChapterContext={job.saveChapterContext}
                       onRetranslateWithPrompt={job.retranslateWithPrompt}
+                      flushRef={readerFlushRef}
                     />
                   )}
                 </main>

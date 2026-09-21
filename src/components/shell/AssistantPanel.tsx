@@ -104,7 +104,7 @@ export function AssistantPanel({
             <div className="assistant-status">
               <span className="spinner tiny" />
               <span>{statusLabel}</span>
-              {status === "running" && (
+              { (status === "running" || status === "awaiting_confirm") && (
                 <button className="linkish" onClick={onCancel}>{t("assistant.cancel")}</button>
               )}
             </div>
