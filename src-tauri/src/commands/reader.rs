@@ -10,14 +10,15 @@ use tauri::State;
 
 use crate::dto::{err, ChapterRow, ChapterView};
 use crate::session::AppState;
-use crate::state::Store;
+
+use super::ops;
 
 #[tauri::command]
 pub async fn list_chapters(
     project_id: String,
     state: State<'_, AppState>,
 ) -> Result<Vec<ChapterRow>, String> {
-    let store = project_store(&project_id, &state)?;
+    let store = ops::project_store(&state, &project_id)?;
     Ok(store
         .list_chapters()
         .map_err(err)?
@@ -40,7 +41,7 @@ pub async fn get_chapter(
     index: usize,
     state: State<'_, AppState>,
 ) -> Result<ChapterView, String> {
-    let store = project_store(&project_id, &state)?;
+    let store = ops::project_store(&state, &project_id)?;
     let row = store
         .chapter_full(index)
         .map_err(err)?
@@ -68,9 +69,7 @@ pub async fn set_chapter_prompt(
     prompt: String,
     state: State<'_, AppState>,
 ) -> Result<(), String> {
-    project_store(&project_id, &state)?
-        .set_chapter_user_prompt(index, &prompt)
-        .map_err(err)
+    ops::translation::set_prompt(&state, &project_id, index, &prompt)
 }
 
 #[tauri::command]
@@ -81,14 +80,5 @@ pub async fn set_chapter_context(
     prev_tail: String,
     state: State<'_, AppState>,
 ) -> Result<(), String> {
-    project_store(&project_id, &state)?
-        .set_context_before(index, &summary, &prev_tail)
-        .map_err(err)
-}
-
-fn project_store(project_id: &str, state: &State<'_, AppState>) -> Result<Store, String> {
-    let db = state
-        .with(project_id, |session| session.db_path.clone())
-        .ok_or("no_source")?;
-    Store::open(&db).map_err(err)
+    ops::translation::set_context(&state, &project_id, index, &summary, &prev_tail)
 }

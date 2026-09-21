@@ -6,8 +6,8 @@ use crate::config::Config;
 use crate::dto::{err, BookDetails};
 use crate::export::fb2::Cover;
 use crate::session::AppState;
-use crate::state::Store;
 
+use super::super::ops;
 use super::super::util::{client, cover_mime};
 
 #[tauri::command]
@@ -15,7 +15,7 @@ pub async fn get_book_details(
     project_id: String,
     state: State<'_, AppState>,
 ) -> Result<BookDetails, String> {
-    let store = project_store(&project_id, &state)?;
+    let store = ops::project_store(&state, &project_id)?;
     let metadata = store.project_metadata().map_err(err)?;
     let cover = match (metadata.cover_content_type, metadata.cover_base64) {
         (Some(content_type), Some(base64)) => Some(Cover {
@@ -39,7 +39,7 @@ pub async fn translate_title(
     project_id: String,
     state: State<'_, AppState>,
 ) -> Result<String, String> {
-    let store = project_store(&project_id, &state)?;
+    let store = ops::project_store(&state, &project_id)?;
     let metadata = store.project_metadata().map_err(err)?;
     let config = Config::load();
 
@@ -99,7 +99,7 @@ pub async fn set_summary(
     summary: String,
     state: State<'_, AppState>,
 ) -> Result<(), String> {
-    project_store(&project_id, &state)?
+    ops::project_store(&state, &project_id)?
         .set_meta("summary", summary.trim())
         .map_err(err)
 }
@@ -109,7 +109,7 @@ pub async fn generate_summary(
     project_id: String,
     state: State<'_, AppState>,
 ) -> Result<String, String> {
-    let store = project_store(&project_id, &state)?;
+    let store = ops::project_store(&state, &project_id)?;
     let metadata = store.project_metadata().map_err(err)?;
     let title = metadata
         .title
@@ -166,17 +166,10 @@ pub async fn set_cover(
         base64: base64::engine::general_purpose::STANDARD.encode(&bytes),
     };
     let url = cover.data_url();
-    project_store(&project_id, &state)?
+    ops::project_store(&state, &project_id)?
         .set_cover_meta(Some(&cover.content_type), Some(&cover.base64))
         .map_err(err)?;
     Ok(url)
-}
-
-fn project_store(project_id: &str, state: &State<'_, AppState>) -> Result<Store, String> {
-    let db = state
-        .with(project_id, |session| session.db_path.clone())
-        .ok_or("no_source")?;
-    Store::open(&db).map_err(err)
 }
 
 fn clean_model_value(value: &str) -> String {

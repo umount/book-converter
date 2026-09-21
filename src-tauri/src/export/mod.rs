@@ -66,16 +66,17 @@ pub enum OutputFormat {
 impl OutputFormat {
     /// Infer the format from a file extension.
     pub fn from_path(path: &Path) -> Option<Self> {
-        match path
-            .extension()
+        path.extension()
             .and_then(|e| e.to_str())
-            .map(|s| s.to_ascii_lowercase())
-            .as_deref()
-        {
-            Some("txt") => Some(Self::Txt),
-            Some("fb2") => Some(Self::Fb2),
-            Some("epub") => Some(Self::Epub),
-            Some("pdf") => Some(Self::Pdf),
+            .and_then(Self::from_ext)
+    }
+
+    pub fn from_ext(ext: &str) -> Option<Self> {
+        match ext.trim().trim_start_matches('.').to_ascii_lowercase().as_str() {
+            "txt" => Some(Self::Txt),
+            "fb2" => Some(Self::Fb2),
+            "epub" => Some(Self::Epub),
+            "pdf" => Some(Self::Pdf),
             _ => None,
         }
     }

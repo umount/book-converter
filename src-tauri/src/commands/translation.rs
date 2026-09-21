@@ -1,13 +1,12 @@
 //! Translation job control commands.
 
-use tauri::{AppHandle, Emitter, State};
+use tauri::{AppHandle, State};
 
-use crate::config::Config;
 use crate::dto::{err, Progress};
-use crate::jobs::{run_translation, spawn_project_job};
 use crate::session::AppState;
 use crate::state::Store;
-use crate::textutil;
+
+use super::ops;
 
 /// Start translating pending chapters (up to `limit`) on a background thread.
 #[tauri::command]
@@ -17,26 +16,13 @@ pub fn start_translation(
     app: AppHandle,
     state: State<'_, AppState>,
 ) -> Result<(), String> {
-    let (db, cancel) = state.begin_job(&project_id, "translation_running")?;
-    spawn_project_job(
-        app,
-        project_id,
-        cancel,
-        move |app, project_id, cancel| async move {
-            run_translation(&project_id, &db, limit, None, &cancel, &app).await
-        },
-        |app, project_id, ()| {
-            let _ = app.emit("done", serde_json::json!({ "project": project_id }));
-        },
-    );
-
-    Ok(())
+    ops::translation::start(&app, &state, &project_id, limit)
 }
 
 /// Request a pause: the run stops after the current chapter.
 #[tauri::command]
 pub fn pause_translation(project_id: String, state: State<'_, AppState>) -> Result<(), String> {
-    state.request_cancel(&project_id);
+    ops::translation::pause(&state, &project_id);
     Ok(())
 }
 
@@ -84,20 +70,10 @@ pub async fn get_progress(
 pub async fn reset_translation(
     project_id: String,
     from_number: Option<usize>,
+    app: AppHandle,
     state: State<'_, AppState>,
 ) -> Result<usize, String> {
-    let (db, running) = state.with(&project_id, |s| (s.db_path.clone(), s.running));
-    if running {
-        return Err("job_running".into());
-    }
-    let db = db.ok_or("no_source")?;
-    let store = Store::open(&db).map_err(err)?;
-    let n = store.reset_from_number(from_number).map_err(err)?;
-    // A full reset rebuilds context from scratch, so drop the rolling summary.
-    if from_number.is_none() {
-        let _ = store.set_meta("running_summary", "");
-    }
-    Ok(n)
+    ops::translation::reset(&app, &state, &project_id, from_number)
 }
 
 /// Translate a single chapter by index (reader action). Uses the previous
@@ -109,28 +85,7 @@ pub fn translate_chapter(
     app: AppHandle,
     state: State<'_, AppState>,
 ) -> Result<(), String> {
-    let (db, cancel) = state.begin_job(&project_id, "translation_running")?;
-    spawn_project_job(
-        app,
-        project_id,
-        cancel,
-        move |app, project_id, cancel| async move {
-            run_translation(
-                &project_id,
-                &db,
-                None,
-                Some(index),
-                &cancel,
-                &app,
-            )
-            .await
-        },
-        |app, project_id, ()| {
-            let _ = app.emit("done", serde_json::json!({ "project": project_id }));
-        },
-    );
-
-    Ok(())
+    ops::translation::translate_chapter(&app, &state, &project_id, index)
 }
 
 /// Manually save an edited chapter translation (origin = `manual`).
@@ -147,36 +102,5 @@ pub async fn update_chapter_translation(
     translated: String,
     state: State<'_, AppState>,
 ) -> Result<Option<String>, String> {
-    let db = state
-        .with(&project_id, |s| s.db_path.clone())
-        .ok_or("no_source")?;
-    let store = Store::open(&db).map_err(err)?;
-    if let Some(chapter) = store.chapter_full(index).map_err(err)? {
-        if chapter.status == "in_progress" {
-            return Err("chapter_busy".into());
-        }
-    }
-    // Refuse to replace a translation with nothing.
-    //
-    // This is the editor's autosave path, so it fires on its own, and a UI race
-    // that pairs a new chapter with a stale empty draft would silently destroy a
-    // finished chapter while marking it done. That happened. Clearing a chapter
-    // deliberately is what resetting it is for, so nothing legitimate is lost by
-    // rejecting this here, and no future editor bug can do it either.
-    if translated.trim().is_empty() && store.has_translation(index).map_err(err)? {
-        tracing::warn!(chapter = index, "refused an empty overwrite of a translation");
-        return Err("refuse_empty_overwrite".into());
-    }
-    let title = translated_title.trim();
-    let body = translated.trim();
-    let source = store
-        .chapter(index)
-        .map_err(err)?
-        .map(|(_, source)| source)
-        .unwrap_or_default();
-    let issues = textutil::leftover_foreign(&Config::load().target_lang, title, body, &source);
-    store
-        .save_manual_translation(index, title, body, &issues)
-        .map_err(err)?;
-    Ok((!issues.is_empty()).then(|| issues.join(", ")))
+    ops::translation::save_manual(&state, &project_id, index, &translated_title, &translated)
 }

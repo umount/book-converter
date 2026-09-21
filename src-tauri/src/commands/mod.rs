@@ -7,6 +7,7 @@
 //! the UI via `progress` / `done` / `job_error` events.
 
 mod util;
+pub(crate) mod ops;
 mod settings;
 mod project;
 mod reference;

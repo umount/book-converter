@@ -5,7 +5,7 @@ pub(crate) mod prompt;
 pub(crate) mod repair;
 pub(crate) mod reply;
 
-pub use deepseek::{ChatMessage, DeepSeekClient, ToolSpec};
+pub use deepseek::{ChatMessage, DeepSeekClient, ToolCall, ToolSpec};
 
 use std::future::Future;
 

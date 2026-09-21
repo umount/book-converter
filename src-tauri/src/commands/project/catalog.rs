@@ -1,7 +1,10 @@
 //! Project catalog and deletion commands.
 
+use std::sync::Arc;
+
 use tauri::State;
 
+use crate::assistant::AssistantRuntime;
 use crate::dto::{err, ProjectSummary};
 use crate::session::{project_dir, AppState, Manifest};
 use crate::state::Store;
@@ -68,7 +71,9 @@ pub async fn list_projects() -> Result<Vec<ProjectSummary>, String> {
 pub async fn delete_project(
     project_id: String,
     state: State<'_, AppState>,
+    runtime: State<'_, Arc<AssistantRuntime>>,
 ) -> Result<(), String> {
+    runtime.cancel(&project_id);
     state.remove(&project_id);
     let directory = project_dir(&project_id).map_err(err)?;
     if directory.exists() {

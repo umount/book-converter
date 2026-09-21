@@ -9,7 +9,7 @@ use crate::reference::{self};
 use crate::session::{write_manifest, AppState};
 use crate::state::Store;
 
-use super::util::{client, import_reference_pending};
+use super::util::import_reference_pending;
 
 /// How much professional text is quoted as a style exemplar in prompts.
 const STYLE_CHARS: usize = 600;
@@ -237,32 +237,10 @@ pub async fn backfill_reference_head(
 pub async fn bootstrap_glossary(
     project_id: String,
     sample: usize,
+    app: tauri::AppHandle,
     state: State<'_, AppState>,
 ) -> Result<usize, String> {
-    let db = state
-        .with(&project_id, |s| s.db_path.clone())
-        .ok_or("no_source")?;
-    let store = Store::open(&db).map_err(err)?;
-
-    // The aligned pairs are already in the database: loading a reference matched
-    // its chapters to the source by number and stored them. Re-reading and
-    // re-aligning the two books here was work done twice.
-    let pairs = store.reference_pairs(sample).map_err(err)?;
-    if pairs.is_empty() {
-        return Err("no_reference".into());
-    }
-
-    let cl = client()?;
-    let config = crate::config::Config::load();
-    // Merge into whatever is already there so a re-bootstrap does not wipe
-    // terms harvested from later machine-translated chapters.
-    let mut glossary = store.load_glossary().map_err(err)?;
-    let extracted = reference::bootstrap_glossary(&cl, &config, &pairs)
-        .await
-        .map_err(err)?;
-    crate::glossary::merge(&mut glossary, extracted);
-    store.save_glossary(&glossary).map_err(err)?;
-    Ok(glossary.len())
+    super::ops::glossary::bootstrap(&app, &state, &project_id, sample).await
 }
 
 /// "Continue" mode: seed the chapters the reference covers (that are still pending)
@@ -271,13 +249,8 @@ pub async fn bootstrap_glossary(
 #[tauri::command]
 pub async fn use_reference_as_base(
     project_id: String,
+    app: tauri::AppHandle,
     state: State<'_, AppState>,
 ) -> Result<usize, String> {
-    let db = state
-        .with(&project_id, |s| s.db_path.clone())
-        .ok_or("no_source")?;
-    let store = Store::open(&db).map_err(err)?;
-    // A reset only changes status, so the professional text is still in the
-    // database: re-seeding is restoring those chapters, not re-importing them.
-    store.restore_reference_chapters().map_err(err)
+    super::ops::reference::use_as_base(&app, &state, &project_id)
 }

@@ -18,6 +18,7 @@
 use anyhow::Result;
 use rusqlite::Connection;
 
+pub(crate) mod assistant;
 mod chapters;
 mod glossary;
 mod meta;
@@ -105,6 +106,16 @@ CREATE TABLE IF NOT EXISTS glossary (
     frequency INTEGER NOT NULL DEFAULT 1,
     pinned    INTEGER NOT NULL DEFAULT 0
 );
+CREATE TABLE IF NOT EXISTS assistant_messages (
+    id           INTEGER PRIMARY KEY,
+    turn         INTEGER NOT NULL DEFAULT 0,
+    role         TEXT NOT NULL,
+    content      TEXT NOT NULL DEFAULT '',
+    tool_name    TEXT,
+    tool_call_id TEXT,
+    tool_calls   TEXT,
+    created_at   TEXT NOT NULL DEFAULT (datetime('now'))
+);
 "#;
 
 /// Lightweight chapter row for list views.
@@ -128,6 +139,7 @@ pub(crate) struct ChapterRecord {
     pub(crate) translated: Option<String>,
     pub(crate) origin: Option<String>,
     pub(crate) user_prompt: Option<String>,
+    pub(crate) lang_issues: Option<String>,
 }
 
 /// A chapter's searchable text.
@@ -144,11 +156,6 @@ pub struct Store {
 }
 
 impl Store {
-    /// Borrow the underlying connection (migrations / assistant history).
-    pub(crate) fn conn(&self) -> &Connection {
-        &self.conn
-    }
-
     /// Open/create the database and apply the schema and migrations.
     ///
     /// Opening is **read-only in effect**: it never changes chapter data. Crash
@@ -197,6 +204,12 @@ impl Store {
         self.ensure_column("chapters", "user_prompt", "TEXT")?;
         self.ensure_column("chapters", "translate_ms", "INTEGER")?;
         self.ensure_column("chapters", "lang_issues", "TEXT")?;
+        self.ensure_column("assistant_messages", "turn", "INTEGER NOT NULL DEFAULT 0")?;
+        self.ensure_column("assistant_messages", "tool_calls", "TEXT")?;
+        self.conn.execute_batch(
+            "CREATE INDEX IF NOT EXISTS assistant_messages_by_turn
+             ON assistant_messages (turn, id);",
+        )?;
         Ok(())
     }
 

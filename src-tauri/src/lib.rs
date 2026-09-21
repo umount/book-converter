@@ -112,6 +112,7 @@ pub fn run() {
             commands::import_project,
             commands::assistant_history,
             commands::assistant_clear,
+            commands::assistant_state,
             commands::assistant_send,
             commands::assistant_approve,
             commands::assistant_cancel,

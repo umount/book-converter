@@ -1,301 +1,375 @@
-//! Tool allowlist and OpenAI-compatible tool schemas for the assistant.
+//! Single allowlist: schema, confirm policy, and UI invalidation.
 
-use serde_json::json;
+use serde::Serialize;
 
+use crate::translator::deepseek::ToolFunction;
 use crate::translator::ToolSpec;
 
+use super::args::{
+    validator, validator_replace_in_book, BootstrapGlossaryArgs, ChapterTermsArgs, DeleteTermArgs,
+    EmptyArgs, ExportBookArgs, GetChapterArgs, GlossaryPageArgs, HarvestGlossaryArgs,
+    ListChaptersArgs, ReplaceInBookArgs, ResetTranslationArgs, RetargetTermsArgs, SearchBookArgs,
+    SetChapterContextArgs, SetChapterPromptArgs, StartTranslationArgs, ToolArgs,
+    TranslateChapterArgs, UpdateChapterTranslationArgs, UpdateTermArgs,
+};
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ToolPolicy {
+pub(crate) enum ToolPolicy {
     Auto,
     Confirm,
     Heavy,
-    Forbidden,
 }
 
-pub fn tool_policy(name: &str) -> ToolPolicy {
-    match name {
-        "get_progress" | "list_chapters" | "get_chapter" | "search_book"
-        | "get_glossary_page" | "chapter_terms" | "get_book_details" | "get_reference_info" => {
-            ToolPolicy::Auto
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub(crate) enum Invalidate {
+    Progress,
+    Chapters,
+    OpenChapter,
+    Glossary,
+    BookDetails,
+    Reference,
+}
+
+#[allow(dead_code)]
+const _FRONTEND_INVALIDATES: &[Invalidate] =
+    &[Invalidate::BookDetails, Invalidate::Reference];
+
+pub(crate) struct ToolDef {
+    pub(crate) name: &'static str,
+    pub(crate) description: &'static str,
+    pub(crate) policy: ToolPolicy,
+    pub(crate) invalidates: &'static [Invalidate],
+    pub(crate) untrusted_output: bool,
+    pub(crate) schema: &'static str,
+    pub(crate) validate: fn(&serde_json::Value) -> Result<(), String>,
+}
+
+const PROGRESS_CHAPTERS: &[Invalidate] = &[
+    Invalidate::Progress,
+    Invalidate::Chapters,
+    Invalidate::OpenChapter,
+];
+const GLOSSARY: &[Invalidate] = &[Invalidate::Glossary];
+const GLOSSARY_CHAPTERS: &[Invalidate] = &[
+    Invalidate::Glossary,
+    Invalidate::Chapters,
+    Invalidate::OpenChapter,
+];
+const CHAPTERS: &[Invalidate] = &[Invalidate::Chapters, Invalidate::OpenChapter];
+const OPEN: &[Invalidate] = &[Invalidate::OpenChapter];
+
+pub(crate) const TOOLS: &[ToolDef] = &[
+    ToolDef {
+        name: "get_progress",
+        description: "Current translation progress counts and whether a job is running.",
+        policy: ToolPolicy::Auto,
+        invalidates: &[],
+        untrusted_output: false,
+        schema: EmptyArgs::SCHEMA,
+        validate: validator::<EmptyArgs>,
+    },
+    ToolDef {
+        name: "list_chapters",
+        description: "List chapters (reading-order idx, book number, titles, status, lang_issues).",
+        policy: ToolPolicy::Auto,
+        invalidates: &[],
+        untrusted_output: true,
+        schema: ListChaptersArgs::SCHEMA,
+        validate: validator::<ListChaptersArgs>,
+    },
+    ToolDef {
+        name: "get_chapter",
+        description: "Load one chapter by reading-order idx (source + translation, truncated).",
+        policy: ToolPolicy::Auto,
+        invalidates: &[],
+        untrusted_output: true,
+        schema: GetChapterArgs::SCHEMA,
+        validate: validator::<GetChapterArgs>,
+    },
+    ToolDef {
+        name: "search_book",
+        description: "Search translations (or source) for a query.",
+        policy: ToolPolicy::Auto,
+        invalidates: &[],
+        untrusted_output: true,
+        schema: SearchBookArgs::SCHEMA,
+        validate: validator::<SearchBookArgs>,
+    },
+    ToolDef {
+        name: "get_glossary_page",
+        description: "Paged glossary lookup.",
+        policy: ToolPolicy::Auto,
+        invalidates: &[],
+        untrusted_output: true,
+        schema: GlossaryPageArgs::SCHEMA,
+        validate: validator::<GlossaryPageArgs>,
+    },
+    ToolDef {
+        name: "chapter_terms",
+        description: "Glossary terms that appear in a chapter's source text.",
+        policy: ToolPolicy::Auto,
+        invalidates: &[],
+        untrusted_output: true,
+        schema: ChapterTermsArgs::SCHEMA,
+        validate: validator::<ChapterTermsArgs>,
+    },
+    ToolDef {
+        name: "get_book_details",
+        description: "Title, author, summary metadata.",
+        policy: ToolPolicy::Auto,
+        invalidates: &[],
+        untrusted_output: true,
+        schema: EmptyArgs::SCHEMA,
+        validate: validator::<EmptyArgs>,
+    },
+    ToolDef {
+        name: "get_reference_info",
+        description: "Reference translation import stats.",
+        policy: ToolPolicy::Auto,
+        invalidates: &[],
+        untrusted_output: false,
+        schema: EmptyArgs::SCHEMA,
+        validate: validator::<EmptyArgs>,
+    },
+    ToolDef {
+        name: "start_translation",
+        description: "Start translating pending chapters. Optional limit.",
+        policy: ToolPolicy::Confirm,
+        invalidates: PROGRESS_CHAPTERS,
+        untrusted_output: false,
+        schema: StartTranslationArgs::SCHEMA,
+        validate: validator::<StartTranslationArgs>,
+    },
+    ToolDef {
+        name: "pause_translation",
+        description: "Request pause after the current chapter.",
+        policy: ToolPolicy::Confirm,
+        invalidates: PROGRESS_CHAPTERS,
+        untrusted_output: false,
+        schema: EmptyArgs::SCHEMA,
+        validate: validator::<EmptyArgs>,
+    },
+    ToolDef {
+        name: "translate_chapter",
+        description: "Translate or retranslate a single chapter by reading-order idx.",
+        policy: ToolPolicy::Confirm,
+        invalidates: PROGRESS_CHAPTERS,
+        untrusted_output: false,
+        schema: TranslateChapterArgs::SCHEMA,
+        validate: validator::<TranslateChapterArgs>,
+    },
+    ToolDef {
+        name: "reset_translation",
+        description: "Reset chapters to pending from a book chapter number. DESTRUCTIVE.",
+        policy: ToolPolicy::Heavy,
+        invalidates: PROGRESS_CHAPTERS,
+        untrusted_output: false,
+        schema: ResetTranslationArgs::SCHEMA,
+        validate: validator::<ResetTranslationArgs>,
+    },
+    ToolDef {
+        name: "update_term",
+        description: "Create or update a glossary term (pinned).",
+        policy: ToolPolicy::Confirm,
+        invalidates: GLOSSARY,
+        untrusted_output: false,
+        schema: UpdateTermArgs::SCHEMA,
+        validate: validator::<UpdateTermArgs>,
+    },
+    ToolDef {
+        name: "delete_term",
+        description: "Delete a glossary term by source form.",
+        policy: ToolPolicy::Confirm,
+        invalidates: GLOSSARY,
+        untrusted_output: false,
+        schema: DeleteTermArgs::SCHEMA,
+        validate: validator::<DeleteTermArgs>,
+    },
+    ToolDef {
+        name: "retarget_terms",
+        description: "Propagate glossary renames into translated text and rolling context.",
+        policy: ToolPolicy::Confirm,
+        invalidates: GLOSSARY_CHAPTERS,
+        untrusted_output: false,
+        schema: RetargetTermsArgs::SCHEMA,
+        validate: validator::<RetargetTermsArgs>,
+    },
+    ToolDef {
+        name: "harvest_glossary",
+        description: "Extract glossary terms from already-translated chapters.",
+        policy: ToolPolicy::Confirm,
+        invalidates: GLOSSARY,
+        untrusted_output: false,
+        schema: HarvestGlossaryArgs::SCHEMA,
+        validate: validator::<HarvestGlossaryArgs>,
+    },
+    ToolDef {
+        name: "bootstrap_glossary",
+        description: "Bootstrap pinned glossary from reference translation pairs.",
+        policy: ToolPolicy::Confirm,
+        invalidates: GLOSSARY,
+        untrusted_output: false,
+        schema: BootstrapGlossaryArgs::SCHEMA,
+        validate: validator::<BootstrapGlossaryArgs>,
+    },
+    ToolDef {
+        name: "update_chapter_translation",
+        description: "Manually save an edited chapter translation.",
+        policy: ToolPolicy::Confirm,
+        invalidates: CHAPTERS,
+        untrusted_output: false,
+        schema: UpdateChapterTranslationArgs::SCHEMA,
+        validate: validator::<UpdateChapterTranslationArgs>,
+    },
+    ToolDef {
+        name: "set_chapter_prompt",
+        description: "Set per-chapter translation instruction.",
+        policy: ToolPolicy::Confirm,
+        invalidates: OPEN,
+        untrusted_output: false,
+        schema: SetChapterPromptArgs::SCHEMA,
+        validate: validator::<SetChapterPromptArgs>,
+    },
+    ToolDef {
+        name: "set_chapter_context",
+        description: "Set rolling summary + prev_tail used before translating this chapter.",
+        policy: ToolPolicy::Confirm,
+        invalidates: OPEN,
+        untrusted_output: false,
+        schema: SetChapterContextArgs::SCHEMA,
+        validate: validator::<SetChapterContextArgs>,
+    },
+    ToolDef {
+        name: "replace_in_book",
+        description: "Literal/regex replace across all translations.",
+        policy: ToolPolicy::Confirm,
+        invalidates: CHAPTERS,
+        untrusted_output: false,
+        schema: ReplaceInBookArgs::SCHEMA,
+        validate: validator_replace_in_book,
+    },
+    ToolDef {
+        name: "use_reference_as_base",
+        description: "Re-seed still-pending chapters from the already imported reference translation.",
+        policy: ToolPolicy::Heavy,
+        invalidates: PROGRESS_CHAPTERS,
+        untrusted_output: false,
+        schema: EmptyArgs::SCHEMA,
+        validate: validator::<EmptyArgs>,
+    },
+    ToolDef {
+        name: "export_book",
+        description: "Export the translated book into the project export folder. Format: fb2, epub, pdf, txt.",
+        policy: ToolPolicy::Heavy,
+        invalidates: &[],
+        untrusted_output: false,
+        schema: ExportBookArgs::SCHEMA,
+        validate: validator::<ExportBookArgs>,
+    },
+];
+
+pub(crate) fn find(name: &str) -> Option<&'static ToolDef> {
+    TOOLS.iter().find(|d| d.name == name)
+}
+
+pub(crate) fn specs() -> Vec<ToolSpec> {
+    TOOLS
+        .iter()
+        .map(|d| ToolSpec {
+            kind: "function",
+            function: ToolFunction {
+                name: d.name.into(),
+                description: d.description.into(),
+                parameters: serde_json::from_str(d.schema)
+                    .unwrap_or_else(|e| panic!("{}: bad schema: {e}", d.name)),
+            },
+        })
+        .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::assistant::args::{validator, GetChapterArgs, ListChaptersArgs};
+    use serde_json::Value;
+
+    #[test]
+    fn invalidate_labels() {
+        assert_eq!(
+            serde_json::to_string(&Invalidate::BookDetails).unwrap(),
+            "\"book_details\""
+        );
+        assert_eq!(
+            serde_json::to_string(&Invalidate::Reference).unwrap(),
+            "\"reference\""
+        );
+    }
+
+    #[test]
+    fn names_are_unique() {
+        let mut names: Vec<_> = TOOLS.iter().map(|d| d.name).collect();
+        names.sort_unstable();
+        names.dedup();
+        assert_eq!(names.len(), TOOLS.len());
+    }
+
+    #[test]
+    fn schemas_are_objects() {
+        for def in TOOLS {
+            let schema: Value = serde_json::from_str(def.schema).expect(def.name);
+            assert_eq!(schema["type"], "object", "{}", def.name);
         }
-        "start_translation" | "pause_translation" | "translate_chapter" | "update_term"
-        | "delete_term" | "retarget_terms" | "harvest_glossary" | "bootstrap_glossary"
-        | "update_chapter_translation" | "set_chapter_prompt" | "set_chapter_context"
-        | "replace_in_book" => ToolPolicy::Confirm,
-        "reset_translation" | "use_reference_as_base" | "export_book" => ToolPolicy::Heavy,
-        _ => ToolPolicy::Forbidden,
     }
-}
 
-fn tool(name: &str, description: &str, parameters: serde_json::Value) -> ToolSpec {
-    ToolSpec {
-        kind: "function",
-        function: crate::translator::deepseek::ToolFunction {
-            name: name.into(),
-            description: description.into(),
-            parameters,
-        },
+    #[test]
+    fn invalidates_match_policy() {
+        for def in TOOLS {
+            if def.policy == ToolPolicy::Auto {
+                assert!(def.invalidates.is_empty(), "{}", def.name);
+            } else if def.name != "export_book" {
+                assert!(!def.invalidates.is_empty(), "{}", def.name);
+            }
+        }
     }
-}
 
-/// All tools exposed to the model.
-pub fn assistant_tools() -> Vec<ToolSpec> {
-    vec![
-        tool(
-            "get_progress",
-            "Current translation progress counts and whether a job is running.",
-            json!({ "type": "object", "properties": {}, "additionalProperties": false }),
-        ),
-        tool(
-            "list_chapters",
-            "List chapters (reading-order idx, book number, titles, status, lang_issues). Optional filters.",
-            json!({
-                "type": "object",
-                "properties": {
-                    "status": { "type": "string", "description": "pending|done|failed|in_progress" },
-                    "only_issues": { "type": "boolean", "description": "Only chapters with lang_issues" },
-                    "limit": { "type": "integer", "description": "Max rows (default 40)" },
-                    "offset": { "type": "integer" }
-                },
-                "additionalProperties": false
-            }),
-        ),
-        tool(
-            "get_chapter",
-            "Load one chapter by reading-order idx (source + translation, truncated if huge).",
-            json!({
-                "type": "object",
-                "properties": {
-                    "index": { "type": "integer" }
-                },
-                "required": ["index"],
-                "additionalProperties": false
-            }),
-        ),
-        tool(
-            "search_book",
-            "Search translations (or source) for a query.",
-            json!({
-                "type": "object",
-                "properties": {
-                    "query": { "type": "string" },
-                    "in_source": { "type": "boolean" },
-                    "match_case": { "type": "boolean" },
-                    "whole_word": { "type": "boolean" }
-                },
-                "required": ["query"],
-                "additionalProperties": false
-            }),
-        ),
-        tool(
-            "get_glossary_page",
-            "Paged glossary lookup.",
-            json!({
-                "type": "object",
-                "properties": {
-                    "query": { "type": "string" },
-                    "kind": { "type": "string" },
-                    "offset": { "type": "integer" },
-                    "limit": { "type": "integer" }
-                },
-                "additionalProperties": false
-            }),
-        ),
-        tool(
-            "chapter_terms",
-            "Glossary terms that appear in a chapter's source text.",
-            json!({
-                "type": "object",
-                "properties": { "index": { "type": "integer" } },
-                "required": ["index"],
-                "additionalProperties": false
-            }),
-        ),
-        tool(
-            "get_book_details",
-            "Title, author, summary metadata.",
-            json!({ "type": "object", "properties": {}, "additionalProperties": false }),
-        ),
-        tool(
-            "get_reference_info",
-            "Reference translation import stats.",
-            json!({ "type": "object", "properties": {}, "additionalProperties": false }),
-        ),
-        tool(
-            "start_translation",
-            "Start translating pending chapters. Optional limit.",
-            json!({
-                "type": "object",
-                "properties": { "limit": { "type": "integer" } },
-                "additionalProperties": false
-            }),
-        ),
-        tool(
-            "pause_translation",
-            "Request pause after the current chapter.",
-            json!({ "type": "object", "properties": {}, "additionalProperties": false }),
-        ),
-        tool(
-            "translate_chapter",
-            "Translate or retranslate a single chapter by reading-order idx.",
-            json!({
-                "type": "object",
-                "properties": { "index": { "type": "integer" } },
-                "required": ["index"],
-                "additionalProperties": false
-            }),
-        ),
-        tool(
-            "reset_translation",
-            "Reset chapters to pending from a book chapter number (or whole book if omitted). DESTRUCTIVE.",
-            json!({
-                "type": "object",
-                "properties": {
-                    "from_number": { "type": "integer", "description": "Book chapter number; omit to reset all" }
-                },
-                "additionalProperties": false
-            }),
-        ),
-        tool(
-            "update_term",
-            "Create or update a glossary term (pinned).",
-            json!({
-                "type": "object",
-                "properties": {
-                    "source": { "type": "string" },
-                    "target": { "type": "string" },
-                    "kind": { "type": "string" },
-                    "frequency": { "type": "integer" }
-                },
-                "required": ["source", "target"],
-                "additionalProperties": false
-            }),
-        ),
-        tool(
-            "delete_term",
-            "Delete a glossary term by source form.",
-            json!({
-                "type": "object",
-                "properties": { "source": { "type": "string" } },
-                "required": ["source"],
-                "additionalProperties": false
-            }),
-        ),
-        tool(
-            "retarget_terms",
-            "Propagate glossary renames into translated text and rolling context.",
-            json!({
-                "type": "object",
-                "properties": {
-                    "changes": {
-                        "type": "array",
-                        "items": {
-                            "type": "object",
-                            "properties": {
-                                "old_target": { "type": "string" },
-                                "new_target": { "type": "string" },
-                                "kind": { "type": "string" }
-                            },
-                            "required": ["old_target", "new_target"]
-                        }
-                    }
-                },
-                "required": ["changes"],
-                "additionalProperties": false
-            }),
-        ),
-        tool(
-            "harvest_glossary",
-            "Extract glossary terms from already-translated chapters.",
-            json!({
-                "type": "object",
-                "properties": {
-                    "sample": { "type": "integer" },
-                    "from_end": { "type": "boolean" }
-                },
-                "additionalProperties": false
-            }),
-        ),
-        tool(
-            "bootstrap_glossary",
-            "Bootstrap pinned glossary from reference translation pairs.",
-            json!({
-                "type": "object",
-                "properties": { "sample": { "type": "integer" } },
-                "additionalProperties": false
-            }),
-        ),
-        tool(
-            "update_chapter_translation",
-            "Manually save an edited chapter translation.",
-            json!({
-                "type": "object",
-                "properties": {
-                    "index": { "type": "integer" },
-                    "translated_title": { "type": "string" },
-                    "translated": { "type": "string" }
-                },
-                "required": ["index", "translated"],
-                "additionalProperties": false
-            }),
-        ),
-        tool(
-            "set_chapter_prompt",
-            "Set per-chapter translation instruction.",
-            json!({
-                "type": "object",
-                "properties": {
-                    "index": { "type": "integer" },
-                    "prompt": { "type": "string" }
-                },
-                "required": ["index", "prompt"],
-                "additionalProperties": false
-            }),
-        ),
-        tool(
-            "set_chapter_context",
-            "Set rolling summary + prev_tail used before translating this chapter.",
-            json!({
-                "type": "object",
-                "properties": {
-                    "index": { "type": "integer" },
-                    "summary": { "type": "string" },
-                    "prev_tail": { "type": "string" }
-                },
-                "required": ["index", "summary", "prev_tail"],
-                "additionalProperties": false
-            }),
-        ),
-        tool(
-            "replace_in_book",
-            "Literal/regex replace across all translations.",
-            json!({
-                "type": "object",
-                "properties": {
-                    "find": { "type": "string" },
-                    "replace": { "type": "string" },
-                    "match_case": { "type": "boolean" },
-                    "whole_word": { "type": "boolean" },
-                    "regex": { "type": "boolean" }
-                },
-                "required": ["find", "replace"],
-                "additionalProperties": false
-            }),
-        ),
-        tool(
-            "use_reference_as_base",
-            "Re-seed still-pending chapters from the reference translation. DESTRUCTIVE for pending slots.",
-            json!({ "type": "object", "properties": {}, "additionalProperties": false }),
-        ),
-        tool(
-            "export_book",
-            "Export translated book to a filesystem path (extension selects format).",
-            json!({
-                "type": "object",
-                "properties": { "out_path": { "type": "string" } },
-                "required": ["out_path"],
-                "additionalProperties": false
-            }),
-        ),
-    ]
+    #[test]
+    fn forbidden_commands_are_absent() {
+        for name in ["delete_project", "set_api_key", "load_source", "set_setting"] {
+            assert!(find(name).is_none(), "{name}");
+        }
+    }
+
+    #[test]
+    fn tool_schemas_match_their_arg_structs() {
+        for def in TOOLS {
+            let schema: Value =
+                serde_json::from_str(def.schema).unwrap_or_else(|e| panic!("{}: {e}", def.name));
+            let sample = super::super::args::sample_object(&schema);
+            (def.validate)(&sample).unwrap_or_else(|e| panic!("{}: {e}", def.name));
+        }
+    }
+
+    #[test]
+    fn reject_unknown_fields() {
+        let extra = serde_json::json!({ "index": 1, "nope": true });
+        assert!(validator::<GetChapterArgs>(&extra).is_err());
+    }
+
+    #[test]
+    fn list_chapters_defaults() {
+        let v = serde_json::json!({});
+        validator::<ListChaptersArgs>(&v).unwrap();
+        let parsed: ListChaptersArgs = serde_json::from_value(v).unwrap();
+        assert_eq!(parsed.limit, 40);
+        assert_eq!(parsed.offset, 0);
+    }
+
+    #[test]
+    fn replace_rejects_empty_find() {
+        let empty = serde_json::json!({ "find": "", "replace": "x" });
+        assert!(validator_replace_in_book(&empty).is_err());
+        let ok = serde_json::json!({ "find": "a", "replace": "" });
+        assert!(validator_replace_in_book(&ok).is_ok());
+    }
 }

@@ -460,12 +460,47 @@ impl Store {
         Ok(rows)
     }
 
+    /// Filtered, paged chapter list for the assistant (SQL-side skip/take).
+    pub fn list_chapters_page(
+        &self,
+        status: Option<&str>,
+        only_issues: bool,
+        offset: usize,
+        limit: usize,
+    ) -> Result<Vec<ChapterListRow>> {
+        let limit = limit.clamp(1, 200) as i64;
+        let offset = offset as i64;
+        let issues = i64::from(only_issues);
+        let mut stmt = self.conn.prepare(
+            "SELECT idx, number, title, translated_title, status, origin, lang_issues
+             FROM chapters
+             WHERE (?1 IS NULL OR status = ?1)
+               AND (?2 = 0 OR (lang_issues IS NOT NULL AND trim(lang_issues) != ''))
+             ORDER BY idx
+             LIMIT ?3 OFFSET ?4",
+        )?;
+        let rows = stmt
+            .query_map(params![status, issues, limit, offset], |r| {
+                Ok(ChapterListRow {
+                    idx: r.get::<_, i64>(0)? as usize,
+                    number: r.get::<_, Option<i64>>(1)?.map(|n| n as usize),
+                    title: r.get(2)?,
+                    translated_title: r.get(3)?,
+                    status: r.get(4)?,
+                    origin: r.get(5)?,
+                    lang_issues: r.get(6)?,
+                })
+            })?
+            .collect::<rusqlite::Result<Vec<_>>>()?;
+        Ok(rows)
+    }
+
     /// Full chapter view for the reader and translation coordinator.
     pub fn chapter_full(&self, index: usize) -> Result<Option<ChapterRecord>> {
         let row = self
             .conn
             .query_row(
-                "SELECT number, title, source, status, translated_title, translated, origin, user_prompt
+                "SELECT number, title, source, status, translated_title, translated, origin, user_prompt, lang_issues
                  FROM chapters WHERE idx = ?1",
                 params![index as i64],
                 |r| {
@@ -478,6 +513,7 @@ impl Store {
                         translated: r.get(5)?,
                         origin: r.get(6)?,
                         user_prompt: r.get(7)?,
+                        lang_issues: r.get(8)?,
                     })
                 },
             )

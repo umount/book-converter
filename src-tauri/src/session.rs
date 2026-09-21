@@ -46,14 +46,10 @@ impl AppState {
     }
 
     /// Atomically reserve the project's single background-job slot.
-    pub(crate) fn begin_job(
-        &self,
-        id: &str,
-        already_running: &str,
-    ) -> Result<(String, Arc<AtomicBool>), String> {
+    pub(crate) fn begin_job(&self, id: &str) -> Result<(String, Arc<AtomicBool>), String> {
         self.with(id, |session| {
             if session.running {
-                return Err(already_running.to_string());
+                return Err("job_running".into());
             }
             let db = session.db_path.clone().ok_or("no_source")?;
             let cancel = Arc::new(AtomicBool::new(false));
@@ -228,12 +224,12 @@ mod tests {
             session.db_path = Some("/tmp/project-a.db".into())
         });
 
-        let (db, _) = state.begin_job("project-a", "busy").unwrap();
+        let (db, _) = state.begin_job("project-a").unwrap();
         assert_eq!(db, "/tmp/project-a.db");
-        assert_eq!(state.begin_job("project-a", "busy").unwrap_err(), "busy");
+        assert_eq!(state.begin_job("project-a").unwrap_err(), "job_running");
 
         state.finish_job("project-a");
-        assert!(state.begin_job("project-a", "busy").is_ok());
+        assert!(state.begin_job("project-a").is_ok());
     }
 }
 

@@ -100,9 +100,13 @@ impl ChatMessage {
     }
 
     pub fn assistant_tools(tool_calls: Vec<ToolCall>) -> Self {
+        Self::assistant_turn(None, tool_calls)
+    }
+
+    pub fn assistant_turn(content: Option<String>, tool_calls: Vec<ToolCall>) -> Self {
         Self {
             role: "assistant".into(),
-            content: None,
+            content: content.filter(|s| !s.is_empty()),
             tool_calls: Some(tool_calls),
             tool_call_id: None,
             name: None,
@@ -485,5 +489,22 @@ mod tests {
         assert_eq!(v["role"], "tool");
         assert_eq!(v["tool_call_id"], "call_1");
         assert!(v.get("tool_calls").is_none());
+    }
+
+    #[test]
+    fn assistant_tools_omits_empty_content() {
+        let call = ToolCall {
+            id: "c1".into(),
+            kind: "function".into(),
+            function: ToolCallFunction {
+                name: "get_progress".into(),
+                arguments: "{}".into(),
+            },
+        };
+        let m = ChatMessage::assistant_tools(vec![call]);
+        let v = serde_json::to_value(&m).unwrap();
+        assert_eq!(v["role"], "assistant");
+        assert!(v.get("content").is_none());
+        assert_eq!(v["tool_calls"][0]["id"], "c1");
     }
 }
