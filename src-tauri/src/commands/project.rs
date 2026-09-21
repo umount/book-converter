@@ -60,10 +60,7 @@ pub async fn load_source(
     };
 
     let saved = store.project_metadata().map_err(err)?;
-    let saved_cover = match (
-        saved.cover_content_type.clone(),
-        saved.cover_base64.clone(),
-    ) {
+    let saved_cover = match (saved.cover_content_type.clone(), saved.cover_base64.clone()) {
         (Some(content_type), Some(base64)) => Some(Cover {
             content_type,
             base64,

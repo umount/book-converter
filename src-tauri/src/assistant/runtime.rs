@@ -59,7 +59,10 @@ pub(crate) struct TurnGuard {
 
 impl TurnGuard {
     pub(crate) fn new(runtime: Arc<AssistantRuntime>, project_id: String) -> Self {
-        Self { runtime, project_id }
+        Self {
+            runtime,
+            project_id,
+        }
     }
 }
 
@@ -131,7 +134,12 @@ impl AssistantRuntime {
             })
     }
 
-    pub fn resolve_confirm(&self, project_id: &str, confirm_id: &str, approved: bool) -> Result<(), String> {
+    pub fn resolve_confirm(
+        &self,
+        project_id: &str,
+        confirm_id: &str,
+        approved: bool,
+    ) -> Result<(), String> {
         let mut map = self.turns.lock().unwrap_or_else(|p| p.into_inner());
         let slot = map.get_mut(project_id).ok_or("no_assistant_turn")?;
         let pending = slot.confirm.take().ok_or("no_pending_confirm")?;

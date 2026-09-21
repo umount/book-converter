@@ -53,21 +53,15 @@ pub(crate) fn planned_path(
         .into_owned())
 }
 
-pub(crate) fn export(
-    state: &AppState,
-    project_id: &str,
-    out_path: &str,
-) -> Result<String, String> {
+pub(crate) fn export(state: &AppState, project_id: &str, out_path: &str) -> Result<String, String> {
     let store = project_store(state, project_id)?;
     write_export(&store, project_id, out_path)
 }
 
 fn write_export(store: &Store, project_id: &str, out_path: &str) -> Result<String, String> {
     let manifest = crate::session::read_manifest(project_id).map_err(err)?;
-    let zipped_input = crate::session::zipped_input_for(
-        Some(&manifest.source_path),
-        manifest.ref_path.as_deref(),
-    );
+    let zipped_input =
+        crate::session::zipped_input_for(Some(&manifest.source_path), manifest.ref_path.as_deref());
     let out = OutputTarget::resolve(out_path, zipped_input)?;
     let metadata = store.project_metadata().map_err(err)?;
     let rows = store.translated_chapters().map_err(err)?;
@@ -95,9 +89,10 @@ fn write_export(store: &Store, project_id: &str, out_path: &str) -> Result<Strin
     let chapter_label = crate::i18n::label(&config.target_lang, "chapter");
     export::normalize_titles(&mut chapters, &chapter_label);
     let cover = match (metadata.cover_content_type, metadata.cover_base64) {
-        (Some(content_type), Some(base64)) => {
-            Some(crate::export::fb2::Cover { content_type, base64 })
-        }
+        (Some(content_type), Some(base64)) => Some(crate::export::fb2::Cover {
+            content_type,
+            base64,
+        }),
         _ => None,
     };
     let meta = OutputMeta {

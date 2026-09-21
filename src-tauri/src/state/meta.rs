@@ -25,11 +25,9 @@ impl Store {
     pub fn get_meta(&self, key: &str) -> Result<Option<String>> {
         let v = self
             .conn
-            .query_row(
-                "SELECT value FROM meta WHERE key = ?1",
-                params![key],
-                |r| r.get::<_, String>(0),
-            )
+            .query_row("SELECT value FROM meta WHERE key = ?1", params![key], |r| {
+                r.get::<_, String>(0)
+            })
             .optional()?;
         Ok(v)
     }
@@ -107,7 +105,10 @@ impl Store {
                 }
             }
             _ => {
-                tx.execute("DELETE FROM meta WHERE key IN ('cover_ct', 'cover_b64')", [])?;
+                tx.execute(
+                    "DELETE FROM meta WHERE key IN ('cover_ct', 'cover_b64')",
+                    [],
+                )?;
             }
         }
         tx.commit()?;

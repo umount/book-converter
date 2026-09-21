@@ -18,8 +18,8 @@ use std::path::Path;
 use anyhow::Result;
 
 use crate::book::{detect_format, load_book_text, read_book_file, BookMeta, Chapter, InputFormat};
-use crate::export::fb2::{extract_head, Fb2Head};
 use crate::config::Config;
+use crate::export::fb2::{extract_head, Fb2Head};
 use crate::glossary::{self, Term};
 use crate::translator::Translate;
 
@@ -99,7 +99,11 @@ pub async fn bootstrap_glossary<C: Translate>(
                     t.pinned = true; // reference-derived canon
                 }
                 glossary::merge(&mut merged, terms);
-                tracing::info!(chapter = index, terms = merged.len(), "bootstrapped from reference");
+                tracing::info!(
+                    chapter = index,
+                    terms = merged.len(),
+                    "bootstrapped from reference"
+                );
             }
             Err(e) => tracing::warn!(chapter = index, "bootstrap extraction failed: {e:#}"),
         }
@@ -161,8 +165,6 @@ mod tests {
         }
     }
 
-
-
     #[test]
     fn max_covered_is_highest_reference_number() {
         let reference = Reference {
@@ -172,5 +174,4 @@ mod tests {
         };
         assert_eq!(max_covered_number(&reference), Some(4));
     }
-
 }

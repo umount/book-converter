@@ -80,7 +80,11 @@ pub(crate) async fn ensure_chapters(path: &str, book: &mut crate::book::LoadedBo
     }
 
     // 2. Fallback: a single chapter with the whole text (still translatable).
-    let title = book.meta.title.clone().unwrap_or_else(|| "Book".to_string());
+    let title = book
+        .meta
+        .title
+        .clone()
+        .unwrap_or_else(|| "Book".to_string());
     let body = text.trim().to_string();
     if !body.is_empty() {
         book.chapters = vec![crate::book::Chapter {
@@ -161,7 +165,10 @@ impl OutputTarget {
             .file_name()
             .and_then(|n| n.to_str())
             .unwrap_or("book");
-        let inner_name = if inner_stem.to_ascii_lowercase().ends_with(&format!(".{ext}")) {
+        let inner_name = if inner_stem
+            .to_ascii_lowercase()
+            .ends_with(&format!(".{ext}"))
+        {
             inner_stem.to_string()
         } else {
             format!("{inner_stem}.{ext}")
@@ -212,4 +219,3 @@ mod tests {
         assert_eq!(pdf.format, OutputFormat::Pdf);
     }
 }
-

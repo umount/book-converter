@@ -4,10 +4,7 @@ use crate::dto::{err, ImportedProject};
 use crate::session::{project_dir, Manifest};
 
 #[tauri::command]
-pub async fn export_project(
-    project_id: String,
-    out_path: String,
-) -> Result<(), String> {
+pub async fn export_project(project_id: String, out_path: String) -> Result<(), String> {
     use std::io::Write as _;
 
     let directory = project_dir(&project_id).map_err(err)?;

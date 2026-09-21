@@ -26,9 +26,7 @@ pub(crate) fn replay(rows: &[AssistantMessage]) -> Vec<ChatMessage> {
             AssistantRole::Assistant => {
                 if let Some(raw) = &row.tool_calls {
                     if let Ok(calls) = serde_json::from_str::<Vec<ToolCall>>(raw) {
-                        let complete = calls
-                            .iter()
-                            .all(|c| finished_ids.contains(c.id.as_str()));
+                        let complete = calls.iter().all(|c| finished_ids.contains(c.id.as_str()));
                         if complete {
                             known_calls.extend(calls.iter().map(|c| c.id.clone()));
                             if row.content.is_empty() {
@@ -48,11 +46,16 @@ pub(crate) fn replay(rows: &[AssistantMessage]) -> Vec<ChatMessage> {
                 }
             }
             AssistantRole::Tool => {
-                let Some(id) = &row.tool_call_id else { continue };
+                let Some(id) = &row.tool_call_id else {
+                    continue;
+                };
                 if !known_calls.iter().any(|k| k == id) {
                     continue;
                 }
-                out.push(ChatMessage::tool_result(id, clip(&row.content, TOOL_RESULT_REPLAY_CHARS)));
+                out.push(ChatMessage::tool_result(
+                    id,
+                    clip(&row.content, TOOL_RESULT_REPLAY_CHARS),
+                ));
             }
             AssistantRole::SystemNote => {}
         }
@@ -121,13 +124,7 @@ mod tests {
 
     #[test]
     fn orphan_tool_row_is_dropped() {
-        let rows = [row(
-            1,
-            AssistantRole::Tool,
-            "x",
-            None,
-            Some("missing"),
-        )];
+        let rows = [row(1, AssistantRole::Tool, "x", None, Some("missing"))];
         assert!(replay(&rows).is_empty());
     }
 

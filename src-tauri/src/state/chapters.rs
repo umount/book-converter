@@ -187,24 +187,21 @@ impl Store {
                 |r| Ok((r.get(0)?, r.get(1)?)),
             )
             .optional()?;
-        Ok(row.and_then(|(n, sum)| {
-            if n == 0 {
-                None
-            } else {
-                Some((sum / n) as u64)
-            }
-        }))
+        Ok(row.and_then(
+            |(n, sum)| {
+                if n == 0 {
+                    None
+                } else {
+                    Some((sum / n) as u64)
+                }
+            },
+        ))
     }
 
     /// Persist the rolling continuity context *after* a chapter finished translating.
     /// `summary` is the story-so-far synopsis; `prev_tail` is the closing lines of
     /// this chapter's translation (fed into the next chapter's prompt).
-    pub fn save_chapter_context(
-        &self,
-        index: usize,
-        summary: &str,
-        prev_tail: &str,
-    ) -> Result<()> {
+    pub fn save_chapter_context(&self, index: usize, summary: &str, prev_tail: &str) -> Result<()> {
         self.conn.execute(
             "UPDATE chapters
              SET rolling_summary = ?2, prev_tail = ?3, updated_at = datetime('now')
@@ -250,14 +247,12 @@ impl Store {
             None => self.get_meta("running_summary")?.unwrap_or_default(),
         };
 
-        let prev_tail = prev_tail
-            .filter(|s| !s.trim().is_empty())
-            .or_else(|| {
-                translated
-                    .as_deref()
-                    .map(|b| crate::textutil::closing_excerpt(b, 400))
-                    .filter(|s| !s.trim().is_empty())
-            });
+        let prev_tail = prev_tail.filter(|s| !s.trim().is_empty()).or_else(|| {
+            translated
+                .as_deref()
+                .map(|b| crate::textutil::closing_excerpt(b, 400))
+                .filter(|s| !s.trim().is_empty())
+        });
 
         Ok((summary, prev_tail))
     }
@@ -267,12 +262,7 @@ impl Store {
     /// Writes onto the previous `done` chapter when one exists; always mirrors the
     /// summary into book-level `running_summary`. When there is no previous chapter,
     /// an optional `boot_prev_tail` meta key holds the tail.
-    pub fn set_context_before(
-        &self,
-        index: usize,
-        summary: &str,
-        prev_tail: &str,
-    ) -> Result<()> {
+    pub fn set_context_before(&self, index: usize, summary: &str, prev_tail: &str) -> Result<()> {
         let summary = summary.trim();
         let prev_tail = prev_tail.trim();
 
@@ -421,9 +411,7 @@ impl Store {
             .conn
             .prepare("SELECT status, COUNT(*) FROM chapters GROUP BY status")?;
         let mut stats = Stats::default();
-        let rows = stmt.query_map([], |r| {
-            Ok((r.get::<_, String>(0)?, r.get::<_, i64>(1)?))
-        })?;
+        let rows = stmt.query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, i64>(1)?)))?;
         for row in rows {
             let (status, count) = row?;
             let count = count as usize;

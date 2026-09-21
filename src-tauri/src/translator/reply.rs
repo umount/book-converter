@@ -216,7 +216,8 @@ mod tests {
 
     #[test]
     fn parses_the_envelope() {
-        let raw = "<<<TITLE>>>\nГлава 523. Меч\n<<<BODY>>>\nЛинь Хань шагнул вперёд.\n\nВетер стих.";
+        let raw =
+            "<<<TITLE>>>\nГлава 523. Меч\n<<<BODY>>>\nЛинь Хань шагнул вперёд.\n\nВетер стих.";
         let (title, body) = parse_chapter_reply(raw, "第523章", Some(523));
         assert_eq!(title, "Глава 523. Меч");
         assert_eq!(body, "Линь Хань шагнул вперёд.\n\nВетер стих.");
@@ -290,7 +291,10 @@ mod tests {
     fn marker_text_never_reaches_the_output() {
         let raw = "<<<TITLE>>>\n<<<TITLE>>>\n<<<BODY>>>\nГлава 9. Меч\n\nТекст.";
         let (title, body) = parse_chapter_reply(raw, "第9章", Some(9));
-        assert!(!title.contains("<<<") && !title.contains("TITLE"), "{title:?}");
+        assert!(
+            !title.contains("<<<") && !title.contains("TITLE"),
+            "{title:?}"
+        );
         assert!(!body.contains("<<<") && !body.contains("TITLE"), "{body:?}");
     }
 
@@ -330,13 +334,19 @@ mod tests {
         assert!(!is_heading("Глава 1301. Десятый Предел!", Some(77)));
         assert!(!is_heading("Он замер.", Some(1301)));
         // Too long to be a title even with the number in it.
-        assert!(!is_heading(&format!("1301 {}", "я".repeat(200)), Some(1301)));
+        assert!(!is_heading(
+            &format!("1301 {}", "я".repeat(200)),
+            Some(1301)
+        ));
     }
 
     #[test]
     fn strip_markers_leaves_ordinary_text_alone() {
         assert_eq!(strip_markers("Текст <<<BODY>>> ещё"), "Текст  ещё");
-        assert_eq!(strip_markers("Он сказал: <<< это не маркер"), "Он сказал: <<< это не маркер");
+        assert_eq!(
+            strip_markers("Он сказал: <<< это не маркер"),
+            "Он сказал: <<< это не маркер"
+        );
         assert_eq!(strip_markers("чистый текст"), "чистый текст");
     }
 
@@ -345,7 +355,10 @@ mod tests {
         assert_eq!(parse_body_reply("<<<BODY>>>\nПродолжение."), "Продолжение.");
         assert_eq!(parse_body_reply("  Продолжение.  "), "Продолжение.");
         // A continuation chunk that leaks the title marker too.
-        assert_eq!(parse_body_reply("<<<TITLE>>>\n<<<BODY>>>\nПродолжение."), "Продолжение.");
+        assert_eq!(
+            parse_body_reply("<<<TITLE>>>\n<<<BODY>>>\nПродолжение."),
+            "Продолжение."
+        );
     }
 
     #[test]

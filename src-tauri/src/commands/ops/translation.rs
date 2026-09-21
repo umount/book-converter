@@ -85,7 +85,10 @@ pub(crate) fn save_manual(
         }
     }
     if body.trim().is_empty() && store.has_translation(index).map_err(err)? {
-        tracing::warn!(chapter = index, "refused an empty overwrite of a translation");
+        tracing::warn!(
+            chapter = index,
+            "refused an empty overwrite of a translation"
+        );
         return Err("refuse_empty_overwrite".into());
     }
     let title = title.trim();

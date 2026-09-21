@@ -72,7 +72,12 @@ impl OutputFormat {
     }
 
     pub fn from_ext(ext: &str) -> Option<Self> {
-        match ext.trim().trim_start_matches('.').to_ascii_lowercase().as_str() {
+        match ext
+            .trim()
+            .trim_start_matches('.')
+            .to_ascii_lowercase()
+            .as_str()
+        {
             "txt" => Some(Self::Txt),
             "fb2" => Some(Self::Fb2),
             "epub" => Some(Self::Epub),
@@ -179,9 +184,24 @@ mod tests {
     #[test]
     fn normalize_titles_fixes_markers() {
         let mut chs = vec![
-            TranslatedChapter { index: 1, number: Some(516), title: "第516章 Запретная Земля".into(), body: "b".into() },
-            TranslatedChapter { index: 2, number: Some(525), title: "Том 525 Вырвать добычу".into(), body: "b".into() },
-            TranslatedChapter { index: 3, number: Some(514), title: "Глава 514. Но я его учитель!".into(), body: "b".into() },
+            TranslatedChapter {
+                index: 1,
+                number: Some(516),
+                title: "第516章 Запретная Земля".into(),
+                body: "b".into(),
+            },
+            TranslatedChapter {
+                index: 2,
+                number: Some(525),
+                title: "Том 525 Вырвать добычу".into(),
+                body: "b".into(),
+            },
+            TranslatedChapter {
+                index: 3,
+                number: Some(514),
+                title: "Глава 514. Но я его учитель!".into(),
+                body: "b".into(),
+            },
         ];
         normalize_titles(&mut chs, "Глава");
         assert_eq!(chs[0].title, "Глава 516. Запретная Земля");

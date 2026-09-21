@@ -34,7 +34,11 @@ pub fn read_book_file(path: &Path) -> std::io::Result<DecodedText> {
     // PDF: extract text directly (not a byte-encoded text file).
     if has_ext(path, "pdf") {
         let text = super::pdf::text(path);
-        return Ok(DecodedText { text, encoding: "PDF", had_errors: false });
+        return Ok(DecodedText {
+            text,
+            encoding: "PDF",
+            had_errors: false,
+        });
     }
 
     let bytes = if is_zip(path) {
@@ -44,7 +48,6 @@ pub fn read_book_file(path: &Path) -> std::io::Result<DecodedText> {
     };
     Ok(decode_book_bytes(&bytes))
 }
-
 
 fn has_ext(path: &Path, ext: &str) -> bool {
     path.extension()
@@ -145,7 +148,10 @@ mod tests {
     #[test]
     fn decodes_gb18030() {
         let (bytes, _, _) = GB18030.encode(SAMPLE);
-        assert!(std::str::from_utf8(&bytes).is_err(), "sample must not be valid UTF-8");
+        assert!(
+            std::str::from_utf8(&bytes).is_err(),
+            "sample must not be valid UTF-8"
+        );
         let decoded = decode_book_bytes(&bytes);
         assert_eq!(decoded.text, SAMPLE);
         assert!(!decoded.had_errors);

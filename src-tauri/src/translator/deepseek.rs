@@ -51,7 +51,9 @@ struct ResponseFormat {
 }
 
 impl ResponseFormat {
-    const JSON: Self = ResponseFormat { kind: "json_object" };
+    const JSON: Self = ResponseFormat {
+        kind: "json_object",
+    };
 }
 
 /// One chat message for the API (prose, tool calls, or tool results).
@@ -375,10 +377,7 @@ impl DeepSeekClient {
             error: anyhow!("DeepSeek response had no choices"),
         })?;
         Ok(ToolsCompletion {
-            content: choice
-                .message
-                .content
-                .filter(|s| !s.trim().is_empty()),
+            content: choice.message.content.filter(|s| !s.trim().is_empty()),
             tool_calls: choice.message.tool_calls.unwrap_or_default(),
             finish_reason: choice.finish_reason,
         })

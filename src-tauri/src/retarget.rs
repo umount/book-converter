@@ -18,8 +18,9 @@
 fn stem(word: &str) -> String {
     let mut chars: Vec<char> = word.trim().to_lowercase().chars().collect();
     if let Some(&last) = chars.last() {
-        const TRIM: &[char] =
-            &['а', 'я', 'о', 'е', 'ы', 'и', 'й', 'ь', 'ю', 'э', 'a', 'e', 'o', 'y'];
+        const TRIM: &[char] = &[
+            'а', 'я', 'о', 'е', 'ы', 'и', 'й', 'ь', 'ю', 'э', 'a', 'e', 'o', 'y',
+        ];
         if TRIM.contains(&last) && chars.len() > 2 {
             chars.pop();
         }
@@ -88,7 +89,10 @@ mod tests {
     fn matches_nominative_and_oblique() {
         assert!(paragraph_mentions("Сюй Цин улыбнулся.", "Сюй Цин"));
         // genitive appends to the last token → nominative is a substring
-        assert!(paragraph_mentions("Он не видел Сюй Цина уже год.", "Сюй Цин"));
+        assert!(paragraph_mentions(
+            "Он не видел Сюй Цина уже год.",
+            "Сюй Цин"
+        ));
         // single feminine name via stem
         assert!(paragraph_mentions("Он позвал Аню домой.", "Аня"));
         assert!(paragraph_mentions("У Ани был меч.", "Аня"));

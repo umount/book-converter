@@ -26,10 +26,16 @@ pub struct Chunk {
 pub fn split_chapter(chapter: &Chapter, max_chunk_chars: usize) -> Vec<Chunk> {
     let body = chapter.body.trim();
     if body.is_empty() {
-        return vec![Chunk { part: 0, text: String::new() }];
+        return vec![Chunk {
+            part: 0,
+            text: String::new(),
+        }];
     }
     if max_chunk_chars == 0 || char_len(body) <= max_chunk_chars {
-        return vec![Chunk { part: 0, text: body.to_string() }];
+        return vec![Chunk {
+            part: 0,
+            text: body.to_string(),
+        }];
     }
 
     let paragraphs = split_paragraphs(body);
@@ -148,7 +154,11 @@ mod tests {
         let body = "甲行\n乙行\n丙行\n丁行";
         let chunks = split_chapter(&ch(body), 5);
         assert!(chunks.len() >= 2);
-        let all: String = chunks.iter().map(|c| c.text.clone()).collect::<Vec<_>>().join("|");
+        let all: String = chunks
+            .iter()
+            .map(|c| c.text.clone())
+            .collect::<Vec<_>>()
+            .join("|");
         assert!(all.contains("甲行"));
         assert!(all.contains("丁行"));
     }

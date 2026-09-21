@@ -137,9 +137,7 @@ mod tests {
                 },
             ])
             .unwrap();
-        store
-            .set_language_issues(2, &["王林".into()])
-            .unwrap();
+        store.set_language_issues(2, &["王林".into()]).unwrap();
         store
     }
 

@@ -7,14 +7,10 @@ use crate::glossary::{Term, TermKind};
 use crate::jobs::{self, run_retarget};
 use crate::session::AppState;
 
-use super::project_store;
 use super::super::util::client;
+use super::project_store;
 
-pub(crate) fn upsert_term(
-    state: &AppState,
-    project_id: &str,
-    term: TermDto,
-) -> Result<(), String> {
+pub(crate) fn upsert_term(state: &AppState, project_id: &str, term: TermDto) -> Result<(), String> {
     let store = project_store(state, project_id)?;
     store
         .upsert_term(&Term {

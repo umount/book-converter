@@ -59,12 +59,10 @@ fn preview_from_store(
     match def.name {
         "export_book" => {
             let parsed: ExportBookArgs = parse(args)?;
-            let format = OutputFormat::from_ext(&parsed.format).ok_or_else(|| anyhow!("bad_format"))?;
+            let format =
+                OutputFormat::from_ext(&parsed.format).ok_or_else(|| anyhow!("bad_format"))?;
             let path = export_path(format)?;
-            Ok(format!(
-                "export {ext} → {path}",
-                ext = format.ext(),
-            ))
+            Ok(format!("export {ext} → {path}", ext = format.ext(),))
         }
         "replace_in_book" => {
             let a: ReplaceInBookArgs = parse(args)?;
@@ -159,12 +157,8 @@ pub(crate) fn read(
         }
         "list_chapters" => {
             let a: ListChaptersArgs = parse(args)?;
-            let rows = store.list_chapters_page(
-                a.status.as_deref(),
-                a.only_issues,
-                a.offset,
-                a.limit,
-            )?;
+            let rows =
+                store.list_chapters_page(a.status.as_deref(), a.only_issues, a.offset, a.limit)?;
             let chapters: Vec<_> = rows
                 .into_iter()
                 .map(|r| {
@@ -204,13 +198,15 @@ pub(crate) fn read(
             let a: SearchBookArgs = parse(args)?;
             let re = ops::text::build_regex(&a.query, a.match_case, a.whole_word, a.regex)
                 .map_err(|e: String| anyhow!(e))?;
-            let hits = ops::text::search(store, &re, a.in_source, ops::text::SearchLimits::ASSISTANT)?;
+            let hits =
+                ops::text::search(store, &re, a.in_source, ops::text::SearchLimits::ASSISTANT)?;
             Ok(json!({ "chapters": hits }).to_string())
         }
         "get_glossary_page" => {
             let a: GlossaryPageArgs = parse(args)?;
             let limit = a.limit.clamp(1, 100);
-            let (total, terms) = store.glossary_page(&a.query, a.kind.as_deref(), a.offset, limit)?;
+            let (total, terms) =
+                store.glossary_page(&a.query, a.kind.as_deref(), a.offset, limit)?;
             let terms: Vec<_> = terms
                 .into_iter()
                 .map(|t| {
@@ -273,7 +269,8 @@ pub(crate) async fn mutate(
     match def.name {
         "start_translation" => {
             let a: StartTranslationArgs = parse(args)?;
-            ops::translation::start(app, &state, project_id, a.limit).map_err(|e: String| anyhow!(e))?;
+            ops::translation::start(app, &state, project_id, a.limit)
+                .map_err(|e: String| anyhow!(e))?;
             Ok(json!({ "started": true, "limit": a.limit }).to_string())
         }
         "pause_translation" => {
@@ -311,7 +308,8 @@ pub(crate) async fn mutate(
         }
         "delete_term" => {
             let a: DeleteTermArgs = parse(args)?;
-            ops::glossary::delete_term(&state, project_id, &a.source).map_err(|e: String| anyhow!(e))?;
+            ops::glossary::delete_term(&state, project_id, &a.source)
+                .map_err(|e: String| anyhow!(e))?;
             Ok(json!({ "deleted": a.source }).to_string())
         }
         "retarget_terms" => {
@@ -325,7 +323,8 @@ pub(crate) async fn mutate(
                     kind: c.kind.unwrap_or_else(|| "term".into()),
                 })
                 .collect();
-            ops::glossary::retarget(app, &state, project_id, changes).map_err(|e: String| anyhow!(e))?;
+            ops::glossary::retarget(app, &state, project_id, changes)
+                .map_err(|e: String| anyhow!(e))?;
             Ok(json!({ "started": true }).to_string())
         }
         "harvest_glossary" => {
@@ -382,17 +381,20 @@ pub(crate) async fn mutate(
             Ok(json!({ "changed": n }).to_string())
         }
         "use_reference_as_base" => {
-            let n = ops::reference::use_as_base(app, &state, project_id).map_err(|e: String| anyhow!(e))?;
+            let n = ops::reference::use_as_base(app, &state, project_id)
+                .map_err(|e: String| anyhow!(e))?;
             Ok(json!({ "restored": n }).to_string())
         }
         "export_book" => {
             let a: ExportBookArgs = parse(args)?;
             let format = OutputFormat::from_ext(&a.format).ok_or_else(|| anyhow!("bad_format"))?;
-            let path = ops::export::planned_path(&state, project_id, format).map_err(|e: String| anyhow!(e))?;
+            let path = ops::export::planned_path(&state, project_id, format)
+                .map_err(|e: String| anyhow!(e))?;
             if let Some(dir) = std::path::Path::new(&path).parent() {
                 std::fs::create_dir_all(dir)?;
             }
-            let exported = ops::export::export(&state, project_id, &path).map_err(|e: String| anyhow!(e))?;
+            let exported =
+                ops::export::export(&state, project_id, &path).map_err(|e: String| anyhow!(e))?;
             Ok(json!({ "exported": exported }).to_string())
         }
         other => Err(anyhow!("not a mutating tool: {other}")),

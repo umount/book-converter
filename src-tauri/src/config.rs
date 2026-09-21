@@ -200,21 +200,38 @@ mod tests {
     /// The hint has to identify a key without being usable as one.
     #[test]
     fn key_hint_masks_the_key() {
-        let cfg = Config { api_key: "sk-f656052576dd45408b235cd387c332d3".into(), ..Config::default() };
+        let cfg = Config {
+            api_key: "sk-f656052576dd45408b235cd387c332d3".into(),
+            ..Config::default()
+        };
         let hint = cfg.key_hint().unwrap();
         assert_eq!(hint, "sk-f6\u{2026}32d3");
         assert!(!cfg.api_key.contains(&hint));
 
-        let short = Config { api_key: "abc".into(), ..Config::default() };
-        assert_eq!(short.key_hint().unwrap(), "\u{2022}\u{2022}\u{2022}\u{2022}");
+        let short = Config {
+            api_key: "abc".into(),
+            ..Config::default()
+        };
+        assert_eq!(
+            short.key_hint().unwrap(),
+            "\u{2022}\u{2022}\u{2022}\u{2022}"
+        );
 
-        assert!(Config { api_key: "   ".into(), ..Config::default() }.key_hint().is_none());
+        assert!(Config {
+            api_key: "   ".into(),
+            ..Config::default()
+        }
+        .key_hint()
+        .is_none());
     }
 
     /// A stray `{config:?}` must not print the key.
     #[test]
     fn debug_redacts_the_key() {
-        let cfg = Config { api_key: "sk-secret-value-here".into(), ..Config::default() };
+        let cfg = Config {
+            api_key: "sk-secret-value-here".into(),
+            ..Config::default()
+        };
         let printed = format!("{cfg:?}");
         assert!(!printed.contains("secret"), "{printed}");
         assert!(printed.contains("<set>"));

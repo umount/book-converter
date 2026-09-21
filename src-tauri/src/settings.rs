@@ -64,7 +64,10 @@ mod tests {
         let db = std::env::temp_dir().join(format!("bc_settings_rm_{}.db", std::process::id()));
         let _ = std::fs::remove_file(&db);
         set(&db, "deepseek_api_key", "sk-test").unwrap();
-        assert_eq!(get(&db, "deepseek_api_key").unwrap().as_deref(), Some("sk-test"));
+        assert_eq!(
+            get(&db, "deepseek_api_key").unwrap().as_deref(),
+            Some("sk-test")
+        );
         remove(&db, "deepseek_api_key").unwrap();
         assert!(get(&db, "deepseek_api_key").unwrap().is_none());
         // Removing what is not there is not an error.

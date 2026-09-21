@@ -24,8 +24,11 @@ pub(crate) async fn run(
     let store = Store::open(db)?;
     let lang = &config.target_lang;
 
-    let mentions_any =
-        |text: &str| changes.iter().any(|change| paragraph_mentions(text, &change.old_target));
+    let mentions_any = |text: &str| {
+        changes
+            .iter()
+            .any(|change| paragraph_mentions(text, &change.old_target))
+    };
 
     let chapters = store.translated_chapters()?;
     let jobs: Vec<(usize, String, String)> = chapters
@@ -63,13 +66,10 @@ pub(crate) async fn run(
             break;
         }
 
-        let new_title =
-            apply_changes(project_id, &client, lang, changes, &title, app).await;
+        let new_title = apply_changes(project_id, &client, lang, changes, &title, app).await;
         let mut out_lines = Vec::with_capacity(body.lines().count());
         for line in body.lines() {
-            out_lines.push(
-                apply_changes(project_id, &client, lang, changes, line, app).await,
-            );
+            out_lines.push(apply_changes(project_id, &client, lang, changes, line, app).await);
         }
         let new_body = out_lines.join("\n");
 
@@ -86,14 +86,7 @@ pub(crate) async fn run(
             changed += 1;
         }
         done_units += 1;
-        emit_progress(
-            app,
-            project_id,
-            done_units,
-            total,
-            &new_title,
-            did_change,
-        );
+        emit_progress(app, project_id, done_units, total, &new_title, did_change);
     }
 
     // Re-read after body rewrites: their stored tails may already be refreshed.
@@ -155,8 +148,7 @@ pub(crate) async fn run(
 
     if let Some(tail) = meta_boot_tail {
         if !cancel.load(Ordering::Relaxed) {
-            let new_tail =
-                apply_changes(project_id, &client, lang, changes, &tail, app).await;
+            let new_tail = apply_changes(project_id, &client, lang, changes, &tail, app).await;
             let did_change = new_tail != tail;
             if did_change {
                 store.set_meta("boot_prev_tail", &new_tail)?;
@@ -249,8 +241,7 @@ async fn rewrite_paragraph(
     new_target: &str,
     text: &str,
 ) -> anyhow::Result<Option<String>> {
-    let (system, user) =
-        crate::retarget::rewrite_prompt(lang, kind, old_target, new_target, text);
+    let (system, user) = crate::retarget::rewrite_prompt(lang, kind, old_target, new_target, text);
     let output = client.translate(&system, &user).await?;
     let output = output.trim().trim_matches('"').trim().to_string();
     Ok((!output.is_empty()).then_some(output))

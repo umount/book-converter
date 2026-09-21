@@ -35,8 +35,18 @@ mod tests {
     #[test]
     fn writes_chapters_in_order() {
         let chapters = vec![
-            TranslatedChapter { index: 1, number: Some(1), title: "Глава 1".into(), body: "Один.".into() },
-            TranslatedChapter { index: 2, number: Some(2), title: "Глава 2".into(), body: "Два.".into() },
+            TranslatedChapter {
+                index: 1,
+                number: Some(1),
+                title: "Глава 1".into(),
+                body: "Один.".into(),
+            },
+            TranslatedChapter {
+                index: 2,
+                number: Some(2),
+                title: "Глава 2".into(),
+                body: "Два.".into(),
+            },
         ];
         let path = std::env::temp_dir().join(format!("bc_txt_{}.txt", std::process::id()));
         export(&chapters, &path).unwrap();

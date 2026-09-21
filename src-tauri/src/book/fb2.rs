@@ -233,7 +233,10 @@ mod tests {
     #[test]
     fn heading_number_is_generic() {
         assert_eq!(heading_number("Глава 1.1 Выживший"), Some((1, Some(1))));
-        assert_eq!(heading_number("Глава 2. Инородная энергия"), Some((2, None)));
+        assert_eq!(
+            heading_number("Глава 2. Инородная энергия"),
+            Some((2, None))
+        );
         assert_eq!(heading_number("第1章 活着"), Some((1, None)));
         assert_eq!(heading_number("第九百八十四章 X"), Some((984, None)));
         assert_eq!(heading_number("Chapter 7"), Some((7, None)));

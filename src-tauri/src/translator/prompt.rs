@@ -157,7 +157,13 @@ pub fn user_prompt(ctx: &PromptContext, text: &str, shape: ReplyShape) -> String
              (source → target). Do not translate them any other way:\n",
         );
         for t in ctx.terms {
-            let _ = writeln!(out, "- {} → {} [{}]", t.source, t.target, kind_label(t.kind));
+            let _ = writeln!(
+                out,
+                "- {} → {} [{}]",
+                t.source,
+                t.target,
+                kind_label(t.kind)
+            );
         }
         out.push('\n');
     }
@@ -226,7 +232,11 @@ pub fn build_summary_prompt(
     );
     let user = format!(
         "Summary so far:\n{prev}\n\nNext chapter:\n{chapter}\n\nUpdated synopsis:",
-        prev = if prev_summary.trim().is_empty() { "(none yet)" } else { prev_summary.trim() },
+        prev = if prev_summary.trim().is_empty() {
+            "(none yet)"
+        } else {
+            prev_summary.trim()
+        },
         chapter = chapter_translation,
     );
     (system, user)
@@ -267,13 +277,22 @@ mod tests {
     }
 
     fn term(source: &str, target: &str, kind: TermKind) -> Term {
-        Term { source: source.into(), target: target.into(), kind, frequency: 1, pinned: false }
+        Term {
+            source: source.into(),
+            target: target.into(),
+            kind,
+            frequency: 1,
+            pinned: false,
+        }
     }
 
     #[test]
     fn includes_glossary_and_text() {
         let wang = term("王林", "Ван Линь", TermKind::Person);
-        let ctx = PromptContext { terms: &[&wang], ..Default::default() };
+        let ctx = PromptContext {
+            terms: &[&wang],
+            ..Default::default()
+        };
         let p = user_prompt(&ctx, "王林走了。", ReplyShape::TitleAndBody);
         assert!(p.contains("王林 → Ван Линь [person]"));
         // The text is followed only by the reply format rule (see
@@ -341,8 +360,13 @@ mod tests {
 
     #[test]
     fn no_book_section_when_unknown() {
-        let ctx = PromptContext { book: Some(BookRef::default()), ..Default::default() };
-        assert!(!user_prompt(&ctx, "text", ReplyShape::TitleAndBody).contains("This chapter is from"));
+        let ctx = PromptContext {
+            book: Some(BookRef::default()),
+            ..Default::default()
+        };
+        assert!(
+            !user_prompt(&ctx, "text", ReplyShape::TitleAndBody).contains("This chapter is from")
+        );
     }
 
     #[test]
@@ -363,7 +387,10 @@ mod tests {
 
     #[test]
     fn english_target_keeps_romanization_and_jargon() {
-        let cfg = Config { target_lang: "English".into(), ..Config::default() };
+        let cfg = Config {
+            target_lang: "English".into(),
+            ..Config::default()
+        };
         let s = system_prompt(&cfg);
         // The anti-English rules would be nonsense when English is the target.
         assert!(!s.contains("never fall back on an English romanization"));

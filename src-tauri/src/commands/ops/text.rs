@@ -142,7 +142,10 @@ fn clip_around(line: &str, at: usize, width: usize) -> String {
     if line.chars().count() <= width {
         return line.to_string();
     }
-    let head = line.char_indices().take_while(|(index, _)| *index < at).count();
+    let head = line
+        .char_indices()
+        .take_while(|(index, _)| *index < at)
+        .count();
     let start = head.saturating_sub(width / 3);
     let clipped: String = line.chars().skip(start).take(width).collect();
     let prefix = if start > 0 { "…" } else { "" };

@@ -170,8 +170,7 @@ pub fn parse_extracted_terms(raw: &str) -> Result<Vec<Term>> {
         }
         None => {
             let json = slice_json_array(raw)?;
-            serde_json::from_str::<Vec<RawTerm>>(json)
-                .context("parsing extracted-terms JSON")?
+            serde_json::from_str::<Vec<RawTerm>>(json).context("parsing extracted-terms JSON")?
         }
     };
     Ok(raws
@@ -204,8 +203,12 @@ fn slice_json_object(raw: &str) -> Option<&str> {
 
 /// Extract the outermost JSON array `[ … ]` from a possibly-decorated reply.
 fn slice_json_array(raw: &str) -> Result<&str> {
-    let start = raw.find('[').context("extraction reply has no JSON array")?;
-    let end = raw.rfind(']').context("extraction reply has no closing ']'")?;
+    let start = raw
+        .find('[')
+        .context("extraction reply has no JSON array")?;
+    let end = raw
+        .rfind(']')
+        .context("extraction reply has no closing ']'")?;
     if end <= start {
         anyhow::bail!("extraction reply has malformed JSON array");
     }

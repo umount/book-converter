@@ -32,8 +32,7 @@ pub(crate) enum Invalidate {
 }
 
 #[allow(dead_code)]
-const _FRONTEND_INVALIDATES: &[Invalidate] =
-    &[Invalidate::BookDetails, Invalidate::Reference];
+const _FRONTEND_INVALIDATES: &[Invalidate] = &[Invalidate::Reference];
 
 pub(crate) struct ToolDef {
     pub(crate) name: &'static str,
@@ -335,7 +334,12 @@ mod tests {
 
     #[test]
     fn forbidden_commands_are_absent() {
-        for name in ["delete_project", "set_api_key", "load_source", "set_setting"] {
+        for name in [
+            "delete_project",
+            "set_api_key",
+            "load_source",
+            "set_setting",
+        ] {
             assert!(find(name).is_none(), "{name}");
         }
     }

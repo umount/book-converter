@@ -106,9 +106,12 @@ fn word_aware_tail(text: &str, max_chars: usize) -> String {
         .position(|c| c.is_whitespace())
         .map(|p| rough + p + 1)
         .unwrap_or(rough);
-    chars[start..].iter().collect::<String>().trim_start().to_string()
+    chars[start..]
+        .iter()
+        .collect::<String>()
+        .trim_start()
+        .to_string()
 }
-
 
 /// Writing system a language is expected to be written in. Used to catch text
 /// the model left in the wrong language.
@@ -153,7 +156,9 @@ pub fn expected_script(lang: &str) -> Option<Script> {
 fn script_of(c: char) -> Option<Script> {
     match c {
         'a'..='z' | 'A'..='Z' | 'À'..='ÿ' => Some(Script::Latin),
-        'А'..='я' | 'Ё' | 'ё' | 'Ї' | 'ї' | 'І' | 'і' | 'Є' | 'є' | 'Ґ' | 'ґ' => Some(Script::Cyrillic),
+        'А'..='я' | 'Ё' | 'ё' | 'Ї' | 'ї' | 'І' | 'і' | 'Є' | 'є' | 'Ґ' | 'ґ' => {
+            Some(Script::Cyrillic)
+        }
         '\u{3400}'..='\u{9fff}' | '\u{f900}'..='\u{faff}' => Some(Script::Han),
         _ => None,
     }
@@ -261,19 +266,9 @@ mod tests {
 
     #[test]
     fn leftover_foreign_clears_when_han_is_gone() {
-        let dirty = leftover_foreign(
-            "Russian",
-            "Глава",
-            "Он посмотрел на 王林.",
-            "他看着王林",
-        );
+        let dirty = leftover_foreign("Russian", "Глава", "Он посмотрел на 王林.", "他看着王林");
         assert!(dirty.contains(&"王林".to_string()), "got: {dirty:?}");
-        let clean = leftover_foreign(
-            "Russian",
-            "Глава",
-            "Он посмотрел на него.",
-            "他看着王林",
-        );
+        let clean = leftover_foreign("Russian", "Глава", "Он посмотрел на него.", "他看着王林");
         assert!(clean.is_empty(), "got: {clean:?}");
     }
 

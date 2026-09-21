@@ -57,14 +57,9 @@ pub async fn translate_title(
                 "Translate this book title from {} to {}. Output only the translated title, nothing else.",
                 config.source_lang, config.target_lang
             );
-            let output = client()?
-                .translate(&system, &title)
-                .await
-                .map_err(err)?;
+            let output = client()?.translate(&system, &title).await.map_err(err)?;
             let output = clean_model_value(&output);
-            store
-                .set_meta("title_translated", &output)
-                .map_err(err)?;
+            store.set_meta("title_translated", &output).map_err(err)?;
             output
         }
     };
@@ -82,9 +77,7 @@ pub async fn translate_title(
             if let Ok(output) = client()?.translate(&system, &author).await {
                 let output = clean_model_value(&output);
                 if !output.is_empty() {
-                    store
-                        .set_meta("author_translated", &output)
-                        .map_err(err)?;
+                    store.set_meta("author_translated", &output).map_err(err)?;
                 }
             }
         }

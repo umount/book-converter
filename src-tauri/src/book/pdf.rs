@@ -130,7 +130,10 @@ pub fn toc_chapters(path: &Path) -> Option<Vec<(String, String)>> {
 
     // Walk the top-level bookmark siblings (First -> Next -> …).
     let mut items: Vec<(String, u32)> = Vec::new();
-    let mut cur = outlines.get(b"First").ok().and_then(|o| o.as_reference().ok());
+    let mut cur = outlines
+        .get(b"First")
+        .ok()
+        .and_then(|o| o.as_reference().ok());
     let mut guard = 0;
     while let Some(id) = cur {
         guard += 1;
@@ -141,7 +144,11 @@ pub fn toc_chapters(path: &Path) -> Option<Vec<(String, String)>> {
             Some(d) => d,
             None => break,
         };
-        let title = item.get(b"Title").ok().and_then(pdf_string).unwrap_or_default();
+        let title = item
+            .get(b"Title")
+            .ok()
+            .and_then(pdf_string)
+            .unwrap_or_default();
         if let Some(page) = dest_page(&doc, item, &page_num) {
             let title = title.trim().to_string();
             if !title.is_empty() {

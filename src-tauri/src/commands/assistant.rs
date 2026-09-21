@@ -111,10 +111,7 @@ pub fn assistant_send(
             });
         match result {
             Ok(()) => {
-                let _ = app2.emit(
-                    "assistant_done",
-                    serde_json::json!({ "project": project }),
-                );
+                let _ = app2.emit("assistant_done", serde_json::json!({ "project": project }));
             }
             Err(e) => {
                 let _ = app2.emit(

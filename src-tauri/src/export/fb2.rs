@@ -77,7 +77,11 @@ pub fn render(chapters: &[TranslatedChapter], meta: &OutputMeta) -> String {
     // --- description ---
     out.push_str("<description>\n<title-info>\n");
     let _ = writeln!(out, "<genre>literature</genre>");
-    let _ = writeln!(out, "<author><nickname>{}</nickname></author>", esc(&meta.author));
+    let _ = writeln!(
+        out,
+        "<author><nickname>{}</nickname></author>",
+        esc(&meta.author)
+    );
     let _ = writeln!(out, "<book-title>{}</book-title>", esc(&meta.title));
     if let Some(annotation) = meta.annotation.as_deref().filter(|a| !a.trim().is_empty()) {
         out.push_str("<annotation>\n");
@@ -230,7 +234,10 @@ mod tests {
             author: "Автор".into(),
             lang: "ru".into(),
             annotation: Some("Краткое описание.".into()),
-            cover: Some(Cover { content_type: "image/jpeg".into(), base64: "QUJD".into() }),
+            cover: Some(Cover {
+                content_type: "image/jpeg".into(),
+                base64: "QUJD".into(),
+            }),
         };
         let xml = render(&sample(), &meta);
         assert!(xml.contains("<book-title>Книга</book-title>"));

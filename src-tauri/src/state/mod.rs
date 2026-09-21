@@ -185,7 +185,10 @@ impl Store {
             [],
         )?;
         if n > 0 {
-            tracing::info!(chapters = n, "recovered chapters left in_progress by a crash");
+            tracing::info!(
+                chapters = n,
+                "recovered chapters left in_progress by a crash"
+            );
         }
         Ok(n)
     }
@@ -225,10 +228,7 @@ impl Store {
         }
         Ok(())
     }
-
-
 }
-
 
 /// Register `ulower(x)`, a Unicode-aware lowercase for use in queries.
 ///
@@ -248,7 +248,6 @@ fn register_ulower(conn: &Connection) -> Result<()> {
     )?;
     Ok(())
 }
-
 
 #[cfg(test)]
 mod tests {
@@ -396,7 +395,9 @@ mod tests {
         let store = Store::open(":memory:").unwrap();
         store.init_chapters(&sample()).unwrap();
         assert!(!store.has_translation(1).unwrap());
-        store.save_translation(1, "Глава 1", "Текст главы.").unwrap();
+        store
+            .save_translation(1, "Глава 1", "Текст главы.")
+            .unwrap();
         assert!(store.has_translation(1).unwrap());
         store.save_manual_translation(2, "", "   ", &[]).unwrap();
         assert!(!store.has_translation(2).unwrap());
@@ -413,7 +414,9 @@ mod tests {
 
         let long = "Профессиональный перевод. ".repeat(20);
         assert!(store.save_reference_chapter(1, "Глава 1", &long).unwrap());
-        assert!(store.save_reference_chapter(2, "Глава 2", "Короткая.").unwrap());
+        assert!(store
+            .save_reference_chapter(2, "Глава 2", "Короткая.")
+            .unwrap());
 
         assert_eq!(store.reference_stats().unwrap(), (2, Some(2)));
         let pairs = store.reference_pairs(10).unwrap();
@@ -422,7 +425,11 @@ mod tests {
         assert_eq!(pairs[0].2, long);
         assert_eq!(store.reference_pairs(1).unwrap().len(), 1);
         // The style excerpt skips the chapter that is too short to be one.
-        assert!(store.reference_style(50).unwrap().unwrap().starts_with("Профессиональный"));
+        assert!(store
+            .reference_style(50)
+            .unwrap()
+            .unwrap()
+            .starts_with("Профессиональный"));
     }
 
     /// A reset keeps the professional text, so re-seeding is restoring status.
@@ -430,7 +437,9 @@ mod tests {
     fn reference_chapters_survive_a_reset_and_can_be_restored() {
         let store = Store::open(":memory:").unwrap();
         store.init_chapters(&sample()).unwrap();
-        store.save_reference_chapter(1, "Глава 1", "Текст.").unwrap();
+        store
+            .save_reference_chapter(1, "Глава 1", "Текст.")
+            .unwrap();
         assert_eq!(store.stats().unwrap().done, 1);
 
         store.reset_from(None).unwrap();
@@ -448,10 +457,34 @@ mod tests {
 
     fn glossary_sample() -> Vec<Term> {
         vec![
-            Term { source: "王林".into(), target: "Ван Линь".into(), kind: TermKind::Person, frequency: 90, pinned: true },
-            Term { source: "血湖".into(), target: "Кровавое озеро".into(), kind: TermKind::Location, frequency: 40, pinned: false },
-            Term { source: "剑宗".into(), target: "Секта Меча".into(), kind: TermKind::Organization, frequency: 20, pinned: false },
-            Term { source: "李慕婉".into(), target: "Ли Мувань".into(), kind: TermKind::Person, frequency: 10, pinned: false },
+            Term {
+                source: "王林".into(),
+                target: "Ван Линь".into(),
+                kind: TermKind::Person,
+                frequency: 90,
+                pinned: true,
+            },
+            Term {
+                source: "血湖".into(),
+                target: "Кровавое озеро".into(),
+                kind: TermKind::Location,
+                frequency: 40,
+                pinned: false,
+            },
+            Term {
+                source: "剑宗".into(),
+                target: "Секта Меча".into(),
+                kind: TermKind::Organization,
+                frequency: 20,
+                pinned: false,
+            },
+            Term {
+                source: "李慕婉".into(),
+                target: "Ли Мувань".into(),
+                kind: TermKind::Person,
+                frequency: 10,
+                pinned: false,
+            },
         ]
     }
 
@@ -504,12 +537,16 @@ mod tests {
         assert!(hits.iter().all(|t| t.kind == TermKind::Person));
 
         // Filter and kind compose: "Мувань" is one of the two persons.
-        let (total, hits) = store.glossary_page("МУВАНЬ", Some("person"), 0, 50).unwrap();
+        let (total, hits) = store
+            .glossary_page("МУВАНЬ", Some("person"), 0, 50)
+            .unwrap();
         assert_eq!(total, 1);
         assert_eq!(hits[0].source, "李慕婉");
 
         // A term matching the query but not the kind is excluded.
-        let (total, _) = store.glossary_page("Кровавое", Some("person"), 0, 50).unwrap();
+        let (total, _) = store
+            .glossary_page("Кровавое", Some("person"), 0, 50)
+            .unwrap();
         assert_eq!(total, 0);
     }
 
@@ -518,7 +555,13 @@ mod tests {
     fn glossary_page_escapes_like_wildcards() {
         let store = Store::open(":memory:").unwrap();
         let mut terms = glossary_sample();
-        terms.push(Term { source: "100%".into(), target: "сто процентов".into(), kind: TermKind::Term, frequency: 1, pinned: false });
+        terms.push(Term {
+            source: "100%".into(),
+            target: "сто процентов".into(),
+            kind: TermKind::Term,
+            frequency: 1,
+            pinned: false,
+        });
         store.save_glossary(&terms).unwrap();
 
         let (total, hits) = store.glossary_page("100%", None, 0, 50).unwrap();
@@ -533,12 +576,28 @@ mod tests {
     #[test]
     fn upsert_term_touches_one_row() {
         let store = Store::open(":memory:").unwrap();
-        let a = Term { source: "王林".into(), target: "Ван Линь".into(), kind: TermKind::Person, frequency: 3, pinned: false };
-        let b = Term { source: "血湖".into(), target: "Кровавое озеро".into(), kind: TermKind::Location, frequency: 1, pinned: false };
+        let a = Term {
+            source: "王林".into(),
+            target: "Ван Линь".into(),
+            kind: TermKind::Person,
+            frequency: 3,
+            pinned: false,
+        };
+        let b = Term {
+            source: "血湖".into(),
+            target: "Кровавое озеро".into(),
+            kind: TermKind::Location,
+            frequency: 1,
+            pinned: false,
+        };
         store.save_glossary(&[a.clone(), b.clone()]).unwrap();
 
         store
-            .upsert_term(&Term { target: "Ван Линь (канон)".into(), pinned: true, ..a })
+            .upsert_term(&Term {
+                target: "Ван Линь (канон)".into(),
+                pinned: true,
+                ..a
+            })
             .unwrap();
 
         let loaded = store.load_glossary().unwrap();
@@ -555,7 +614,13 @@ mod tests {
     #[test]
     fn term_reads_one_entry() {
         let store = Store::open(":memory:").unwrap();
-        let t = Term { source: "王林".into(), target: "Ван Линь".into(), kind: TermKind::Person, frequency: 2, pinned: true };
+        let t = Term {
+            source: "王林".into(),
+            target: "Ван Линь".into(),
+            kind: TermKind::Person,
+            frequency: 2,
+            pinned: true,
+        };
         store.upsert_term(&t).unwrap();
         let got = store.term("王林").unwrap().unwrap();
         assert_eq!(got.target, "Ван Линь");
@@ -567,17 +632,42 @@ mod tests {
     #[test]
     fn upsert_terms_writes_only_what_it_is_given() {
         let store = Store::open(":memory:").unwrap();
-        let keep = Term { source: "血湖".into(), target: "Кровавое озеро".into(), kind: TermKind::Location, frequency: 1, pinned: true };
+        let keep = Term {
+            source: "血湖".into(),
+            target: "Кровавое озеро".into(),
+            kind: TermKind::Location,
+            frequency: 1,
+            pinned: true,
+        };
         store.save_glossary(std::slice::from_ref(&keep)).unwrap();
 
-        let new_a = Term { source: "王林".into(), target: "Ван Линь".into(), kind: TermKind::Person, frequency: 4, pinned: false };
-        let new_b = Term { source: "剑宗".into(), target: "Секта Меча".into(), kind: TermKind::Organization, frequency: 2, pinned: false };
+        let new_a = Term {
+            source: "王林".into(),
+            target: "Ван Линь".into(),
+            kind: TermKind::Person,
+            frequency: 4,
+            pinned: false,
+        };
+        let new_b = Term {
+            source: "剑宗".into(),
+            target: "Секта Меча".into(),
+            kind: TermKind::Organization,
+            frequency: 2,
+            pinned: false,
+        };
         store.upsert_terms(&[&new_a, &new_b]).unwrap();
 
         let loaded = store.load_glossary().unwrap();
         assert_eq!(loaded.len(), 3);
         assert!(loaded.iter().find(|t| t.source == "血湖").unwrap().pinned);
-        assert_eq!(loaded.iter().find(|t| t.source == "王林").unwrap().frequency, 4);
+        assert_eq!(
+            loaded
+                .iter()
+                .find(|t| t.source == "王林")
+                .unwrap()
+                .frequency,
+            4
+        );
     }
 
     #[test]

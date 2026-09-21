@@ -7,6 +7,7 @@
 //! Architecture and design: see `docs/ARCHITECTURE.md` and `docs/DECISIONS.md`.
 //! The modules below are UI-agnostic; the frontend calls them via `commands`.
 
+mod assistant;
 mod book;
 mod commands;
 mod config;
@@ -24,7 +25,6 @@ mod settings;
 mod state;
 mod textutil;
 mod translator;
-mod assistant;
 
 /// Full product name, shown in the window title and the About dialog. The
 /// package/bundle id stays `book-converter`; this is the human-facing name.

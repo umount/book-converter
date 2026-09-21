@@ -108,8 +108,7 @@ impl<'a, C: Translate> Orchestrator<'a, C> {
         if remaining == 0 {
             return Some(0);
         }
-        let avg = run_avg_ms
-            .or_else(|| self.store.avg_translate_ms(30).ok().flatten())?;
+        let avg = run_avg_ms.or_else(|| self.store.avg_translate_ms(30).ok().flatten())?;
         Some(((avg as u128) * (remaining as u128) / 1000) as u64)
     }
 
@@ -300,7 +299,10 @@ impl<'a, C: Translate> Orchestrator<'a, C> {
     }
 
     fn next_pending_number(&self) -> Result<Option<usize>> {
-        Ok(self.store.next_pending()?.map(|(idx, number)| number.unwrap_or(idx)))
+        Ok(self
+            .store
+            .next_pending()?
+            .map(|(idx, number)| number.unwrap_or(idx)))
     }
 
     async fn translate_chapter(&mut self, idx: usize) -> Result<()> {
@@ -335,19 +337,15 @@ impl<'a, C: Translate> Orchestrator<'a, C> {
                     Ok(sum) => {
                         self.summary = sum;
                         let _ = self.store.set_meta("running_summary", &self.summary);
-                        let _ = self.store.save_chapter_context(
-                            idx,
-                            &self.summary,
-                            &chapter_tail,
-                        );
+                        let _ = self
+                            .store
+                            .save_chapter_context(idx, &self.summary, &chapter_tail);
                     }
                     Err(e) => {
                         tracing::warn!(chapter = idx, "summary update failed: {e:#}");
-                        let _ = self.store.save_chapter_context(
-                            idx,
-                            &self.summary,
-                            &chapter_tail,
-                        );
+                        let _ = self
+                            .store
+                            .save_chapter_context(idx, &self.summary, &chapter_tail);
                     }
                 }
 
@@ -465,13 +463,7 @@ impl<'a, C: Translate> Orchestrator<'a, C> {
     /// instead of the entire list.
     async fn enrich_glossary(&mut self, source: &str, translation: &str) -> Result<()> {
         self.glossary
-            .learn(
-                self.client,
-                self.config,
-                self.store,
-                source,
-                translation,
-            )
+            .learn(self.client, self.config, self.store, source, translation)
             .await
     }
 
@@ -485,7 +477,6 @@ impl<'a, C: Translate> Orchestrator<'a, C> {
     fn flush_glossary(&mut self) -> Result<usize> {
         self.glossary.flush(self.store)
     }
-
 }
 
 fn non_empty(s: &str) -> Option<&str> {
@@ -559,8 +550,10 @@ mod tests {
                 .push((system.to_string(), user.to_string()));
 
             if system.contains("extract named entities") {
-                return Ok(r#"{"terms":[{"source":"王林","target":"Ван Линь","kind":"person"}]}"#
-                    .to_string());
+                return Ok(
+                    r#"{"terms":[{"source":"王林","target":"Ван Линь","kind":"person"}]}"#
+                        .to_string(),
+                );
             }
             if system.contains("clean up") {
                 let replacement = self.repair_to.clone().unwrap_or_default();
@@ -569,9 +562,7 @@ mod tests {
                     .lines()
                     .filter_map(|l| l.strip_prefix('['))
                     .filter_map(|l| l.split_once(']'))
-                    .map(|(n, _)| {
-                        format!(r#"{{"n":{},"text":"{}"}}"#, n.trim(), replacement)
-                    })
+                    .map(|(n, _)| format!(r#"{{"n":{},"text":"{}"}}"#, n.trim(), replacement))
                     .collect();
                 return Ok(format!(r#"{{"lines":[{}]}}"#, lines.join(",")));
             }
@@ -646,7 +637,9 @@ mod tests {
         let model = clean_model();
         let mut orch = Orchestrator::new(&model, &store, &config, None).unwrap();
 
-        orch.run(Some(2), &AtomicBool::new(false), |_| {}).await.unwrap();
+        orch.run(Some(2), &AtomicBool::new(false), |_| {})
+            .await
+            .unwrap();
 
         assert_eq!(store.stats().unwrap().done, 2);
         assert_eq!(store.pending_chapters().unwrap(), vec![3]);
@@ -685,7 +678,9 @@ mod tests {
         };
         let mut orch = Orchestrator::new(&model, &store, &config, None).unwrap();
 
-        orch.run(None, &AtomicBool::new(false), |_| {}).await.unwrap();
+        orch.run(None, &AtomicBool::new(false), |_| {})
+            .await
+            .unwrap();
 
         let stats = store.stats().unwrap();
         assert_eq!(stats.done, 2);
@@ -711,7 +706,11 @@ mod tests {
         .await
         .unwrap();
 
-        assert_eq!(after_first, Some(1), "the first chapter's term was not persisted");
+        assert_eq!(
+            after_first,
+            Some(1),
+            "the first chapter's term was not persisted"
+        );
         let glossary = store.load_glossary().unwrap();
         assert_eq!(glossary.len(), 1);
         assert_eq!(glossary[0].target, "Ван Линь");
@@ -743,7 +742,9 @@ mod tests {
         };
         let mut orch = Orchestrator::new(&model, &store, &config, None).unwrap();
 
-        orch.run(None, &AtomicBool::new(false), |_| {}).await.unwrap();
+        orch.run(None, &AtomicBool::new(false), |_| {})
+            .await
+            .unwrap();
 
         let body = store.chapter_full(1).unwrap().unwrap().translated.unwrap();
         assert_eq!(
@@ -757,11 +758,24 @@ mod tests {
             .filter(|(system, _)| system.contains("clean up"))
             .map(|(_, user)| user)
             .collect();
-        assert_eq!(repair_prompts.len(), 1, "expected exactly one repair request");
+        assert_eq!(
+            repair_prompts.len(),
+            1,
+            "expected exactly one repair request"
+        );
         let sent = &repair_prompts[0];
-        assert!(sent.contains("Он увидел cultivation."), "the bad line was not sent");
-        assert!(!sent.contains("Первая строка."), "a clean line was sent: {sent}");
-        assert!(!sent.contains("Третья строка."), "a clean line was sent: {sent}");
+        assert!(
+            sent.contains("Он увидел cultivation."),
+            "the bad line was not sent"
+        );
+        assert!(
+            !sent.contains("Первая строка."),
+            "a clean line was sent: {sent}"
+        );
+        assert!(
+            !sent.contains("Третья строка."),
+            "a clean line was sent: {sent}"
+        );
     }
 
     /// The title is line 0 of the repair, so a title that kept a foreign word is
@@ -789,7 +803,9 @@ mod tests {
         };
         let mut orch = Orchestrator::new(&model, &store, &config, None).unwrap();
 
-        orch.run(None, &AtomicBool::new(false), |_| {}).await.unwrap();
+        orch.run(None, &AtomicBool::new(false), |_| {})
+            .await
+            .unwrap();
 
         let row = store.chapter_full(1).unwrap().unwrap();
         assert_eq!(row.translated_title.unwrap(), "Глава 1: культивация");
@@ -817,5 +833,4 @@ mod tests {
         assert_eq!(non_empty("  "), None);
         assert_eq!(non_empty("x"), Some("x"));
     }
-
 }

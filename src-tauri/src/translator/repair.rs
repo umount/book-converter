@@ -224,9 +224,18 @@ mod tests {
 
     #[test]
     fn batches_respect_the_cap_but_never_split_a_line() {
-        let long = NumberedLine { n: 0, text: "я".repeat(50) };
-        let a = NumberedLine { n: 1, text: "я".repeat(30) };
-        let b = NumberedLine { n: 2, text: "я".repeat(30) };
+        let long = NumberedLine {
+            n: 0,
+            text: "я".repeat(50),
+        };
+        let a = NumberedLine {
+            n: 1,
+            text: "я".repeat(30),
+        };
+        let b = NumberedLine {
+            n: 2,
+            text: "я".repeat(30),
+        };
         let out = batches(&[long.clone(), a.clone(), b.clone()], 40);
         assert_eq!(out.len(), 3, "{out:?}");
         assert_eq!(out[0], vec![long]);
@@ -236,7 +245,10 @@ mod tests {
 
     #[test]
     fn batches_pack_lines_up_to_the_cap() {
-        let l = |n: usize| NumberedLine { n, text: "я".repeat(10) };
+        let l = |n: usize| NumberedLine {
+            n,
+            text: "я".repeat(10),
+        };
         let out = batches(&[l(0), l(1), l(2), l(3)], 25);
         assert_eq!(out.len(), 2);
         assert_eq!(out[0].len(), 2);
@@ -248,7 +260,10 @@ mod tests {
         let (system, user) = build_prompt(
             &Config::default(),
             &["王林".into()],
-            &[NumberedLine { n: 7, text: "Он увидел 王林.".into() }],
+            &[NumberedLine {
+                n: 7,
+                text: "Он увидел 王林.".into(),
+            }],
         );
         assert!(user.contains("- 王林"));
         assert!(user.contains("[7] Он увидел 王林."));
@@ -261,7 +276,10 @@ mod tests {
         let (system, _u) = build_prompt(
             &Config::default(),
             &["cultivation".into()],
-            &[NumberedLine { n: 0, text: "т".into() }],
+            &[NumberedLine {
+                n: 0,
+                text: "т".into(),
+            }],
         );
         assert!(system.contains("inflected forms"));
     }
@@ -269,11 +287,17 @@ mod tests {
     /// A rule against English romanizations is nonsense when English is the target.
     #[test]
     fn english_target_drops_the_romanization_rule() {
-        let cfg = Config { target_lang: "English".into(), ..Config::default() };
+        let cfg = Config {
+            target_lang: "English".into(),
+            ..Config::default()
+        };
         let (system, _u) = build_prompt(
             &cfg,
             &["王林".into()],
-            &[NumberedLine { n: 0, text: "text".into() }],
+            &[NumberedLine {
+                n: 0,
+                text: "text".into(),
+            }],
         );
         assert!(!system.contains("English romanization"));
     }
@@ -282,15 +306,27 @@ mod tests {
     fn parses_the_reply() {
         let raw = r#"{"lines":[{"n":2,"text":"Он посмотрел на Ван Линя."}]}"#;
         let out = parse_reply(raw).unwrap();
-        assert_eq!(out, vec![NumberedLine { n: 2, text: "Он посмотрел на Ван Линя.".into() }]);
+        assert_eq!(
+            out,
+            vec![NumberedLine {
+                n: 2,
+                text: "Он посмотрел на Ван Линя.".into()
+            }]
+        );
     }
 
     #[test]
     fn splices_by_number_not_by_order() {
         let mut text = lines(&["Глава 5", "первая", "вторая", "третья"]);
         let fixed = vec![
-            NumberedLine { n: 3, text: "третья исправленная".into() },
-            NumberedLine { n: 1, text: "первая исправленная".into() },
+            NumberedLine {
+                n: 3,
+                text: "третья исправленная".into(),
+            },
+            NumberedLine {
+                n: 1,
+                text: "первая исправленная".into(),
+            },
         ];
         assert_eq!(splice(&mut text, &fixed), 2);
         assert_eq!(text[1], "первая исправленная");
@@ -303,16 +339,43 @@ mod tests {
     fn rejects_a_gutted_line() {
         let mut text = lines(&["Довольно длинная строка перевода на месте."]);
         let before = text[0].clone();
-        assert_eq!(splice(&mut text, &[NumberedLine { n: 0, text: "ок".into() }]), 0);
+        assert_eq!(
+            splice(
+                &mut text,
+                &[NumberedLine {
+                    n: 0,
+                    text: "ок".into()
+                }]
+            ),
+            0
+        );
         assert_eq!(text[0], before);
-        assert_eq!(splice(&mut text, &[NumberedLine { n: 0, text: "  ".into() }]), 0);
+        assert_eq!(
+            splice(
+                &mut text,
+                &[NumberedLine {
+                    n: 0,
+                    text: "  ".into()
+                }]
+            ),
+            0
+        );
         assert_eq!(text[0], before);
     }
 
     #[test]
     fn ignores_a_line_number_out_of_range() {
         let mut text = lines(&["строка"]);
-        assert_eq!(splice(&mut text, &[NumberedLine { n: 9, text: "что-то".into() }]), 0);
+        assert_eq!(
+            splice(
+                &mut text,
+                &[NumberedLine {
+                    n: 9,
+                    text: "что-то".into()
+                }]
+            ),
+            0
+        );
         assert_eq!(text[0], "строка");
     }
 }

@@ -33,7 +33,10 @@ impl AppState {
 
     /// Run `f` with the session for `id`, creating an empty one if absent.
     pub(crate) fn with<R>(&self, id: &str, f: impl FnOnce(&mut Session) -> R) -> R {
-        let mut map = self.0.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+        let mut map = self
+            .0
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
         f(map.entry(id.to_string()).or_default())
     }
 
@@ -183,8 +186,14 @@ mod tests {
     fn zipped_input_considers_both_inputs() {
         assert!(!zipped_input_for(Some("/books/novel.txt"), None));
         assert!(zipped_input_for(Some("/books/novel.zip"), None));
-        assert!(zipped_input_for(Some("/books/novel.txt"), Some("/refs/pro.zip")));
-        assert!(!zipped_input_for(Some("/books/novel.txt"), Some("/refs/pro.fb2")));
+        assert!(zipped_input_for(
+            Some("/books/novel.txt"),
+            Some("/refs/pro.zip")
+        ));
+        assert!(!zipped_input_for(
+            Some("/books/novel.txt"),
+            Some("/refs/pro.fb2")
+        ));
         assert!(!zipped_input_for(None, None));
     }
 
@@ -208,7 +217,14 @@ mod tests {
 
     #[test]
     fn project_id_rejects_path_traversal() {
-        for id in ["", "..", "../outside", "nested/project", r"nested\project", "."] {
+        for id in [
+            "",
+            "..",
+            "../outside",
+            "nested/project",
+            r"nested\project",
+            ".",
+        ] {
             assert_eq!(validate_project_id(id), Err(InvalidProjectId), "{id:?}");
             assert!(project_dir(id).is_err(), "{id:?}");
         }
@@ -232,4 +248,3 @@ mod tests {
         assert!(state.begin_job("project-a").is_ok());
     }
 }
-

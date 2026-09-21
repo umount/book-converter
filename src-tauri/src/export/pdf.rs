@@ -23,8 +23,9 @@ pub fn export(chapters: &[TranslatedChapter], meta: &OutputMeta, out_path: &Path
 
     // --- pass 1: chapter start pages ---
     let placeholder = vec![0usize; chapters.len()];
-    let front_pages =
-        page_count(&render(family.clone(), |d| push_front_matter(d, meta, chapters, &placeholder))?)?;
+    let front_pages = page_count(&render(family.clone(), |d| {
+        push_front_matter(d, meta, chapters, &placeholder)
+    })?)?;
     let mut starts: Vec<usize> = Vec::with_capacity(chapters.len());
     let mut cur = front_pages;
     for ch in chapters {
@@ -50,10 +51,14 @@ pub fn export(chapters: &[TranslatedChapter], meta: &OutputMeta, out_path: &Path
 }
 
 fn font_family() -> Result<fonts::FontFamily<fonts::FontData>> {
-    let regular = fonts::FontData::new(include_bytes!("../../assets/DejaVuSans.ttf").to_vec(), None)
-        .map_err(|e| anyhow!("pdf font: {e}"))?;
-    let bold = fonts::FontData::new(include_bytes!("../../assets/DejaVuSans-Bold.ttf").to_vec(), None)
-        .map_err(|e| anyhow!("pdf font: {e}"))?;
+    let regular =
+        fonts::FontData::new(include_bytes!("../../assets/DejaVuSans.ttf").to_vec(), None)
+            .map_err(|e| anyhow!("pdf font: {e}"))?;
+    let bold = fonts::FontData::new(
+        include_bytes!("../../assets/DejaVuSans-Bold.ttf").to_vec(),
+        None,
+    )
+    .map_err(|e| anyhow!("pdf font: {e}"))?;
     Ok(fonts::FontFamily {
         regular: regular.clone(),
         bold: bold.clone(),
@@ -74,7 +79,8 @@ fn render(
     doc.set_page_decorator(decorator);
     fill(&mut doc);
     let mut buf = Vec::new();
-    doc.render(&mut buf).map_err(|e| anyhow!("rendering PDF: {e}"))?;
+    doc.render(&mut buf)
+        .map_err(|e| anyhow!("rendering PDF: {e}"))?;
     Ok(buf)
 }
 
@@ -162,12 +168,15 @@ fn push_chapter(doc: &mut Document, ch: &TranslatedChapter) {
 /// can only embed JPEG), and report its pixel dimensions.
 fn cover_as_jpeg(base64: &str) -> Option<(Vec<u8>, u32, u32)> {
     use base64::Engine as _;
-    let bytes = base64::engine::general_purpose::STANDARD.decode(base64.trim()).ok()?;
+    let bytes = base64::engine::general_purpose::STANDARD
+        .decode(base64.trim())
+        .ok()?;
     let img = image::load_from_memory(&bytes).ok()?;
     let (w, h) = (img.width(), img.height());
     let rgb = image::DynamicImage::ImageRgb8(img.to_rgb8());
     let mut out = Vec::new();
-    rgb.write_to(&mut Cursor::new(&mut out), image::ImageFormat::Jpeg).ok()?;
+    rgb.write_to(&mut Cursor::new(&mut out), image::ImageFormat::Jpeg)
+        .ok()?;
     Some((out, w, h))
 }
 
@@ -191,7 +200,11 @@ fn add_outline(
     for (ch, &start) in chapters.iter().zip(starts.iter()) {
         if let Some(&page_id) = pages.get(start.saturating_sub(1)) {
             let title = ch.title.trim();
-            let name = if title.is_empty() { "—".to_string() } else { title.to_string() };
+            let name = if title.is_empty() {
+                "—".to_string()
+            } else {
+                title.to_string()
+            };
             doc.add_bookmark(Bookmark::new(name, [0.0, 0.0, 0.0], 0, page_id), None);
         }
     }
@@ -207,7 +220,12 @@ fn add_outline(
     for u in meta.title.trim().encode_utf16() {
         title_bytes.extend_from_slice(&u.to_be_bytes());
     }
-    let info_id = match doc.trailer.get(b"Info").ok().and_then(|o| o.as_reference().ok()) {
+    let info_id = match doc
+        .trailer
+        .get(b"Info")
+        .ok()
+        .and_then(|o| o.as_reference().ok())
+    {
         Some(id) => id,
         None => {
             let id = doc.add_object(Object::Dictionary(lopdf::Dictionary::new()));
@@ -216,7 +234,10 @@ fn add_outline(
         }
     };
     if let Ok(Object::Dictionary(info)) = doc.get_object_mut(info_id) {
-        info.set("Title", Object::String(title_bytes, StringFormat::Hexadecimal));
+        info.set(
+            "Title",
+            Object::String(title_bytes, StringFormat::Hexadecimal),
+        );
     }
 
     doc.save(path)?;
@@ -230,10 +251,24 @@ mod tests {
     #[test]
     fn renders_pdf_with_bookmarks() {
         let chapters = vec![
-            TranslatedChapter { index: 1, number: Some(1), title: "Глава 1. Начало".into(), body: "Первый абзац.\n\nВторой абзац.".into() },
-            TranslatedChapter { index: 2, number: Some(2), title: "Глава 2. Продолжение".into(), body: "Текст второй главы.".into() },
+            TranslatedChapter {
+                index: 1,
+                number: Some(1),
+                title: "Глава 1. Начало".into(),
+                body: "Первый абзац.\n\nВторой абзац.".into(),
+            },
+            TranslatedChapter {
+                index: 2,
+                number: Some(2),
+                title: "Глава 2. Продолжение".into(),
+                body: "Текст второй главы.".into(),
+            },
         ];
-        let meta = OutputMeta { title: "Книга".into(), author: "Автор".into(), ..Default::default() };
+        let meta = OutputMeta {
+            title: "Книга".into(),
+            author: "Автор".into(),
+            ..Default::default()
+        };
         let path = std::env::temp_dir().join(format!("bc_pdf_{}.pdf", std::process::id()));
         export(&chapters, &meta, &path).unwrap();
         let doc = lopdf::Document::load(&path).unwrap();

@@ -109,7 +109,14 @@ async fn write_cancelled_tools(
             None,
         )
         .await?;
-        emit_tool(app, project_id, &call.function.name, "cancelled", false, &[]);
+        emit_tool(
+            app,
+            project_id,
+            &call.function.name,
+            "cancelled",
+            false,
+            &[],
+        );
     }
     Ok(())
 }
@@ -360,8 +367,17 @@ async fn dispatch_one(
             match decision {
                 ConfirmDecision::Approved => true,
                 ConfirmDecision::Denied => {
-                    finish_tool(store, turn, app, project_id, def, &call.id, "user_denied", false)
-                        .await?;
+                    finish_tool(
+                        store,
+                        turn,
+                        app,
+                        project_id,
+                        def,
+                        &call.id,
+                        "user_denied",
+                        false,
+                    )
+                    .await?;
                     return Ok("user_denied".into());
                 }
                 ConfirmDecision::TimedOut => {
@@ -429,7 +445,14 @@ async fn finish_tool(
     )
     .await?;
     let invalidates = if ok { def.invalidates } else { &[] };
-    emit_tool(app, project_id, def.name, &clip(result, STEP_PREVIEW_CHARS), ok, invalidates);
+    emit_tool(
+        app,
+        project_id,
+        def.name,
+        &clip(result, STEP_PREVIEW_CHARS),
+        ok,
+        invalidates,
+    );
     Ok(())
 }
 

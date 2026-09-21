@@ -70,11 +70,11 @@ fn map_row(r: &rusqlite::Row<'_>) -> rusqlite::Result<AssistantMessage> {
 
 impl Store {
     pub(crate) fn assistant_next_turn(&self) -> Result<i64> {
-        let n: i64 = self
-            .conn
-            .query_row("SELECT COALESCE(MAX(turn), 0) + 1 FROM assistant_messages", [], |r| {
-                r.get(0)
-            })?;
+        let n: i64 = self.conn.query_row(
+            "SELECT COALESCE(MAX(turn), 0) + 1 FROM assistant_messages",
+            [],
+            |r| r.get(0),
+        )?;
         Ok(n)
     }
 
@@ -136,7 +136,13 @@ mod tests {
     use super::*;
     use crate::state::Store;
 
-    fn append(store: &Store, turn: i64, role: AssistantRole, content: &str, tool_calls: Option<&str>) {
+    fn append(
+        store: &Store,
+        turn: i64,
+        role: AssistantRole,
+        content: &str,
+        tool_calls: Option<&str>,
+    ) {
         store
             .assistant_append(NewAssistantMessage {
                 turn,
@@ -173,7 +179,13 @@ mod tests {
         let store = Store::open(":memory:").unwrap();
         for turn in 1..=10 {
             append(&store, turn, AssistantRole::User, &format!("u{turn}"), None);
-            append(&store, turn, AssistantRole::Assistant, &format!("a{turn}"), None);
+            append(
+                &store,
+                turn,
+                AssistantRole::Assistant,
+                &format!("a{turn}"),
+                None,
+            );
         }
         let rows = store.assistant_context(3).unwrap();
         assert!(rows.iter().all(|r| r.turn >= 8));

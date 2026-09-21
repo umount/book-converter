@@ -363,7 +363,8 @@ mod tests {
     #[test]
     fn parses_arabic_numeral_headers() {
         // The complete edition uses Arabic numerals and full-width indentation.
-        let src = "《光阴之外》作者：耳根\n\n第1章 活着\n\n　　body one\n\n第2章 异质\n　　body two\n";
+        let src =
+            "《光阴之外》作者：耳根\n\n第1章 活着\n\n　　body one\n\n第2章 异质\n　　body two\n";
         let chapters = parse_chapters(src);
         assert_eq!(chapters.len(), 2);
         assert_eq!(chapters[0].number, Some(1));

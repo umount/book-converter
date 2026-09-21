@@ -26,7 +26,8 @@ pub(crate) fn validator_replace_in_book(v: &Value) -> Result<(), String> {
 pub(crate) struct EmptyArgs {}
 
 impl ToolArgs for EmptyArgs {
-    const SCHEMA: &'static str = r#"{"type":"object","properties":{},"additionalProperties":false}"#;
+    const SCHEMA: &'static str =
+        r#"{"type":"object","properties":{},"additionalProperties":false}"#;
 }
 
 #[derive(Deserialize)]

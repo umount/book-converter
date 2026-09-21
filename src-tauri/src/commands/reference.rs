@@ -180,9 +180,7 @@ pub async fn backfill_reference_head(
             return Ok(false);
         }
     }
-    let Some(ref_path) = crate::session::manifest_ref_path(&project_id)
-        .map_err(err)?
-    else {
+    let Some(ref_path) = crate::session::manifest_ref_path(&project_id).map_err(err)? else {
         Store::open(&db)
             .map_err(err)?
             .set_meta(HEAD_IMPORTED, &HEAD_IMPORT_VERSION.to_string())
@@ -191,12 +189,11 @@ pub async fn backfill_reference_head(
     };
 
     // Reading and decoding a whole book, so off the async executor.
-    let head = tauri::async_runtime::spawn_blocking(move || {
-        reference::load_head(Path::new(&ref_path))
-    })
-    .await
-    .map_err(|e| err(anyhow::anyhow!("backfill task failed: {e}")))?
-    .map_err(err)?;
+    let head =
+        tauri::async_runtime::spawn_blocking(move || reference::load_head(Path::new(&ref_path)))
+            .await
+            .map_err(|e| err(anyhow::anyhow!("backfill task failed: {e}")))?
+            .map_err(err)?;
 
     let store = Store::open(&db).map_err(err)?;
     let missing = |k: &str| {
@@ -211,7 +208,9 @@ pub async fn backfill_reference_head(
     let mut wrote = false;
     if let Some(head) = head {
         if let Some(cover) = head.cover.filter(|_| missing("cover_b64")) {
-            store.set_meta("cover_ct", &cover.content_type).map_err(err)?;
+            store
+                .set_meta("cover_ct", &cover.content_type)
+                .map_err(err)?;
             store.set_meta("cover_b64", &cover.base64).map_err(err)?;
             wrote = true;
         }

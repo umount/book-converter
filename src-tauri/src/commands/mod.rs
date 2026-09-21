@@ -6,16 +6,16 @@
 //! non-`Sync` SQLite connection off the async executor — and streams progress to
 //! the UI via `progress` / `done` / `job_error` events.
 
-mod util;
-pub(crate) mod ops;
-mod settings;
-mod project;
-mod reference;
-mod translation;
-mod glossary;
-mod export_cmd;
-mod reader;
 mod assistant;
+mod export_cmd;
+mod glossary;
+pub(crate) mod ops;
+mod project;
+mod reader;
+mod reference;
+mod settings;
+mod translation;
+mod util;
 
 pub use crate::session::{cleanup_legacy_data, AppState};
 // Tauri's command macro generates hidden companion symbols next to each
