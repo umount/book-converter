@@ -41,6 +41,7 @@ type TranslateOpts = {
   loadChapters: () => void | Promise<void>;
   /** Apply a saved manual edit locally (no refetch, keeps the editor mounted). */
   applyChapterEdit: (idx: number, title: string, body: string, langIssues: string | null) => void;
+  applyChapterTitle: (idx: number, title: string, langIssues: string | null) => void;
   errText: (raw: string) => string;
   limit: number | "";
 };
@@ -50,7 +51,7 @@ export function useTranslationJob({
   call, activeId, book, t, tRef, activeIdRef, chapterIdxRef,
   addLog, addLogToRef, dropLog,
   setBusyFor, setError, setPending, refreshGlossary, openChapter, loadChapters,
-  chapterNumberOf, applyChapterEdit, errText, limit,
+  chapterNumberOf, applyChapterEdit, applyChapterTitle, errText, limit,
 }: TranslateOpts) {
   // Progress is per project (keyed by id) so background/parallel runs keep
   // updating even while another project is in the foreground.
@@ -243,6 +244,17 @@ export function useTranslationJob({
     await call("translate_chapter", { projectId: activeId, index: idx });
   }
 
+  async function translateChapterTitle(idx: number) {
+    addLog(t("log.chapterTitleStarted", { n: chapterNumberOf(idx) ?? idx }));
+    const out = await call<{ title: string; lang_issues: string | null }>(
+      "translate_chapter_title",
+      { projectId: activeId, index: idx },
+    );
+    if (!out) return;
+    applyChapterTitle(idx, out.title, out.lang_issues);
+    addLog(t("log.chapterTitleDone", { title: out.title }));
+  }
+
   async function saveChapterPrompt(idx: number, prompt: string) {
     await call("set_chapter_prompt", { projectId: activeId, index: idx, prompt });
     addLog(t("log.chapterPromptSaved"));
@@ -313,7 +325,7 @@ export function useTranslationJob({
     setProgressFor,
     refreshProgressFor, refreshProgress,
     bootstrap, harvestGlossary, start, pause, reTranslate,
-    translateChapter, saveChapterTranslation,
+    translateChapter, translateChapterTitle, saveChapterTranslation,
     saveChapterPrompt, saveChapterContext, retranslateWithPrompt,
     clearProjectJobState,
   };

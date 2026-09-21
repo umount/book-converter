@@ -32,6 +32,7 @@ type Props = {
   /** True while a translation job is running for this project. */
   translating: boolean;
   onTranslateChapter: (idx: number) => void;
+  onTranslateChapterTitle: (idx: number) => Promise<void>;
   onSaveTranslation: (idx: number, title: string, body: string) => Promise<void>;
   onSaveChapterPrompt: (idx: number, prompt: string) => Promise<void>;
   onSaveChapterContext: (idx: number, summary: string, prevTail: string) => Promise<void>;
@@ -69,7 +70,7 @@ function PaneToggle({
 export function Reader({
   t, chapters, chapterIdx, setChapterIdx, chapter, chapterLoading,
   panes, setPanes, hl, find, terms, onOpenGlossaryTerm, onReplaceInBook,
-  translating, onTranslateChapter, onSaveTranslation, onSaveChapterPrompt,
+  translating, onTranslateChapter, onTranslateChapterTitle, onSaveTranslation, onSaveChapterPrompt,
   onSaveChapterContext, onRetranslateWithPrompt, flushRef,
 }: Props) {
   // The translation pane is always editable (no edit mode): the text lives in a
@@ -80,6 +81,7 @@ export function Reader({
   const [promptOpen, setPromptOpen] = useState(false);
   const [promptDraft, setPromptDraft] = useState("");
   const [promptBusy, setPromptBusy] = useState(false);
+  const [titleBusy, setTitleBusy] = useState(false);
   const [contextOpen, setContextOpen] = useState(false);
   const [summaryDraft, setSummaryDraft] = useState("");
   const [tailDraft, setTailDraft] = useState("");
@@ -304,6 +306,18 @@ export function Reader({
     }
   }
 
+  async function translateTitleOnly() {
+    if (chapterIdx == null || chapterBusy || titleBusy) return;
+    await flushEdits();
+    pendingRef.current = null;
+    setTitleBusy(true);
+    try {
+      await onTranslateChapterTitle(chapterIdx);
+    } finally {
+      setTitleBusy(false);
+    }
+  }
+
   const pos = chapters.findIndex((c) => c.idx === chapterIdx);
   const gotoRel = (d: number) => {
     const j = pos + d;
@@ -330,6 +344,7 @@ export function Reader({
 
   const canTranslate = !!chapter && chapterIdx != null && !translating;
   const canRegenerate = canTranslate && !promptBusy;
+  const canTranslateTitle = !!chapter?.source_title?.trim() && !chapterBusy && !titleBusy;
   const hasPrompt = !!(promptDraft.trim() || chapter?.user_prompt);
   const hasContext = !!(summaryDraft.trim() || tailDraft.trim() || chapter?.rolling_summary || chapter?.prev_tail);
 
@@ -461,6 +476,11 @@ export function Reader({
               )}
               {chapter?.origin === "reference" && <span className="ref-badge" title={t("reader.fromReferenceTip")}>{t("reader.fromReference")}</span>}
               {chapter?.origin === "manual" && <span className="ref-badge" title={t("reader.manualTip")}>{t("reader.manual")}</span>}
+              {chapter && (
+                <button className="ghost" disabled={!canTranslateTitle} onClick={() => void translateTitleOnly()} title={t("reader.translateTitleTip")}>
+                  {titleBusy ? t("reader.translating") : t("reader.translateTitle")}
+                </button>
+              )}
               {canEdit && (
                 <>
                   <span className={`save-state ${saving ? "busy" : dirty ? "dirty" : ""}`} title={t("reader.autosaveTip")}>

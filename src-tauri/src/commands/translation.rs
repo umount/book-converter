@@ -88,6 +88,16 @@ pub fn translate_chapter(
     ops::translation::translate_chapter(&app, &state, &project_id, index)
 }
 
+/// Translate only the chapter title, leaving the body as it is.
+#[tauri::command]
+pub async fn translate_chapter_title(
+    project_id: String,
+    index: usize,
+    state: State<'_, AppState>,
+) -> Result<crate::dto::TitleTranslation, String> {
+    ops::translation::translate_chapter_title(&state, &project_id, index).await
+}
+
 /// Manually save an edited chapter translation (origin = `manual`).
 /// Allowed while a batch job runs, as long as this chapter is not the one
 /// currently being translated (`in_progress`).

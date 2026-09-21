@@ -208,3 +208,4 @@ via `assistant_state`.
 | 2026-09-21 | Snapshot lang-issues via SQL page; confirm preview for replace/update/export; timeout copy in the panel. |
 | 2026-09-21 | Book-wide prompt: `set_book_prompt` tool, Overview editor, injected into every chapter translation. |
 | 2026-09-21 | Chat UI: tool traces + intermediate text collapsed as last-turn Thoughts only. |
+| 2026-09-21 | `translate_chapter_title`: retitle a chapter without retranslating the body. |

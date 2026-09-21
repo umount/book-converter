@@ -117,6 +117,7 @@ export default function App() {
     openChapter: book.openChapter,
     loadChapters: book.loadChapters,
     applyChapterEdit: book.applyChapterEdit,
+    applyChapterTitle: book.applyChapterTitle,
     // Logs speak in book chapter numbers, never reading-order indices.
     chapterNumberOf: (idx) => book.chapters.find((c) => c.idx === idx)?.number ?? null,
     errText, limit,
@@ -234,6 +235,7 @@ export default function App() {
     ...(activeProject
       ? [
           { id: "translate", label: t("palette.translateChapter"), hint: "⌘⏎", run: () => { if (book.chapterIdx != null) job.translateChapter(book.chapterIdx); } },
+          { id: "translateTitle", label: t("palette.translateTitle"), run: () => { if (book.chapterIdx != null) void job.translateChapterTitle(book.chapterIdx); } },
           { id: "start", label: t("palette.start"), run: () => job.start() },
           { id: "pause", label: t("palette.pause"), run: () => job.pause() },
           { id: "toggleOriginal", label: t("palette.toggleOriginal"), run: () => book.setPanes((p) => ({ ...p, orig: !p.orig })) },
@@ -477,6 +479,7 @@ export default function App() {
                       onReplaceInBook={replaceInBook}
                       translating={!!progress?.running}
                       onTranslateChapter={job.translateChapter}
+                      onTranslateChapterTitle={job.translateChapterTitle}
                       onSaveTranslation={job.saveChapterTranslation}
                       onSaveChapterPrompt={job.saveChapterPrompt}
                       onSaveChapterContext={job.saveChapterContext}

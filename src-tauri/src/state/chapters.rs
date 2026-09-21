@@ -330,6 +330,23 @@ impl Store {
         Ok(())
     }
 
+    /// Replace only the translated title; body, status and origin stay as they are.
+    pub fn set_translated_title(
+        &self,
+        index: usize,
+        title: &str,
+        lang_issues: &[String],
+    ) -> Result<()> {
+        let issues = (!lang_issues.is_empty()).then(|| lang_issues.join(", "));
+        self.conn.execute(
+            "UPDATE chapters
+             SET translated_title = ?2, lang_issues = ?3, updated_at = datetime('now')
+             WHERE idx = ?1",
+            params![index as i64, title, issues],
+        )?;
+        Ok(())
+    }
+
     /// Seed a chapter from a reference translation, but only if it is still
     /// `pending` (never overwrite work already done by the model or an earlier
     /// import). Marks it `done` with `origin = 'reference'`. Returns whether a row

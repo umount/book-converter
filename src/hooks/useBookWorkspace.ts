@@ -111,6 +111,13 @@ export function useBookWorkspace({ call, activeId }: Opts) {
    * swap the editor for a loading spinner on every autosave. The backend trims
    * what it stores, so the local copy is trimmed the same way.
    */
+  function applyChapterTitle(idx: number, title: string, langIssues: string | null) {
+    const t = title.trim();
+    setChapter((c) => (c && c.idx === idx ? { ...c, translated_title: t } : c));
+    setChapters((cs) => cs.map((c) => (c.idx === idx
+      ? { ...c, translated_title: t, lang_issues: langIssues }
+      : c)));
+  }
   function applyChapterEdit(idx: number, title: string, body: string, langIssues: string | null) {
     const t = title.trim();
     const b = body.trim();
@@ -182,6 +189,7 @@ export function useBookWorkspace({ call, activeId }: Opts) {
     panes, setPanes,
     clearWorkspace,
     applyChapterEdit,
+    applyChapterTitle,
     refreshDetails,
     translateTitle,
     loadChapters,

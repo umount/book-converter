@@ -137,6 +137,14 @@ pub(crate) fn set_context(
         .set_context_before(index, summary, prev_tail)
         .map_err(err)
 }
+
+/// Translate only a chapter's title. Does not take the job lease: a running
+/// batch may continue, as long as this chapter is not the one in flight.
+pub(crate) async fn translate_chapter_title(
+    state: &AppState,
+    project_id: &str,
+    index: usize,
+) -> Result<crate::dto::TitleTranslation, String> {
     let store = project_store(state, project_id)?;
     let chapter = store
         .chapter_full(index)
@@ -158,3 +166,34 @@ pub(crate) fn set_context(
         let ctx = crate::translator::prompt::PromptContext {
             terms: &relevant,
             book_note: meta.book_prompt.as_deref(),
+            user_note: chapter.user_prompt.as_deref(),
+            book: Some(crate::translator::prompt::BookRef {
+                title: meta.title.as_deref(),
+                author: meta.author.as_deref(),
+                title_translated: meta.title_translated.as_deref(),
+            }),
+            ..Default::default()
+        };
+        (
+            crate::translator::prompt::system_prompt(&config),
+            crate::translator::prompt::title_user_prompt(&ctx, &source_title),
+        )
+    };
+    let raw = super::super::util::client()?
+        .translate(&system, &user)
+        .await
+        .map_err(err)?;
+    let title = raw.trim().trim_matches('"').trim().to_string();
+    if title.is_empty() {
+        return Err("empty_title".into());
+    }
+    let body = chapter.translated.as_deref().unwrap_or("");
+    let issues = textutil::leftover_foreign(&config.target_lang, &title, body, &chapter.source);
+    store
+        .set_translated_title(index, &title, &issues)
+        .map_err(err)?;
+    Ok(crate::dto::TitleTranslation {
+        title,
+        lang_issues: (!issues.is_empty()).then(|| issues.join(", ")),
+    })
+}

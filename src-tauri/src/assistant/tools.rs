@@ -160,6 +160,15 @@ pub(crate) const TOOLS: &[ToolDef] = &[
         validate: validator::<TranslateChapterArgs>,
     },
     ToolDef {
+        name: "translate_chapter_title",
+        description: "Translate only a chapter's title (not the body). Use to fix title wording without retranslating the chapter.",
+        policy: ToolPolicy::Confirm,
+        invalidates: CHAPTERS,
+        untrusted_output: false,
+        schema: TranslateChapterArgs::SCHEMA,
+        validate: validator::<TranslateChapterArgs>,
+    },
+    ToolDef {
         name: "reset_translation",
         description: "Reset chapters to pending from a book chapter number. DESTRUCTIVE.",
         policy: ToolPolicy::Heavy,

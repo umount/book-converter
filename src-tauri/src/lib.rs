@@ -83,6 +83,7 @@ pub fn run() {
             commands::pause_translation,
             commands::reset_translation,
             commands::translate_chapter,
+            commands::translate_chapter_title,
             commands::update_chapter_translation,
             commands::replace_in_book,
             commands::search_book,

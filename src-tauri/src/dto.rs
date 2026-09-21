@@ -163,6 +163,13 @@ pub struct BookDetails {
     pub book_prompt: Option<String>,
 }
 
+/// Result of translating a chapter title without touching the body.
+#[derive(Serialize)]
+pub struct TitleTranslation {
+    pub title: String,
+    pub lang_issues: Option<String>,
+}
+
 /// One rename to propagate into the existing translation.
 #[derive(Deserialize)]
 pub struct RenameChange {

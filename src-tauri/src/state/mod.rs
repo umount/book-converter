@@ -818,6 +818,28 @@ mod tests {
         );
         store.set_book_prompt("   ").unwrap();
         assert_eq!(store.book_prompt().unwrap(), None);
+    }
+
+    #[test]
+    fn translated_title_can_change_without_touching_the_body() {
+        let store = Store::open(":memory:").unwrap();
+        store.init_chapters(&sample()).unwrap();
+        store
+            .save_translation(1, "Глава двадцать восьмая", "тело главы")
+            .unwrap();
+        store
+            .set_translated_title(1, "Глава 28. Знающий меня", &[])
+            .unwrap();
+        let row = store.chapter_full(1).unwrap().unwrap();
+        assert_eq!(
+            row.translated_title.as_deref(),
+            Some("Глава 28. Знающий меня")
+        );
+        assert_eq!(row.translated.as_deref(), Some("тело главы"));
+        assert_eq!(row.status, "done");
+        assert_eq!(row.origin.as_deref(), Some("model"));
+    }
+
     #[test]
     fn translate_ms_and_average() {
         let store = Store::open(":memory:").unwrap();

@@ -258,6 +258,7 @@ state of a run in flight.
 |---------|---------|
 | `start_translation` / `pause_translation` | Start/resume or pause after current chapter |
 | `translate_chapter` | Translate one chapter from the reader |
+| `translate_chapter_title` | Translate only the chapter title, leaving the body |
 | `update_chapter_translation` | Save a hand-edited translation (refused while that chapter is `in_progress`) |
 | `set_chapter_prompt` / `set_chapter_context` | Per-chapter instruction and rolling context |
 | `set_book_prompt` | Book-wide translation instruction (every chapter) |

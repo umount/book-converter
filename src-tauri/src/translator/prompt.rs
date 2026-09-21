@@ -232,6 +232,8 @@ pub fn user_prompt(ctx: &PromptContext, text: &str, shape: ReplyShape) -> String
     out
 }
 
+/// Prompt for translating a chapter title on its own (body is left untouched).
+pub fn title_user_prompt(ctx: &PromptContext, source_title: &str) -> String {
     let mut out = String::new();
 
     if let Some(book) = ctx.book.filter(|b| !b.is_empty()) {
@@ -269,6 +271,32 @@ pub fn user_prompt(ctx: &PromptContext, text: &str, shape: ReplyShape) -> String
         if !note.trim().is_empty() {
             out.push_str(
                 "Additional instructions from the user for THIS BOOK \
+                 (apply them; a chapter-specific instruction below overrides conflicts):\n",
+            );
+            out.push_str(note.trim());
+            out.push_str("\n\n");
+        }
+    }
+
+    if let Some(note) = ctx.user_note {
+        if !note.trim().is_empty() {
+            out.push_str(
+                "Additional instructions from the user for THIS chapter only \
+                 (follow them; they override conflicting defaults for this chapter):\n",
+            );
+            out.push_str(note.trim());
+            out.push_str("\n\n");
+        }
+    }
+
+    out.push_str(
+        "Translate only this chapter title. Output the translated title and \
+         nothing else — no quotes, notes, or original text.\n\n",
+    );
+    out.push_str(source_title.trim());
+    out
+}
+
 /// Build a (system, user) prompt to fold a freshly translated chapter into the
 /// running summary. Keeps continuity compact so the prompt stays small.
 pub fn build_summary_prompt(
@@ -396,8 +424,26 @@ mod tests {
         };
         let p = user_prompt(&ctx, "text", ReplyShape::TitleAndBody);
         let book_at = p.find("THIS BOOK").expect("book note");
+        let chapter_at = p.find("THIS chapter only").expect("chapter note");
+        assert!(book_at < chapter_at);
+        assert!(p.contains("Arabic numerals"));
+        assert!(p.contains("Keep this chapter's title short."));
+    }
+
+    #[test]
+    fn title_prompt_is_title_only() {
         let ctx = PromptContext {
             book_note: Some("Write titles as Глава N."),
+            ..Default::default()
+        };
+        let p = title_user_prompt(&ctx, "第二十八章 知我者");
+        assert!(p.contains("Translate only this chapter title"));
+        assert!(p.contains("第二十八章 知我者"));
+        assert!(p.contains("Глава N."));
+        assert!(!p.contains(reply::TITLE_MARK));
+        assert!(!p.contains("Translate the following text:"));
+    }
+
     #[test]
     fn summary_prompt_handles_empty_previous() {
         let cfg = Config::default();

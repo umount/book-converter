@@ -301,6 +301,16 @@ pub(crate) async fn mutate(
                 .map_err(|e: String| anyhow!(e))?;
             Ok(json!({ "started": true, "index": a.index }).to_string())
         }
+        "translate_chapter_title" => {
+            let a: TranslateChapterArgs = parse(args)?;
+            let out = ops::translation::translate_chapter_title(&state, project_id, a.index)
+                .await
+                .map_err(|e: String| anyhow!(e))?;
+            Ok(
+                json!({ "index": a.index, "title": out.title, "lang_issues": out.lang_issues })
+                    .to_string(),
+            )
+        }
         "reset_translation" => {
             let a: ResetTranslationArgs = parse(args)?;
             let n = ops::translation::reset(app, &state, project_id, a.from_number)
