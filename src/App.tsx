@@ -517,6 +517,7 @@ export default function App() {
           messages={assistant.messages}
           status={assistant.status}
           pendingConfirm={assistant.pendingConfirm}
+          confirmExpired={assistant.confirmExpired}
           onClose={() => {
             setShowAssistant(false);
             localStorage.setItem("bc.assistant.open", "0");

@@ -52,6 +52,7 @@ export function useAssistant({ call, activeId, enabled, onInvalidated }: Opts) {
   const [messages, setMessages] = useState<AssistantMessage[]>([]);
   const [status, setStatus] = useState<AssistantStatus>("idle");
   const [pendingConfirm, setPendingConfirm] = useState<AssistantConfirm | null>(null);
+  const [confirmExpired, setConfirmExpired] = useState(false);
   const activeIdRef = useRef(activeId);
   activeIdRef.current = activeId;
   const onInvalidatedRef = useRef(onInvalidated);
@@ -98,6 +99,7 @@ export function useAssistant({ call, activeId, enabled, onInvalidated }: Opts) {
 
   useEffect(() => {
     invalidatedRef.current = new Set();
+    setConfirmExpired(false);
     if (enabled) {
       void loadHistory(activeId);
       void restoreState(activeId);
@@ -148,16 +150,19 @@ export function useAssistant({ call, activeId, enabled, onInvalidated }: Opts) {
             args: e.payload.args,
             heavy: e.payload.heavy,
           });
+          setConfirmExpired(false);
           setStatus("awaiting_confirm");
         }),
         await listen<{ project: string; id: string }>("assistant_confirm_expired", (e) => {
           if (e.payload.project !== activeIdRef.current) return;
           setPendingConfirm(null);
+          setConfirmExpired(true);
           setStatus("running");
         }),
         await listen<{ project: string }>("assistant_done", (e) => {
           if (e.payload.project !== activeIdRef.current) return;
           setPendingConfirm(null);
+          setConfirmExpired(false);
           setStatus("idle");
           const areas = [...invalidatedRef.current];
           invalidatedRef.current = new Set();
@@ -167,6 +172,7 @@ export function useAssistant({ call, activeId, enabled, onInvalidated }: Opts) {
         await listen<{ project: string; message: string }>("assistant_error", (e) => {
           if (e.payload.project !== activeIdRef.current) return;
           setPendingConfirm(null);
+          setConfirmExpired(false);
           setStatus("error");
           void loadHistory(e.payload.project);
         }),
@@ -179,6 +185,7 @@ export function useAssistant({ call, activeId, enabled, onInvalidated }: Opts) {
   async function sendWithChapter(text: string, openChapter: number | null) {
     if (!enabled || !activeId) return;
     invalidatedRef.current = new Set();
+    setConfirmExpired(false);
     setStatus("running");
     setMessages((ms) => [
       ...ms,
@@ -197,6 +204,7 @@ export function useAssistant({ call, activeId, enabled, onInvalidated }: Opts) {
     await call("assistant_clear", { projectId: activeId });
     setMessages([]);
     setPendingConfirm(null);
+    setConfirmExpired(false);
     setStatus("idle");
   }
 
@@ -217,11 +225,12 @@ export function useAssistant({ call, activeId, enabled, onInvalidated }: Opts) {
   async function cancel() {
     await call("assistant_cancel", { projectId: activeId });
     setPendingConfirm(null);
+    setConfirmExpired(false);
     setStatus("idle");
   }
 
   return {
-    messages, status, pendingConfirm,
+    messages, status, pendingConfirm, confirmExpired,
     sendWithChapter, clear, approve, deny, cancel, loadHistory,
   };
 }

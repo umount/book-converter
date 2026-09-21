@@ -13,6 +13,7 @@ type Props = {
   messages: AssistantMessage[];
   status: AssistantStatus;
   pendingConfirm: AssistantConfirm | null;
+  confirmExpired: boolean;
   onClose: () => void;
   onClear: () => void;
   onSend: (text: string) => void;
@@ -23,7 +24,7 @@ type Props = {
 
 /** Right-side project assistant dock (Cursor-style chat). */
 export function AssistantPanel({
-  t, open, width, enabled, messages, status, pendingConfirm,
+  t, open, width, enabled, messages, status, pendingConfirm, confirmExpired,
   onClose, onClear, onSend, onApprove, onDeny, onCancel,
 }: Props) {
   const [draft, setDraft] = useState("");
@@ -31,7 +32,7 @@ export function AssistantPanel({
 
   useEffect(() => {
     listRef.current?.scrollTo(0, listRef.current.scrollHeight);
-  }, [messages, status, pendingConfirm]);
+  }, [messages, status, pendingConfirm, confirmExpired]);
 
   if (!open) return null;
 
@@ -80,6 +81,9 @@ export function AssistantPanel({
                 )}
               </div>
             ))}
+            {confirmExpired && !pendingConfirm && (
+              <div className="assistant-confirm-warn">{t("assistant.confirm.expired")}</div>
+            )}
             {pendingConfirm && (
               <div className="assistant-confirm">
                 <div className="assistant-confirm-title">{t("assistant.confirm.title")}</div>

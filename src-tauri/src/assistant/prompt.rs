@@ -95,13 +95,8 @@ pub fn build_snapshot(
         }
     }
 
-    // Chapters with leftover foreign words (capped).
-    let flagged: Vec<_> = store
-        .list_chapters()?
-        .into_iter()
-        .filter(|c| c.lang_issues.as_ref().is_some_and(|s| !s.is_empty()))
-        .take(12)
-        .collect();
+    // Chapters with leftover foreign words (capped, SQL-side).
+    let flagged = store.list_chapters_page(None, true, 0, 12)?;
     if !flagged.is_empty() {
         lines.push("chapters_with_lang_issues:".into());
         for c in flagged {
@@ -115,4 +110,47 @@ pub fn build_snapshot(
     }
 
     Ok(lines.join("\n"))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::book::Chapter;
+    use crate::config::Config;
+    use crate::state::Store;
+
+    fn seed() -> Store {
+        let store = Store::open(":memory:").unwrap();
+        store
+            .init_chapters(&[
+                Chapter {
+                    index: 1,
+                    number: Some(1),
+                    title: "第1章".into(),
+                    body: "source one".into(),
+                },
+                Chapter {
+                    index: 2,
+                    number: Some(2),
+                    title: "第2章".into(),
+                    body: "source two".into(),
+                },
+            ])
+            .unwrap();
+        store
+            .set_language_issues(2, &["王林".into()])
+            .unwrap();
+        store
+    }
+
+    #[test]
+    fn snapshot_lists_lang_issues_without_loading_every_chapter() {
+        let store = seed();
+        let snap = build_snapshot(&store, &Config::default(), "p1", Some(1), false).unwrap();
+        assert!(snap.contains("app_settings.languages"));
+        assert!(snap.contains("chapters_with_lang_issues:"));
+        assert!(snap.contains("idx=2"));
+        assert!(snap.contains("王林"));
+        assert!(snap.contains("open_chapter: idx=1"));
+    }
 }

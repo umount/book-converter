@@ -107,6 +107,36 @@ pub(crate) fn replace(
         .map_err(err)
 }
 
+/// Dry-run: how many translation matches a replace would hit, plus a few samples.
+pub(crate) fn replace_impact(
+    store: &Store,
+    re: &regex::Regex,
+) -> anyhow::Result<(usize, usize, Vec<String>)> {
+    const SAMPLE_CAP: usize = 5;
+    let mut chapters = 0usize;
+    let mut matches = 0usize;
+    let mut samples = Vec::new();
+    for chapter in store.searchable_chapters(false)? {
+        let count = re.find_iter(&chapter.text).count();
+        if count == 0 {
+            continue;
+        }
+        chapters += 1;
+        matches += count;
+        if samples.len() < SAMPLE_CAP {
+            let line = chapter.text.lines().find(|l| re.is_match(l)).unwrap_or("");
+            let at = re.find(line).map(|m| m.start()).unwrap_or(0);
+            let preview = clip_around(line, at, 80);
+            let num = chapter
+                .number
+                .map(|n| n.to_string())
+                .unwrap_or_else(|| chapter.idx.to_string());
+            samples.push(format!("#{num} {preview}"));
+        }
+    }
+    Ok((chapters, matches, samples))
+}
+
 fn clip_around(line: &str, at: usize, width: usize) -> String {
     let line = line.trim();
     if line.chars().count() <= width {

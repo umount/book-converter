@@ -78,7 +78,10 @@ Layout in [`src/App.tsx`](../src/App.tsx):
 1. Build messages = system(snapshot) + last 8 turns (replayed, including tools).
 2. `DeepSeekClient::chat_tools(...)`.
 3. Validate args **before** confirm. Unknown tools → error tool result.
-4. Auto-run or `assistant_need_confirm` (180s timeout → `confirm_timeout`).
+4. Auto-run or `assistant_need_confirm` (180s timeout → `confirm_timeout`,
+   shown in the panel). Confirm for `replace_in_book` / `update_chapter_translation`
+   / `export_book` is a human preview (match counts, chapter clip, output path),
+   not raw JSON.
 5. Persist every role (user, assistant text, assistant `tool_calls`, tool,
    `system_note`). Emit `assistant_done`.
 6. Cap 8 steps. Cancel aborts in-flight HTTP via `Notify` + `select!` and
@@ -102,6 +105,7 @@ Book text in tool results is wrapped in
 **Via tools (on demand):** the `TOOLS` table in `assistant/tools.rs`.
 
 Never dump the entire glossary or all ~1354 chapters into the prompt.
+The lang-issues sample in the snapshot is a SQL page of 12, not a full scan.
 
 ## Tool allowlist and confirm
 
@@ -198,3 +202,4 @@ via `assistant_state`.
 | 2026-09-18 | Initial plan: full agent (1B), same DeepSeek key (2A), staged delivery. |
 | 2026-09-18 | First implementation: dock UI, DeepSeek tools, agent loop, confirm gate, i18n. |
 | 2026-09-21 | Architecture debts: `state::assistant`, `commands/ops`, `jobs::lease`, ToolDef, holes closed. |
+| 2026-09-21 | Snapshot lang-issues via SQL page; confirm preview for replace/update/export; timeout copy in the panel. |

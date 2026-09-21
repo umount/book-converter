@@ -41,16 +41,100 @@ pub(crate) fn confirm_preview(
     def: &ToolDef,
     args: &Value,
 ) -> Result<String> {
-    let mut pretty = serde_json::to_string_pretty(args).unwrap_or_else(|_| args.to_string());
-    if def.name == "export_book" {
-        let parsed: ExportBookArgs = parse(args)?;
-        let format = OutputFormat::from_ext(&parsed.format).ok_or_else(|| anyhow!("bad_format"))?;
+    let store = state(app)
+        .and_then(|s| ops::project_store(&s, project_id).map_err(|e| anyhow!(e)))
+        .ok();
+    preview_from_store(store.as_ref(), def, args, |format| {
         let app_state = state(app)?;
-        let path = ops::export::planned_path(&app_state, project_id, format)
-            .map_err(|e: String| anyhow!(e))?;
-        pretty = format!("{pretty}\npath: {path}");
+        ops::export::planned_path(&app_state, project_id, format).map_err(|e: String| anyhow!(e))
+    })
+}
+
+fn preview_from_store(
+    store: Option<&Store>,
+    def: &ToolDef,
+    args: &Value,
+    export_path: impl FnOnce(OutputFormat) -> Result<String>,
+) -> Result<String> {
+    match def.name {
+        "export_book" => {
+            let parsed: ExportBookArgs = parse(args)?;
+            let format = OutputFormat::from_ext(&parsed.format).ok_or_else(|| anyhow!("bad_format"))?;
+            let path = export_path(format)?;
+            Ok(format!(
+                "export {ext} → {path}",
+                ext = format.ext(),
+            ))
+        }
+        "replace_in_book" => {
+            let a: ReplaceInBookArgs = parse(args)?;
+            let Some(store) = store else {
+                return Ok(serde_json::to_string_pretty(args).unwrap_or_else(|_| args.to_string()));
+            };
+            Ok(preview_replace(store, &a)?)
+        }
+        "update_chapter_translation" => {
+            let a: UpdateChapterTranslationArgs = parse(args)?;
+            let Some(store) = store else {
+                return Ok(serde_json::to_string_pretty(args).unwrap_or_else(|_| args.to_string()));
+            };
+            Ok(preview_update_chapter(store, &a)?)
+        }
+        _ => Ok(serde_json::to_string_pretty(args).unwrap_or_else(|_| args.to_string())),
     }
-    Ok(pretty)
+}
+
+fn preview_replace(store: &Store, a: &ReplaceInBookArgs) -> Result<String> {
+    let re = ops::text::build_regex(&a.find, a.match_case, a.whole_word, a.regex)
+        .map_err(|e| anyhow!(e))?;
+    let (chapters, matches, samples) = ops::text::replace_impact(store, &re)?;
+    let mut flags = Vec::new();
+    if a.match_case {
+        flags.push("match_case");
+    }
+    if a.whole_word {
+        flags.push("whole_word");
+    }
+    if a.regex {
+        flags.push("regex");
+    }
+    let flags = if flags.is_empty() {
+        String::new()
+    } else {
+        format!(" ({})", flags.join(", "))
+    };
+    let mut lines = vec![
+        format!("replace «{}» → «{}»{flags}", a.find, a.replace),
+        format!("{matches} match(es) in {chapters} chapter(s)"),
+    ];
+    for sample in samples {
+        lines.push(format!("  {sample}"));
+    }
+    Ok(lines.join("\n"))
+}
+
+fn preview_update_chapter(store: &Store, a: &UpdateChapterTranslationArgs) -> Result<String> {
+    let Some(ch) = store.chapter_full(a.index)? else {
+        return Ok(format!("update chapter idx={} (not found)", a.index));
+    };
+    let current = ch.translated.as_deref().unwrap_or("");
+    Ok(format!(
+        "update chapter idx={} number={:?} status={}\n\
+         title: {} → {}\n\
+         current: {}\n\
+         new: {}",
+        a.index,
+        ch.number,
+        ch.status,
+        ch.translated_title.as_deref().unwrap_or(&ch.source_title),
+        if a.translated_title.is_empty() {
+            "(unchanged)"
+        } else {
+            a.translated_title.as_str()
+        },
+        clip_text(current, 280),
+        clip_text(&a.translated, 280),
+    ))
 }
 
 pub(crate) fn read(
@@ -401,5 +485,37 @@ mod tests {
     fn clip_is_char_based() {
         assert_eq!(clip_text("привет", 3), "при…");
         assert_eq!(clip_text("光阴之外", 2), "光阴…");
+    }
+
+    #[test]
+    fn replace_preview_counts_matches() {
+        let store = seed();
+        let def = find("replace_in_book").unwrap();
+        let out = preview_from_store(
+            Some(&store),
+            def,
+            &json!({ "find": "один", "replace": "раз" }),
+            |_| Ok("unused".into()),
+        )
+        .unwrap();
+        assert!(out.contains("replace «один» → «раз»"));
+        assert!(out.contains("1 match(es) in 1 chapter(s)"));
+        assert!(out.contains("#1"));
+    }
+
+    #[test]
+    fn update_chapter_preview_shows_current_and_new() {
+        let store = seed();
+        let def = find("update_chapter_translation").unwrap();
+        let out = preview_from_store(
+            Some(&store),
+            def,
+            &json!({ "index": 1, "translated_title": "Глава 1", "translated": "новый текст" }),
+            |_| Ok("unused".into()),
+        )
+        .unwrap();
+        assert!(out.contains("idx=1"));
+        assert!(out.contains("перевод один"));
+        assert!(out.contains("новый текст"));
     }
 }
