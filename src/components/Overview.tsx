@@ -1,3 +1,4 @@
+import { useEffect, useRef, useState } from "react";
 import { formatEta } from "../lib/format";
 import type { BookDetails, Progress, RefInfo } from "../types";
 import { Panel } from "./Panel";
@@ -19,7 +20,7 @@ type Props = {
   onTranslateTitle: () => void;
   onReplaceCover: () => void;
   onGenerateSummary: () => void;
-  onSaveSummary: (text: string) => void;
+  onSaveSummary: (projectId: string, text: string) => void;
   onOpenReference: () => void;
   onBootstrap: () => void;
   onHarvestGlossary: (fromEnd: boolean) => void;
@@ -57,6 +58,18 @@ export function Overview({
       ? progress.current_title.slice(0, 50)
       : null;
 
+  const summaryForRef = useRef(activeKey);
+  const summaryEditedRef = useRef(false);
+  const [summaryDraft, setSummaryDraft] = useState(details?.summary ?? "");
+  if (summaryForRef.current !== activeKey) {
+    summaryForRef.current = activeKey;
+    summaryEditedRef.current = false;
+    setSummaryDraft(details?.summary ?? "");
+  }
+  useEffect(() => {
+    if (!summaryEditedRef.current) setSummaryDraft(details?.summary ?? "");
+  }, [activeKey, details?.summary]);
+
   return (
     <>
       {progress && (
@@ -85,8 +98,15 @@ export function Overview({
               )}
             </div>
             <textarea className="summary" placeholder={t("book.summaryPlaceholder")}
-              key={activeKey + (details?.summary ?? "")} defaultValue={details?.summary || ""}
-              onBlur={(e) => onSaveSummary(e.target.value)} />
+              value={summaryDraft}
+              onChange={(e) => {
+                summaryEditedRef.current = true;
+                setSummaryDraft(e.target.value);
+              }}
+              onBlur={() => {
+                if (!summaryEditedRef.current) return;
+                onSaveSummary(summaryForRef.current, summaryDraft);
+              }} />
           </div>
         </div>
       </Panel>

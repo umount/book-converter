@@ -158,9 +158,10 @@ export function useBookWorkspace({ call, activeId }: Opts) {
     if (!stillThisProject(projectId)) return;
     await refreshDetails(projectId);
   }
-  async function saveSummary(text: string) {
-    const projectId = activeIdRef.current;
-    if (!projectId) return;
+  async function saveSummary(projectId: string, text: string) {
+    // Blur from a textarea that is disappearing during a project switch must
+    // not write the previous book's annotation into the newly active one.
+    if (!projectId || projectId !== activeIdRef.current) return;
     await call("set_summary", { projectId, summary: text });
   }
 
