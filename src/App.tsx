@@ -217,12 +217,14 @@ export default function App() {
   }
 
 
-  // Prefer the active project's busy message; fall back to any in-flight busy
-  // (e.g. openBook sets busy for a new id before setActive makes it active).
-  const busy =
-    (activeId ? busyById[activeId] : null) ??
-    Object.values(busyById).find((m): m is string => !!m) ??
-    null;
+  // Prefer the active project's overlay. While a new book is still importing
+  // it has a busy id that is not active yet — show that, and nothing else.
+  // A leftover "Opening…" from a superseded project must not cover the UI.
+  const listedIds = new Set(projects.map((p) => p.id));
+  const importBusy = Object.entries(busyById).find(
+    ([id, msg]) => !!msg && !listedIds.has(id),
+  )?.[1] ?? null;
+  const busy = (activeId ? busyById[activeId] : null) ?? importBusy ?? null;
   const { progress, progressById } = job;
   const canExport = !!progress && progress.done > 0;
 
