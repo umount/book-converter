@@ -33,27 +33,60 @@ export function useBookWorkspace({ call, activeId }: Opts) {
   const chaptersRef = useRef<ChapterRow[]>(chapters);
   chaptersRef.current = chapters;
 
+  // Drop the previous book's title/cover/summary during render, not after paint.
+  // An effect would leave Overview showing the last project for one frame, and a
+  // late translate_title would write that frame's details back in.
+  const workspaceIdRef = useRef(activeId);
+  if (workspaceIdRef.current !== activeId) {
+    workspaceIdRef.current = activeId;
+    chapterIdxRef.current = null;
+    chaptersRef.current = [];
+    setBook(null);
+    setRef(null);
+    setDetails(null);
+    setChapters([]);
+    setChapterIdx(null);
+    setChapter(null);
+    setChapterTerms([]);
+    setChaptersLoading(false);
+    setChapterLoading(false);
+  }
+
   function clearWorkspace() {
+    chapterIdxRef.current = null;
+    chaptersRef.current = [];
     setBook(null); setRef(null); setDetails(null);
     setChapters([]); setChapterIdx(null); setChapter(null);
     setChapterTerms([]);
     setChaptersLoading(false);
+    setChapterLoading(false);
   }
 
-  async function refreshDetails() {
-    const d = await call<BookDetails>("get_book_details", { projectId: activeId });
-    if (d) setDetails(d);
+  function stillThisProject(projectId: string) {
+    return !!projectId && activeIdRef.current === projectId;
   }
-  async function translateTitle() {
-    const r = await call<string>("translate_title", { projectId: activeId });
-    if (r) refreshDetails();
+
+  async function refreshDetails(projectId: string = activeIdRef.current) {
+    if (!projectId) {
+      setDetails(null);
+      return;
+    }
+    const d = await call<BookDetails>("get_book_details", { projectId });
+    if (!stillThisProject(projectId)) return;
+    setDetails(d ?? null);
+  }
+  async function translateTitle(projectId: string = activeIdRef.current) {
+    if (!projectId) return;
+    const r = await call<string>("translate_title", { projectId });
+    if (!stillThisProject(projectId)) return;
+    if (r) await refreshDetails(projectId);
   }
   /**
    * Load the chapter list of `projectId` (the active project by default).
    * The explicit id lets project activation load chapters for the project it
    * just opened, without depending on when React re-renders.
    */
-  async function loadChapters(projectId: string = activeId) {
+  async function loadChapters(projectId: string = activeIdRef.current) {
     if (!projectId) return;
     // Only show the preloader on a first load; refreshes during a translation
     // run keep the existing list visible instead of flashing a skeleton.
@@ -64,7 +97,7 @@ export function useBookWorkspace({ call, activeId }: Opts) {
       if (activeIdRef.current !== projectId) return; // switched project meanwhile
       if (cs) {
         setChapters(cs);
-        if (chapterIdx == null && cs.length) {
+        if (chapterIdxRef.current == null && cs.length) {
           setChapterIdx((cs.find((c) => c.status === "done") || cs[0]).idx);
         }
       }
@@ -90,9 +123,11 @@ export function useBookWorkspace({ call, activeId }: Opts) {
   }
 
   async function openChapter(idx: number) {
+    const projectId = activeIdRef.current;
+    if (!projectId) return;
     setChapterLoading(true);
-    const projectId = activeId;
     const c = await call<ChapterView>("get_chapter", { projectId, index: idx });
+    if (!stillThisProject(projectId) || chapterIdxRef.current !== idx) return;
     if (c) setChapter(c);
     setChapterLoading(false);
     void loadChapterTerms(idx, projectId);
@@ -114,13 +149,19 @@ export function useBookWorkspace({ call, activeId }: Opts) {
   }, [chapterIdx]);
 
   async function replaceCover() {
+    const projectId = activeIdRef.current;
+    if (!projectId) return;
     const path = await open({ filters: [{ name: "Image", extensions: ["jpg", "jpeg", "png", "gif", "webp"] }] });
     if (typeof path !== "string") return;
-    await call("set_cover", { projectId: activeId, path });
-    refreshDetails();
+    if (!stillThisProject(projectId)) return;
+    await call("set_cover", { projectId, path });
+    if (!stillThisProject(projectId)) return;
+    await refreshDetails(projectId);
   }
   async function saveSummary(text: string) {
-    await call("set_summary", { projectId: activeId, summary: text });
+    const projectId = activeIdRef.current;
+    if (!projectId) return;
+    await call("set_summary", { projectId, summary: text });
   }
 
   return {

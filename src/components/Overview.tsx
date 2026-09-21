@@ -9,7 +9,7 @@ type Props = {
   refInfo: RefInfo | null;
   details: BookDetails | null;
   progress: Progress | null;
-  activeKey: number;
+  activeKey: string;
   sample: number;
   setSample: (n: number) => void;
   limit: number | "";

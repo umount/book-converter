@@ -44,6 +44,7 @@ export function useProjectActions({
   const { projects, active, activeProject, activeId, addProject, removeAt, setRefPath } = list;
 
   const activatingRef = useRef<string | null>(null);
+  const activateGenRef = useRef(0);
   // Read at call time: a background refresh must not land on another project.
   const activeIdRef = useRef(activeId);
   activeIdRef.current = activeId;
@@ -60,7 +61,9 @@ export function useProjectActions({
   async function activateProject(p: Project) {
     // React StrictMode double-fires effects in dev, which would open twice.
     if (activatingRef.current === p.id) return;
+    const gen = ++activateGenRef.current;
     activatingRef.current = p.id;
+    const still = () => activateGenRef.current === gen && activeIdOf() === p.id;
     setBusyFor(p.id, t("busy.opening", { name: p.name }));
     addLogTo(p.id, t("log.opening", { name: p.name }));
     setError(null);
@@ -72,6 +75,7 @@ export function useProjectActions({
     // The frontend works only with the database: a project is always opened
     // from its own DB (the source file was parsed into it once, at add time).
     const info = await call<BookInfo>("open_project", { projectId: p.id }, { critical: true });
+    if (!still()) return;
     if (!info) {
       book.setChaptersLoading(false); // open failed: stop the explorer preloader
       setBusyFor(p.id, null);
@@ -79,6 +83,7 @@ export function useProjectActions({
     }
     book.setBook(info);
     await book.loadChapters(p.id);
+    if (!still()) return;
     addLogTo(p.id, t("log.loaded", {
       name: p.name, n: info.total_chapters, format: info.format, encoding: info.encoding,
     }));
@@ -87,14 +92,17 @@ export function useProjectActions({
     // translation AND the whole source book on every open, for data that was
     // already stored. On a book of this size that was most of the wait.
     const r = await call<RefInfo | null>("get_reference_info", { projectId: p.id });
+    if (!still()) return;
     if (r) {
       book.setRef(r);
       addLogTo(p.id, t("log.reference", { n: r.max_covered ?? "?" }));
     }
-    await book.refreshDetails();
+    await book.refreshDetails(p.id);
+    if (!still()) return;
     await job.refreshProgressFor(p.id);
     await glossary.refreshGlossary();
-    void book.translateTitle();
+    if (!still()) return;
+    void book.translateTitle(p.id);
     setBusyFor(p.id, null);
 
     // A project whose reference was attached before its cover and annotation
@@ -102,18 +110,23 @@ export function useProjectActions({
     // the background and exactly once, so it never delays opening again.
     void (async () => {
       const wrote = await call<boolean>("backfill_reference_head", { projectId: p.id });
-      if (!wrote || activeIdOf() !== p.id) return;
-      void book.refreshDetails();
+      if (!wrote || !still()) return;
+      void book.refreshDetails(p.id);
       // The backfill can also supply the reference's own title, which is shown
       // in the overview's Reference panel and does not live in book details.
       const refreshed = await call<RefInfo | null>("get_reference_info", { projectId: p.id });
-      if (refreshed && activeIdOf() === p.id) book.setRef(refreshed);
+      if (refreshed && still()) book.setRef(refreshed);
     })();
   }
 
   useEffect(() => {
     if (activeProject) void activateProject(activeProject);
-    else { activatingRef.current = null; book.clearWorkspace(); glossary.setPending({}); }
+    else {
+      activateGenRef.current += 1;
+      activatingRef.current = null;
+      book.clearWorkspace();
+      glossary.setPending({});
+    }
     setView("overview");
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [active]);

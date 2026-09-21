@@ -422,7 +422,7 @@ export default function App() {
                     <Overview
                       t={t} collapsed={collapsed} onToggle={toggle}
                       refInfo={book.ref} details={book.details}
-                      progress={progress} activeKey={active}
+                      progress={progress} activeKey={activeId}
                       sample={job.sample} setSample={job.setSample}
                       limit={limit} setLimit={setLimit}
                       reFrom={job.reFrom} setReFrom={job.setReFrom}
