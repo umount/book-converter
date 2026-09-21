@@ -362,6 +362,23 @@ impl ToolArgs for SetChapterPromptArgs {
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
+pub(crate) struct SetBookPromptArgs {
+    pub(crate) prompt: String,
+}
+
+impl ToolArgs for SetBookPromptArgs {
+    const SCHEMA: &'static str = r#"{
+        "type": "object",
+        "properties": {
+            "prompt": { "type": "string", "description": "Book-wide instruction. Empty string clears it." }
+        },
+        "required": ["prompt"],
+        "additionalProperties": false
+    }"#;
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 pub(crate) struct SetChapterContextArgs {
     pub(crate) index: usize,
     pub(crate) summary: String,

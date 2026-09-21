@@ -159,6 +159,8 @@ pub struct BookDetails {
     pub summary: Option<String>,
     /// Cover as a `data:` URL, if any.
     pub cover: Option<String>,
+    /// Book-wide translation instruction injected into every chapter prompt.
+    pub book_prompt: Option<String>,
 }
 
 /// One rename to propagate into the existing translation.

@@ -96,6 +96,7 @@ pub fn run() {
             commands::get_book_details,
             commands::translate_title,
             commands::set_summary,
+            commands::set_book_prompt,
             commands::generate_summary,
             commands::set_cover,
             commands::list_chapters,

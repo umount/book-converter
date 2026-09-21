@@ -1,8 +1,9 @@
 //! Building translation prompts.
 //!
-//! A chapter's prompt is assembled from: base instructions (system) + a mandatory
-//! glossary dictionary + an optional style exemplar (from a reference translation)
-//! + the rolling context (running summary + previous chapter tail) + the text.
+//! A chapter's prompt is assembled from base instructions (system), a mandatory
+//! glossary dictionary, an optional style exemplar (from a reference translation),
+//! the rolling context (running summary + previous chapter tail), optional
+//! book-wide and per-chapter user instructions, and the text.
 //!
 //! The glossary keeps terms consistent; the rolling context keeps the narrative
 //! consistent across a sequential run.
@@ -24,7 +25,10 @@ pub struct PromptContext<'a> {
     pub prev_tail: Option<&'a str>,
     /// A professional excerpt to match in tone/register.
     pub style: Option<&'a str>,
+    /// Optional user instruction for the whole book (every chapter).
+    pub book_note: Option<&'a str>,
     /// Optional user instruction for this chapter only (not the glossary).
+    /// Overrides a conflicting book-wide instruction for this chapter.
     pub user_note: Option<&'a str>,
     /// The book this chapter belongs to (original title, author, known
     /// translated title). Models often know the work, and naming it helps them
@@ -195,6 +199,18 @@ pub fn user_prompt(ctx: &PromptContext, text: &str, shape: ReplyShape) -> String
         }
     }
 
+    if let Some(note) = ctx.book_note {
+        if !note.trim().is_empty() {
+            out.push_str(
+                "Additional instructions from the user for THIS BOOK \
+                 (apply them to every chapter; a chapter-specific instruction \
+                 below overrides conflicts):\n",
+            );
+            out.push_str(note.trim());
+            out.push_str("\n\n");
+        }
+    }
+
     if let Some(note) = ctx.user_note {
         if !note.trim().is_empty() {
             out.push_str(
@@ -216,6 +232,43 @@ pub fn user_prompt(ctx: &PromptContext, text: &str, shape: ReplyShape) -> String
     out
 }
 
+    let mut out = String::new();
+
+    if let Some(book) = ctx.book.filter(|b| !b.is_empty()) {
+        out.push_str("This chapter is from the following work");
+        if let Some(t) = book.title.filter(|s| !s.trim().is_empty()) {
+            let _ = write!(out, ", titled \"{}\"", t.trim());
+        }
+        if let Some(a) = book.author.filter(|s| !s.trim().is_empty()) {
+            let _ = write!(out, ", by {}", a.trim());
+        }
+        if let Some(tt) = book.title_translated.filter(|s| !s.trim().is_empty()) {
+            let _ = write!(out, " (published in translation as \"{}\")", tt.trim());
+        }
+        out.push_str(".\n\n");
+    }
+
+    if !ctx.terms.is_empty() {
+        out.push_str(
+            "Use exactly these fixed translations for the following terms \
+             (source → target). Do not translate them any other way:\n",
+        );
+        for t in ctx.terms {
+            let _ = writeln!(
+                out,
+                "- {} → {} [{}]",
+                t.source,
+                t.target,
+                kind_label(t.kind)
+            );
+        }
+        out.push('\n');
+    }
+
+    if let Some(note) = ctx.book_note {
+        if !note.trim().is_empty() {
+            out.push_str(
+                "Additional instructions from the user for THIS BOOK \
 /// Build a (system, user) prompt to fold a freshly translated chapter into the
 /// running summary. Keeps continuity compact so the prompt stays small.
 pub fn build_summary_prompt(
@@ -334,6 +387,17 @@ mod tests {
         assert!(p.contains("господин, not госпожа"));
     }
 
+    #[test]
+    fn includes_book_note_before_chapter_note() {
+        let ctx = PromptContext {
+            book_note: Some("Write chapter titles as Глава N. Title, with Arabic numerals."),
+            user_note: Some("Keep this chapter's title short."),
+            ..Default::default()
+        };
+        let p = user_prompt(&ctx, "text", ReplyShape::TitleAndBody);
+        let book_at = p.find("THIS BOOK").expect("book note");
+        let ctx = PromptContext {
+            book_note: Some("Write titles as Глава N."),
     #[test]
     fn summary_prompt_handles_empty_previous() {
         let cfg = Config::default();

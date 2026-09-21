@@ -164,6 +164,10 @@ export function useBookWorkspace({ call, activeId }: Opts) {
     if (!projectId || projectId !== activeIdRef.current) return;
     await call("set_summary", { projectId, summary: text });
   }
+  async function saveBookPrompt(projectId: string, text: string) {
+    if (!projectId || projectId !== activeIdRef.current) return;
+    await call("set_book_prompt", { projectId, prompt: text });
+  }
 
   return {
     book, setBook,
@@ -184,5 +188,6 @@ export function useBookWorkspace({ call, activeId }: Opts) {
     openChapter,
     replaceCover,
     saveSummary,
+    saveBookPrompt,
   };
 }

@@ -197,7 +197,7 @@ App data layout (see also `PROJECT_ISOLATION.md`):
 | **chapters** | Source, status (`pending` / `in_progress` / `done` / `failed`), translation, origin |
 | **glossary** | Canonical terms (`source`, `target`, `kind`, `frequency`, `pinned`) |
 | **assistant_messages** | Per-project assistant transcript (`turn`, `role`, `content`, `tool_calls`) |
-| **meta** | Sole durable source for title/author/cover/summary, `running_summary`, format, encoding |
+| **meta** | Sole durable source for title/author/cover/summary, `running_summary`, `book_prompt`, format, encoding |
 
 Every connection runs in WAL with a busy timeout: a translation run holds a
 writer on a background thread while the UI opens short-lived readers, which the
@@ -260,6 +260,7 @@ state of a run in flight.
 | `translate_chapter` | Translate one chapter from the reader |
 | `update_chapter_translation` | Save a hand-edited translation (refused while that chapter is `in_progress`) |
 | `set_chapter_prompt` / `set_chapter_context` | Per-chapter instruction and rolling context |
+| `set_book_prompt` | Book-wide translation instruction (every chapter) |
 | `get_progress` | Snapshot (also pushed via `progress` events) |
 | `reset_translation` | Reset done → pending from a book chapter number |
 
@@ -277,8 +278,8 @@ state of a run in flight.
 | `list_chapters` / `get_chapter` | Reader (rows carry status, origin and any leftover foreign words) |
 | `replace_in_book` | Find/replace across all stored translations (literal or regex) |
 | `search_book` | Book-wide search, grouped per chapter (sidebar search panel) |
-| `get_book_details` | Cover, summary, translated title/author |
-| `translate_title` / `set_summary` / `generate_summary` / `set_cover` | Metadata |
+| `get_book_details` | Cover, summary, translated title/author, book prompt |
+| `translate_title` / `set_summary` / `set_book_prompt` / `generate_summary` / `set_cover` | Metadata |
 
 ### Export
 | Command | Purpose |

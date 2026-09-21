@@ -37,6 +37,8 @@ export const TRANSLATION_LANGS = [
 export type BookDetails = {
   title: string; author: string; title_translated: string | null; author_translated: string | null;
   summary: string | null; cover: string | null;
+  /** Book-wide instruction injected into every chapter's translation prompt. */
+  book_prompt: string | null;
 };
 export type ChapterRow = {
   idx: number; number: number | null; title: string;

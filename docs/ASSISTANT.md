@@ -101,6 +101,7 @@ Book text in tool results is wrapped in
 - progress: done/pending/failed/running, next_number
 - open chapter (idx, number, title, status, lang_issues)
 - glossary size + sample; reference stats
+- `book_prompt` (or `(none)`)
 
 **Via tools (on demand):** the `TOOLS` table in `assistant/tools.rs`.
 
@@ -203,3 +204,4 @@ via `assistant_state`.
 | 2026-09-18 | First implementation: dock UI, DeepSeek tools, agent loop, confirm gate, i18n. |
 | 2026-09-21 | Architecture debts: `state::assistant`, `commands/ops`, `jobs::lease`, ToolDef, holes closed. |
 | 2026-09-21 | Snapshot lang-issues via SQL page; confirm preview for replace/update/export; timeout copy in the panel. |
+| 2026-09-21 | Book-wide prompt: `set_book_prompt` tool, Overview editor, injected into every chapter translation. |

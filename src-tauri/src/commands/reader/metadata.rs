@@ -31,7 +31,17 @@ pub async fn get_book_details(
         author_translated: metadata.author_translated,
         summary: metadata.summary,
         cover: cover.as_ref().map(Cover::data_url),
+        book_prompt: metadata.book_prompt,
     })
+}
+
+#[tauri::command]
+pub async fn set_book_prompt(
+    project_id: String,
+    prompt: String,
+    state: State<'_, AppState>,
+) -> Result<(), String> {
+    ops::translation::set_book_prompt(&state, &project_id, &prompt)
 }
 
 #[tauri::command]

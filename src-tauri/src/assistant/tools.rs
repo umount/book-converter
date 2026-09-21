@@ -9,7 +9,7 @@ use super::args::{
     validator, validator_replace_in_book, BootstrapGlossaryArgs, ChapterTermsArgs, DeleteTermArgs,
     EmptyArgs, ExportBookArgs, GetChapterArgs, GlossaryPageArgs, HarvestGlossaryArgs,
     ListChaptersArgs, ReplaceInBookArgs, ResetTranslationArgs, RetargetTermsArgs, SearchBookArgs,
-    SetChapterContextArgs, SetChapterPromptArgs, StartTranslationArgs, ToolArgs,
+    SetBookPromptArgs, SetChapterContextArgs, SetChapterPromptArgs, StartTranslationArgs, ToolArgs,
     TranslateChapterArgs, UpdateChapterTranslationArgs, UpdateTermArgs,
 };
 
@@ -57,6 +57,7 @@ const GLOSSARY_CHAPTERS: &[Invalidate] = &[
 ];
 const CHAPTERS: &[Invalidate] = &[Invalidate::Chapters, Invalidate::OpenChapter];
 const OPEN: &[Invalidate] = &[Invalidate::OpenChapter];
+const BOOK_DETAILS: &[Invalidate] = &[Invalidate::BookDetails];
 
 pub(crate) const TOOLS: &[ToolDef] = &[
     ToolDef {
@@ -223,12 +224,21 @@ pub(crate) const TOOLS: &[ToolDef] = &[
     },
     ToolDef {
         name: "set_chapter_prompt",
-        description: "Set per-chapter translation instruction.",
+        description: "Set per-chapter translation instruction. Prefer set_book_prompt for rules that should apply to every chapter.",
         policy: ToolPolicy::Confirm,
         invalidates: OPEN,
         untrusted_output: false,
         schema: SetChapterPromptArgs::SCHEMA,
         validate: validator::<SetChapterPromptArgs>,
+    },
+    ToolDef {
+        name: "set_book_prompt",
+        description: "Set a book-wide translation instruction applied to every chapter (title format, register, recurring choices). Empty string clears it. Does not rewrite already translated chapters. Per-chapter prompts override conflicts.",
+        policy: ToolPolicy::Confirm,
+        invalidates: BOOK_DETAILS,
+        untrusted_output: false,
+        schema: SetBookPromptArgs::SCHEMA,
+        validate: validator::<SetBookPromptArgs>,
     },
     ToolDef {
         name: "set_chapter_context",

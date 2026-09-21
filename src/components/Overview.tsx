@@ -21,6 +21,7 @@ type Props = {
   onReplaceCover: () => void;
   onGenerateSummary: () => void;
   onSaveSummary: (projectId: string, text: string) => void;
+  onSaveBookPrompt: (projectId: string, text: string) => void;
   onOpenReference: () => void;
   onBootstrap: () => void;
   onHarvestGlossary: (fromEnd: boolean) => void;
@@ -33,7 +34,7 @@ type Props = {
 export function Overview({
   t, collapsed, onToggle, refInfo, details, progress, activeKey,
   sample, setSample, limit, setLimit, reFrom, setReFrom,
-  onTranslateTitle, onReplaceCover, onGenerateSummary, onSaveSummary,
+  onTranslateTitle, onReplaceCover, onGenerateSummary, onSaveSummary, onSaveBookPrompt,
   onOpenReference, onBootstrap, onHarvestGlossary, onStart, onPause, onRefreshProgress, onRetranslate,
 }: Props) {
   const jobTotal = progress?.job_total && progress.job_total > 0 ? progress.job_total : null;
@@ -69,6 +70,18 @@ export function Overview({
   useEffect(() => {
     if (!summaryEditedRef.current) setSummaryDraft(details?.summary ?? "");
   }, [activeKey, details?.summary]);
+
+  const promptForRef = useRef(activeKey);
+  const promptEditedRef = useRef(false);
+  const [promptDraft, setPromptDraft] = useState(details?.book_prompt ?? "");
+  if (promptForRef.current !== activeKey) {
+    promptForRef.current = activeKey;
+    promptEditedRef.current = false;
+    setPromptDraft(details?.book_prompt ?? "");
+  }
+  useEffect(() => {
+    if (!promptEditedRef.current) setPromptDraft(details?.book_prompt ?? "");
+  }, [activeKey, details?.book_prompt]);
 
   return (
     <>
@@ -106,6 +119,20 @@ export function Overview({
               onBlur={() => {
                 if (!summaryEditedRef.current) return;
                 onSaveSummary(summaryForRef.current, summaryDraft);
+              }} />
+            <div className="summary-head">
+              <span className="muted">{t("book.promptLabel")}</span>
+            </div>
+            <div className="muted resume-hint">{t("book.promptHint")}</div>
+            <textarea className="summary book-prompt" placeholder={t("book.promptPlaceholder")}
+              value={promptDraft}
+              onChange={(e) => {
+                promptEditedRef.current = true;
+                setPromptDraft(e.target.value);
+              }}
+              onBlur={() => {
+                if (!promptEditedRef.current) return;
+                onSaveBookPrompt(promptForRef.current, promptDraft);
               }} />
           </div>
         </div>

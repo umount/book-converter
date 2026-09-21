@@ -1,6 +1,6 @@
 # book-converter — Settings matrix
 
-> Where configuration lives. Last updated 2026-07-22.
+> Where configuration lives. Last updated 2026-09-21.
 
 Settings are intentionally split by lifetime and scope. There is no single
 settings object — use this matrix when adding a new knob.
@@ -77,12 +77,14 @@ Written by load/open/commands; restored on `open_project`.
 | `cover_ct` / `cover_b64` | Cover image |
 | `format` / `encoding` | Source format info |
 | `running_summary` | Rolling story synopsis for sequential translation (book-level mirror) |
+| `book_prompt` | Book-wide translation instruction injected into every chapter prompt |
 
 Plus tables `chapters` and `glossary` (not KV meta). Each translated chapter also
 stores its own `rolling_summary` and `prev_tail` — the continuity context after
 that chapter — so a later single-chapter translate or a resumed run can restore
 context without relying only on in-memory state. Optional `user_prompt` holds a
-per-chapter instruction injected into the model prompt (not the glossary).
+per-chapter instruction injected into the model prompt (not the glossary); it
+overrides a conflicting `book_prompt` for that chapter.
 
 ## Ephemeral UI state (not persisted)
 

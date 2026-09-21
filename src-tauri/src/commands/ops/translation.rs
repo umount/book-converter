@@ -116,6 +116,16 @@ pub(crate) fn set_prompt(
         .map_err(err)
 }
 
+pub(crate) fn set_book_prompt(
+    state: &AppState,
+    project_id: &str,
+    prompt: &str,
+) -> Result<(), String> {
+    project_store(state, project_id)?
+        .set_book_prompt(prompt)
+        .map_err(err)
+}
+
 pub(crate) fn set_context(
     state: &AppState,
     project_id: &str,
@@ -127,3 +137,24 @@ pub(crate) fn set_context(
         .set_context_before(index, summary, prev_tail)
         .map_err(err)
 }
+    let store = project_store(state, project_id)?;
+    let chapter = store
+        .chapter_full(index)
+        .map_err(err)?
+        .ok_or_else(|| "chapter not found".to_string())?;
+    if chapter.status == "in_progress" {
+        return Err("chapter_busy".into());
+    }
+    let source_title = chapter.source_title.trim().to_string();
+    if source_title.is_empty() {
+        return Err("no_title".into());
+    }
+
+    let config = Config::load();
+    let meta = store.project_metadata().map_err(err)?;
+    let glossary = store.load_glossary().map_err(err)?;
+    let (system, user) = {
+        let relevant = crate::glossary::relevant_terms(&glossary, &source_title);
+        let ctx = crate::translator::prompt::PromptContext {
+            terms: &relevant,
+            book_note: meta.book_prompt.as_deref(),

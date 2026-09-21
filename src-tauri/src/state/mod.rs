@@ -802,6 +802,23 @@ mod tests {
     }
 
     #[test]
+    fn book_prompt_roundtrip() {
+        let store = Store::open(":memory:").unwrap();
+        assert_eq!(store.book_prompt().unwrap(), None);
+        store
+            .set_book_prompt("  Write chapter titles as Глава N.  ")
+            .unwrap();
+        assert_eq!(
+            store.book_prompt().unwrap().as_deref(),
+            Some("Write chapter titles as Глава N.")
+        );
+        assert_eq!(
+            store.project_metadata().unwrap().book_prompt.as_deref(),
+            Some("Write chapter titles as Глава N.")
+        );
+        store.set_book_prompt("   ").unwrap();
+        assert_eq!(store.book_prompt().unwrap(), None);
+    #[test]
     fn translate_ms_and_average() {
         let store = Store::open(":memory:").unwrap();
         store.init_chapters(&sample()).unwrap();

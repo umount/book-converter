@@ -312,13 +312,20 @@ impl<'a, C: Translate> Orchestrator<'a, C> {
             .chapter(idx)?
             .ok_or_else(|| anyhow!("no source for chapter {idx}"))?;
         let user_note = self.store.chapter_user_prompt(idx)?;
+        let book_note = self.store.book_prompt()?;
         // The book chapter number lets the reply parser tell a heading that
         // slipped into the body from an ordinary opening paragraph.
         let number = self.store.chapter_number(idx)?;
 
         let started = Instant::now();
         match self
-            .translate_one(&title, &source, user_note.as_deref(), number)
+            .translate_one(
+                &title,
+                &source,
+                book_note.as_deref(),
+                user_note.as_deref(),
+                number,
+            )
             .await
         {
             Ok((title_out, body)) => {
@@ -368,6 +375,7 @@ impl<'a, C: Translate> Orchestrator<'a, C> {
         &self,
         title: &str,
         source: &str,
+        book_note: Option<&str>,
         user_note: Option<&str>,
         number: Option<usize>,
     ) -> Result<(String, String)> {
@@ -384,6 +392,7 @@ impl<'a, C: Translate> Orchestrator<'a, C> {
             summary: non_empty(&self.summary),
             prev_tail: self.prev_tail.as_deref(),
             style: self.style.as_deref(),
+            book_note,
             user_note,
             book: Some(prompt::BookRef {
                 title: self.book.title.as_deref(),
@@ -820,12 +829,45 @@ mod tests {
         let model = clean_model();
         let mut orch = Orchestrator::new(&model, &store, &config, None).unwrap();
 
-        orch.run(Some(1), &AtomicBool::new(false), |_| {}).await.unwrap();
+        orch.run(Some(1), &AtomicBool::new(false), |_| {})
+            .await
+            .unwrap();
 
         assert!(
-            !model.prose_calls().iter().any(|(system, _)| system.contains("clean up")),
+            !model
+                .prose_calls()
+                .iter()
+                .any(|(system, _)| system.contains("clean up")),
             "a clean chapter should not be repaired"
         );
+    }
+
+    #[tokio::test]
+    async fn book_and_chapter_prompts_are_injected() {
+        let store = store_with_chapters();
+        store
+            .set_book_prompt("Write chapter titles as Глава N. Title, with Arabic numerals.")
+            .unwrap();
+        store
+            .set_chapter_user_prompt(1, "Keep this chapter's title short.")
+            .unwrap();
+        let config = Config::default();
+        let model = clean_model();
+        let mut orch = Orchestrator::new(&model, &store, &config, None).unwrap();
+
+        orch.run(Some(1), &AtomicBool::new(false), |_| {})
+            .await
+            .unwrap();
+
+        let user = model
+            .prose_calls()
+            .into_iter()
+            .find(|(system, _)| !system.contains("running synopsis"))
+            .map(|(_, user)| user)
+            .expect("translation request");
+        assert!(user.contains("Arabic numerals"));
+        assert!(user.contains("Keep this chapter's title short."));
+        assert!(user.find("THIS BOOK").unwrap() < user.find("THIS chapter only").unwrap());
     }
 
     #[test]

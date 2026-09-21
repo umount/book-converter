@@ -12,9 +12,10 @@ use crate::state::Store;
 
 use super::args::{
     BootstrapGlossaryArgs, ChapterTermsArgs, DeleteTermArgs, ExportBookArgs, GetChapterArgs,
-    GlossaryPageArgs, HarvestGlossaryArgs, ListChaptersArgs, ReplaceInBookArgs, ResetTranslationArgs,
-    RetargetTermsArgs, SearchBookArgs, SetChapterContextArgs, SetChapterPromptArgs,
-    StartTranslationArgs, TranslateChapterArgs, UpdateChapterTranslationArgs, UpdateTermArgs,
+    GlossaryPageArgs, HarvestGlossaryArgs, ListChaptersArgs, ReplaceInBookArgs,
+    ResetTranslationArgs, RetargetTermsArgs, SearchBookArgs, SetBookPromptArgs,
+    SetChapterContextArgs, SetChapterPromptArgs, StartTranslationArgs, TranslateChapterArgs,
+    UpdateChapterTranslationArgs, UpdateTermArgs,
 };
 use super::tools::{ToolDef, ToolPolicy};
 
@@ -78,6 +79,10 @@ fn preview_from_store(
             };
             Ok(preview_update_chapter(store, &a)?)
         }
+        "set_book_prompt" => {
+            let a: SetBookPromptArgs = parse(args)?;
+            Ok(preview_set_book_prompt(&a))
+        }
         _ => Ok(serde_json::to_string_pretty(args).unwrap_or_else(|_| args.to_string())),
     }
 }
@@ -133,6 +138,18 @@ fn preview_update_chapter(store: &Store, a: &UpdateChapterTranslationArgs) -> Re
         clip_text(current, 280),
         clip_text(&a.translated, 280),
     ))
+}
+
+fn preview_set_book_prompt(a: &SetBookPromptArgs) -> String {
+    let t = a.prompt.trim();
+    if t.is_empty() {
+        "clear the book-wide translation prompt".into()
+    } else {
+        format!(
+            "set book-wide translation prompt (every chapter):\n{}",
+            clip_text(t, 400)
+        )
+    }
 }
 
 pub(crate) fn read(
@@ -248,6 +265,7 @@ pub(crate) fn read(
                 "title_translated": m.title_translated,
                 "author_translated": m.author_translated,
                 "summary": m.summary.as_ref().map(|s| clip_text(s, 800)),
+                "book_prompt": m.book_prompt,
             })
             .to_string())
         }
@@ -358,6 +376,12 @@ pub(crate) async fn mutate(
             ops::translation::set_prompt(&state, project_id, a.index, &a.prompt)
                 .map_err(|e: String| anyhow!(e))?;
             Ok(json!({ "saved": true, "index": a.index }).to_string())
+        }
+        "set_book_prompt" => {
+            let a: SetBookPromptArgs = parse(args)?;
+            ops::translation::set_book_prompt(&state, project_id, &a.prompt)
+                .map_err(|e: String| anyhow!(e))?;
+            Ok(json!({ "saved": true }).to_string())
         }
         "set_chapter_context" => {
             let a: SetChapterContextArgs = parse(args)?;
@@ -490,6 +514,17 @@ mod tests {
     }
 
     #[test]
+    fn get_book_details_includes_book_prompt() {
+        let store = seed();
+        store
+            .set_book_prompt("Use Arabic numerals in titles.")
+            .unwrap();
+        let def = find("get_book_details").unwrap();
+        let out = read(&store, false, def, &json!({})).unwrap();
+        assert!(out.contains("Arabic numerals"));
+    }
+
+    #[test]
     fn replace_preview_counts_matches() {
         let store = seed();
         let def = find("replace_in_book").unwrap();
@@ -519,5 +554,23 @@ mod tests {
         assert!(out.contains("idx=1"));
         assert!(out.contains("перевод один"));
         assert!(out.contains("новый текст"));
+    }
+
+    #[test]
+    fn book_prompt_preview_shows_text_or_clear() {
+        let def = find("set_book_prompt").unwrap();
+        let set = preview_from_store(
+            None,
+            def,
+            &json!({ "prompt": "Write titles as Глава N." }),
+            |_| Ok("unused".into()),
+        )
+        .unwrap();
+        assert!(set.contains("Глава N."));
+        let clear = preview_from_store(None, def, &json!({ "prompt": "  " }), |_| {
+            Ok("unused".into())
+        })
+        .unwrap();
+        assert!(clear.contains("clear"));
     }
 }

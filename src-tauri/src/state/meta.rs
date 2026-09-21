@@ -18,6 +18,8 @@ pub(crate) struct ProjectMetadata {
     pub(crate) cover_content_type: Option<String>,
     pub(crate) cover_base64: Option<String>,
     pub(crate) reference_style: Option<String>,
+    /// Book-wide translation instruction, injected into every chapter prompt.
+    pub(crate) book_prompt: Option<String>,
 }
 
 impl Store {
@@ -59,7 +61,20 @@ impl Store {
             cover_content_type: get("cover_ct")?,
             cover_base64: get("cover_b64")?,
             reference_style: get("ref_style")?,
+            book_prompt: get("book_prompt")?,
         })
+    }
+
+    /// Read the book-wide translation instruction (empty → None).
+    pub fn book_prompt(&self) -> Result<Option<String>> {
+        Ok(self
+            .get_meta("book_prompt")?
+            .filter(|s| !s.trim().is_empty()))
+    }
+
+    /// Set or clear the book-wide translation instruction (empty string clears it).
+    pub fn set_book_prompt(&self, prompt: &str) -> Result<()> {
+        self.set_meta("book_prompt", prompt.trim())
     }
 
     /// Persist the source-level metadata atomically.

@@ -432,6 +432,7 @@ export default function App() {
                       onReplaceCover={book.replaceCover}
                       onGenerateSummary={generateSummary}
                       onSaveSummary={book.saveSummary}
+                      onSaveBookPrompt={book.saveBookPrompt}
                       onOpenReference={openReference}
                       onBootstrap={job.bootstrap}
                       onHarvestGlossary={job.harvestGlossary}

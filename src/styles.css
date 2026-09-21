@@ -254,6 +254,7 @@ button.ghost.del:hover { color: var(--danger); background: transparent; }
 .book-title { font-size: 15px; }
 .summary { width: 100%; min-height: 90px; margin-top: 10px; resize: vertical; line-height: 1.5; }
 .summary-head { display: flex; margin: 8px 0 4px; }
+.book-prompt { min-height: 72px; }
 
 .progress { margin-top: 14px; }
 .bar { height: 8px; background: var(--bg-inset); border-radius: 5px; overflow: hidden; border: 1px solid var(--border); }
