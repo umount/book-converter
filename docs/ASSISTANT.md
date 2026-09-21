@@ -51,6 +51,8 @@ Layout in [`src/App.tsx`](../src/App.tsx):
 
 - ActivityBar chat button, hotkey `Mod+L`, View menu, command palette.
 - `AssistantPanel`: messages, input, Clear, Stop (also while awaiting confirm).
+  Tool traces and intermediate model text are a collapsed **Thoughts** row on
+  the latest turn only; older turns hide them.
 - Width via `ResizeHandle`, clamp 260–560, persist in `localStorage`.
 - After a **successful mutation** the event carries `invalidates`
   (`progress` / `chapters` / `open_chapter` / `glossary` / …). The UI refreshes
@@ -205,3 +207,4 @@ via `assistant_state`.
 | 2026-09-21 | Architecture debts: `state::assistant`, `commands/ops`, `jobs::lease`, ToolDef, holes closed. |
 | 2026-09-21 | Snapshot lang-issues via SQL page; confirm preview for replace/update/export; timeout copy in the panel. |
 | 2026-09-21 | Book-wide prompt: `set_book_prompt` tool, Overview editor, injected into every chapter translation. |
+| 2026-09-21 | Chat UI: tool traces + intermediate text collapsed as last-turn Thoughts only. |

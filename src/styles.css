@@ -676,13 +676,29 @@ tr.add-row input::placeholder { color: var(--fg-subtle); }
 .assistant-msg { display: flex; flex-direction: column; gap: 4px; max-width: 100%; }
 .assistant-msg.role-user { align-items: flex-end; }
 .assistant-msg.role-assistant,
-.assistant-msg.role-tool { align-items: flex-start; }
+.assistant-msg.role-tool,
+.assistant-msg.role-reasoning { align-items: flex-start; }
 .assistant-bubble {
   padding: 8px 10px; border-radius: var(--r-md); font-size: 13px; line-height: 1.45;
   white-space: pre-wrap; word-break: break-word; max-width: 100%;
 }
 .role-user .assistant-bubble { background: var(--sel); }
 .role-assistant .assistant-bubble { background: var(--bg-inset); border: 1px solid var(--border); }
+.assistant-reasoning-toggle {
+  display: flex; align-items: center; gap: 6px;
+  background: none; border: 0; padding: 2px 0; margin: 0;
+  color: var(--fg-muted); font: inherit; font-size: 12px; cursor: pointer;
+}
+.assistant-reasoning-toggle:hover { color: var(--fg); }
+.assistant-reasoning-chevron { font-size: 10px; width: 10px; }
+.assistant-reasoning-body {
+  display: flex; flex-direction: column; gap: 6px;
+  margin-top: 6px; width: 100%;
+}
+.assistant-reasoning-text {
+  font-size: 12px; line-height: 1.4; color: var(--fg-muted);
+  white-space: pre-wrap; word-break: break-word;
+}
 .assistant-tool {
   width: 100%; font-size: 11px; color: var(--fg-muted);
   border: 1px dashed var(--border-strong); border-radius: var(--r-md); padding: 6px 8px;

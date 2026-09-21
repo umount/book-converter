@@ -4,6 +4,7 @@ import type {
   AssistantMessage,
   AssistantStatus,
 } from "../../hooks/useAssistant";
+import { groupAssistantMessages } from "../../lib/assistantChat";
 
 type Props = {
   t: (key: string, vars?: Record<string, string | number>) => string;
@@ -28,11 +29,20 @@ export function AssistantPanel({
   onClose, onClear, onSend, onApprove, onDeny, onCancel,
 }: Props) {
   const [draft, setDraft] = useState("");
+  const [reasoningOpen, setReasoningOpen] = useState(false);
   const listRef = useRef<HTMLDivElement>(null);
+  const items = groupAssistantMessages(messages, {
+    turnInProgress: status === "running" || status === "awaiting_confirm",
+  });
+  const reasoningId = items.find((it) => it.type === "reasoning")?.id ?? null;
+
+  useEffect(() => {
+    setReasoningOpen(false);
+  }, [reasoningId]);
 
   useEffect(() => {
     listRef.current?.scrollTo(0, listRef.current.scrollHeight);
-  }, [messages, status, pendingConfirm, confirmExpired]);
+  }, [messages, status, pendingConfirm, confirmExpired, reasoningOpen]);
 
   if (!open) return null;
 
@@ -69,18 +79,51 @@ export function AssistantPanel({
             {messages.length === 0 && (
               <div className="assistant-empty muted">{t("assistant.empty")}</div>
             )}
-            {messages.map((m) => (
-              <div key={m.id} className={`assistant-msg role-${m.role}`}>
-                {m.role === "tool" ? (
-                  <div className="assistant-tool">
-                    <span className="assistant-tool-name">{m.tool_name || "tool"}</span>
-                    <pre>{m.content}</pre>
+            {items.map((item) => {
+              if (item.type === "user") {
+                return (
+                  <div key={item.id} className="assistant-msg role-user">
+                    <div className="assistant-bubble">{item.content}</div>
                   </div>
-                ) : (
-                  <div className="assistant-bubble">{m.content}</div>
-                )}
-              </div>
-            ))}
+                );
+              }
+              if (item.type === "assistant") {
+                return (
+                  <div key={item.id} className="assistant-msg role-assistant">
+                    <div className="assistant-bubble">{item.content}</div>
+                  </div>
+                );
+              }
+              return (
+                <div key={item.id} className="assistant-msg role-reasoning">
+                  <button
+                    type="button"
+                    className="assistant-reasoning-toggle"
+                    aria-expanded={reasoningOpen}
+                    onClick={() => setReasoningOpen((openNow) => !openNow)}
+                  >
+                    <span className="assistant-reasoning-chevron" aria-hidden>
+                      {reasoningOpen ? "▾" : "▸"}
+                    </span>
+                    {t("assistant.reasoning")}
+                  </button>
+                  {reasoningOpen && (
+                    <div className="assistant-reasoning-body">
+                      {item.steps.map((step) =>
+                        step.role === "tool" ? (
+                          <div key={step.id} className="assistant-tool">
+                            <span className="assistant-tool-name">{step.tool_name || "tool"}</span>
+                            <pre>{step.content}</pre>
+                          </div>
+                        ) : (
+                          <div key={step.id} className="assistant-reasoning-text">{step.content}</div>
+                        ),
+                      )}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
             {confirmExpired && !pendingConfirm && (
               <div className="assistant-confirm-warn">{t("assistant.confirm.expired")}</div>
             )}
