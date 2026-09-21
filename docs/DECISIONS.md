@@ -1,8 +1,35 @@
 # book-converter — Design Decisions
 
-> Last updated 2026-08-21
+> Last updated 2026-09-21
 
 Record of the key choices and their rationale. Newest first.
+
+---
+
+## One job lease per project (`jobs::lease`)
+
+**Decision:** `AppState::begin_job` is called only from `jobs::lease`. The
+returned `JobSlot` releases the project on `Drop`. Translation, retarget,
+harvest, bootstrap, reset, book-wide replace, and reference re-seed all take
+this lease. Hand-editing a chapter does not.
+
+**Why:** harvest and bootstrap used to check `running` (or not check at all) and
+then rewrite the glossary while the orchestrator could also merge terms. The
+lease makes the busy flag atomic and lasts for the whole operation. The error
+code is always `job_running`.
+
+---
+
+## Language pair and model stay app-wide
+
+**Decision:** source/target language and the DeepSeek model remain Settings, not
+per-project fields. The assistant snapshot labels them `app_settings.*` so it
+does not pretend they belong to the open book.
+
+**Why:** `Config::load` and the translation job already read them from the
+settings DB. Per-project language would be the right long-term shape (two open
+books with different pairs) but it is a separate migration of config, prompts,
+and the orchestrator, not an assistant-only change.
 
 ---
 

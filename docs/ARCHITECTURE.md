@@ -1,6 +1,6 @@
 # book-converter — Architecture
 
-> Last updated 2026-09-18, synced with the implemented codebase.
+> Last updated 2026-09-21, synced with the implemented codebase.
 
 ## Overview
 
@@ -86,7 +86,7 @@ thing the frontend knows about; session/job helpers sit beside it.
 | **config** | Configuration: DeepSeek API key (settings DB, falling back to env `DEEPSEEK_API_KEY`), base_url, model, languages, `max_chunk_chars`, `max_retries` |
 | **paths** | Shared app data directory (`XDG_DATA_HOME` / `~/.local/share/book-converter`) |
 | **session** | Ephemeral per-project job state (`db_path`, cancel, running); validated project dirs / manifests |
-| **jobs** | Shared background lifecycle + `jobs::translation` / `jobs::retarget` runners |
+| **jobs** | Shared background lifecycle (`jobs::lease` / `jobs::spawn`) + `jobs::translation` / `jobs::retarget` runners |
 | **dto** | IPC response/request types shared by commands |
 | **book::source** | Detect encoding (`chardetng`), decode (`encoding_rs`), zip unpack, PDF branch |
 | **book::parser** | Chaptering via `assets/chapter_patterns.json`; model-inferred delimiter fallback |
@@ -101,9 +101,10 @@ thing the frontend knows about; session/job helpers sit beside it.
 | **translator::reply** | The `<<<TITLE>>>` / `<<<BODY>>>` reply envelope, with the old first-line heuristic as fallback |
 | **translator::repair** | Line-scoped language repair: which lines to send, the JSON prompt, and splicing replies back by line number |
 | **translator::deepseek** | DeepSeek HTTP client, retry + backoff, continue on output truncation, `json_object` mode, OpenAI-style tool calling for the assistant |
-| **assistant** | Project chat agent: compact snapshot + tool loop over Store/jobs, confirm gate for mutations, history in `assistant_messages` |
+| **assistant** | Project chat agent: compact snapshot + tool loop over `commands/ops` and Store, confirm gate, history in `assistant_messages` |
+| **commands/ops** | Shared project operations (translation, glossary, search/replace, export) used by both IPC commands and the assistant |
 | **orchestrator** | Sequential translation facade; delegates glossary learning and target-language repair to focused stages |
-| **state** | Per-project SQLite: `chapters` / `glossary` / `meta` / `search` submodules over one `Store` |
+| **state** | Per-project SQLite: `chapters` / `glossary` / `meta` / `search` / `assistant` submodules over one `Store` |
 | **settings** | App-wide key-value settings DB |
 | **export::txt** / **fb2** / **epub** / **pdf** | Assemble output formats |
 | **i18n** | Output-facing localization from `assets/locales.json` |
@@ -195,6 +196,7 @@ App data layout (see also `PROJECT_ISOLATION.md`):
 |-------|---------|
 | **chapters** | Source, status (`pending` / `in_progress` / `done` / `failed`), translation, origin |
 | **glossary** | Canonical terms (`source`, `target`, `kind`, `frequency`, `pinned`) |
+| **assistant_messages** | Per-project assistant transcript (`turn`, `role`, `content`, `tool_calls`) |
 | **meta** | Sole durable source for title/author/cover/summary, `running_summary`, format, encoding |
 
 Every connection runs in WAL with a busy timeout: a translation run holds a
@@ -282,6 +284,13 @@ state of a run in flight.
 | Command | Purpose |
 |---------|---------|
 | `export_book` | Export to path; format from extension |
+
+### Assistant
+| Command | Purpose |
+|---------|---------|
+| `assistant_history` / `assistant_clear` | Load or wipe the per-project chat transcript |
+| `assistant_state` | Whether a turn is running and any pending confirm (restored on project switch) |
+| `assistant_send` / `assistant_approve` / `assistant_cancel` | Run a turn, resolve a confirm, or stop |
 
 Projects are isolated: `AppState` holds one `Session` per `project_id`. Events carry
 `project`. A `Session` contains only ephemeral job state; durable project data is
