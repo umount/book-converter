@@ -77,9 +77,9 @@ export function useBookWorkspace({ call, activeId }: Opts) {
   }
   async function translateTitle(projectId: string = activeIdRef.current) {
     if (!projectId) return;
-    const r = await call<string>("translate_title", { projectId });
+    await call<string>("translate_title", { projectId });
     if (!stillThisProject(projectId)) return;
-    if (r) await refreshDetails(projectId);
+    await refreshDetails(projectId);
   }
   /**
    * Load the chapter list of `projectId` (the active project by default).

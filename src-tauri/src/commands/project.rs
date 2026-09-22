@@ -14,7 +14,7 @@ use crate::book::load_book;
 use crate::config::Config;
 use crate::dto::{err, BookInfo};
 use crate::export::fb2::Cover;
-use crate::session::{db_path_for_project, write_manifest, AppState};
+use crate::session::{db_path_for_project, read_manifest, write_manifest, AppState};
 use crate::state::Store;
 
 use super::util::ensure_chapters;
@@ -43,7 +43,19 @@ pub async fn load_source(
     store.init_chapters(&book.chapters).map_err(err)?;
     write_manifest(&project_id, &path, None).map_err(err)?;
 
-    let title = book.meta.title.clone().unwrap_or_default();
+    let title = book
+        .meta
+        .title
+        .clone()
+        .filter(|s| !s.trim().is_empty())
+        .or_else(|| {
+            Path::new(&path)
+                .file_stem()
+                .and_then(|s| s.to_str())
+                .map(str::to_string)
+                .filter(|s| !s.is_empty())
+        })
+        .unwrap_or_default();
     let author = book.meta.author.clone().unwrap_or_default();
     let head = if book.format == crate::book::InputFormat::Fb2 {
         crate::book::read_book_file(Path::new(&path))
@@ -90,6 +102,15 @@ pub async fn load_source(
     store
         .set_translation_langs(&detected.name, &cfg.target_lang)
         .map_err(err)?;
+    if let Some(blurb) = book
+        .meta
+        .summary
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+    {
+        store.set_meta("source_summary", blurb).map_err(err)?;
+    }
     if let Some(summary) = &summary {
         store.set_meta("summary", summary).map_err(err)?;
     }
@@ -139,6 +160,7 @@ pub async fn open_project(
     if stats.total == 0 {
         return Err("no_source".into());
     }
+    backfill_txt_meta(&store, &project_id);
     let metadata = store.project_metadata().map_err(err)?;
 
     state.with(&project_id, |session| {
@@ -179,6 +201,70 @@ pub async fn set_project_languages(
     let store = super::ops::project_store(&state, &project_id)?;
     store.set_translation_langs(source, target).map_err(err)?;
     Ok(())
+}
+
+/// Repair title/author/简介 on already-imported TXT projects that were parsed
+/// before plain (non-`《》`) titles and blurbs were extracted.
+fn backfill_txt_meta(store: &Store, project_id: &str) {
+    let Ok(metadata) = store.project_metadata() else {
+        return;
+    };
+    if metadata.format.as_deref() != Some("Txt") {
+        return;
+    }
+    let missing_title = metadata
+        .title
+        .as_deref()
+        .map(str::trim)
+        .unwrap_or("")
+        .is_empty();
+    let missing_author = metadata
+        .author
+        .as_deref()
+        .map(str::trim)
+        .unwrap_or("")
+        .is_empty();
+    let missing_blurb = metadata
+        .source_summary
+        .as_deref()
+        .map(str::trim)
+        .unwrap_or("")
+        .is_empty();
+    if !missing_title {
+        return;
+    }
+    let Ok(manifest) = read_manifest(project_id) else {
+        return;
+    };
+    let path = Path::new(&manifest.source_path);
+    if !path.exists() {
+        return;
+    }
+    let Ok(decoded) = crate::book::read_book_file(path) else {
+        return;
+    };
+    let parsed = crate::book::parser::parse_book_meta(&decoded.text);
+    if missing_title {
+        if let Some(title) = parsed.title.filter(|s| !s.trim().is_empty()) {
+            let _ = store.set_meta("title", &title);
+        } else if let Some(stem) = path
+            .file_stem()
+            .and_then(|s| s.to_str())
+            .filter(|s| !s.is_empty())
+        {
+            let _ = store.set_meta("title", stem);
+        }
+    }
+    if missing_author {
+        if let Some(author) = parsed.author.filter(|s| !s.trim().is_empty()) {
+            let _ = store.set_meta("author", &author);
+        }
+    }
+    if missing_blurb {
+        if let Some(blurb) = parsed.summary.filter(|s| !s.trim().is_empty()) {
+            let _ = store.set_meta("source_summary", &blurb);
+        }
+    }
 }
 
 fn with_langs(store: &Store, mut info: BookInfo) -> BookInfo {

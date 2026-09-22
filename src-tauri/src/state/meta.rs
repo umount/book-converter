@@ -13,6 +13,8 @@ pub(crate) struct ProjectMetadata {
     pub(crate) title_translated: Option<String>,
     pub(crate) author_translated: Option<String>,
     pub(crate) summary: Option<String>,
+    /// Source-language blurb parsed from the book (e.g. a TXT `简介`), translated on demand.
+    pub(crate) source_summary: Option<String>,
     pub(crate) format: Option<String>,
     pub(crate) encoding: Option<String>,
     pub(crate) cover_content_type: Option<String>,
@@ -60,6 +62,7 @@ impl Store {
             title_translated: get("title_translated")?,
             author_translated: get("author_translated")?,
             summary: get("summary")?,
+            source_summary: get("source_summary")?,
             format: get("format")?,
             encoding: get("encoding")?,
             cover_content_type: get("cover_ct")?,

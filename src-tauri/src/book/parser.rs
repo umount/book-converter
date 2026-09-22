@@ -38,10 +38,12 @@ pub struct Chapter {
 /// Book-level metadata parsed from the preamble before the first chapter.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct BookMeta {
-    /// Title from a `《...》` line, e.g. "光阴之外".
+    /// Title from a `《...》` line, or the first non-label preamble line.
     pub title: Option<String>,
     /// Author from an `作者：...` line, e.g. "耳根".
     pub author: Option<String>,
+    /// Source-language blurb from a `简介：` block, if the file includes one.
+    pub summary: Option<String>,
     /// Chapter count the source declares (`总章节数：990`), if present.
     pub declared_chapters: Option<usize>,
 }
@@ -241,9 +243,58 @@ pub fn parse_book_meta(raw: &str) -> BookMeta {
     };
 
     BookMeta {
-        title: first_group(r"《(.+?)》"),
+        title: first_group(r"《(.+?)》").or_else(|| {
+            preamble
+                .lines()
+                .map(str::trim)
+                .find(|line| !line.is_empty() && !is_preamble_label(line))
+                .map(str::to_string)
+        }),
         author: first_group(r"作者[:：]\s*(.+)"),
+        summary: extract_blurb(preamble),
         declared_chapters: first_group(r"总章节数[:：]\s*(\d+)").and_then(|s| s.parse().ok()),
+    }
+}
+
+/// Preamble lines that are metadata labels, not the book title.
+fn is_preamble_label(line: &str) -> bool {
+    static RE: OnceLock<Regex> = OnceLock::new();
+    let re = RE.get_or_init(|| {
+        Regex::new(r"^(?:作者|简介|簡介|总章节数|總章節數)[:：]|^第.+卷\s*$")
+            .expect("preamble label regex")
+    });
+    re.is_match(line)
+}
+
+/// Collect the `简介：` block until a blank line or the next label/volume header.
+fn extract_blurb(preamble: &str) -> Option<String> {
+    static RE: OnceLock<Regex> = OnceLock::new();
+    let re = RE.get_or_init(|| {
+        Regex::new(r"(?m)^(?:简介|簡介)[:：]\s*(.*)$").expect("blurb regex")
+    });
+    let caps = re.captures(preamble)?;
+    let mut parts = Vec::new();
+    if let Some(first) = caps
+        .get(1)
+        .map(|m| m.as_str().trim())
+        .filter(|s| !s.is_empty())
+    {
+        parts.push(first.to_string());
+    }
+    let after = caps.get(0)?.end();
+    let rest = preamble[after..].trim_start_matches(['\r', '\n']);
+    for line in rest.lines() {
+        let t = line.trim();
+        if t.is_empty() || is_preamble_label(t) {
+            break;
+        }
+        parts.push(t.to_string());
+    }
+    let text = parts.join("\n");
+    if text.is_empty() {
+        None
+    } else {
+        Some(text)
     }
 }
 
@@ -345,6 +396,20 @@ mod tests {
         assert_eq!(meta.title.as_deref(), Some("光阴之外"));
         assert_eq!(meta.author.as_deref(), Some("耳根"));
         assert_eq!(meta.declared_chapters, Some(3));
+        assert!(meta.summary.is_none());
+    }
+
+    #[test]
+    fn parses_plain_title_author_and_blurb() {
+        let text = "苟在诸天从黑暗佛门开始\n作者: 是桃花酥呀\n简介：\n天下之欲皆在香火，\n庸庸来客成我极乐，\n李玄一头栽入诸天世界。\n\n第1卷\n\n1.极乐\nbody\n";
+        let meta = parse_book_meta(text);
+        assert_eq!(meta.title.as_deref(), Some("苟在诸天从黑暗佛门开始"));
+        assert_eq!(meta.author.as_deref(), Some("是桃花酥呀"));
+        let blurb = meta.summary.as_deref().unwrap();
+        assert!(blurb.contains("天下之欲皆在香火"));
+        assert!(blurb.contains("李玄一头栽入诸天世界。"));
+        assert!(!blurb.contains("第1卷"));
+        assert!(!blurb.contains("1.极乐"));
     }
 
     #[test]

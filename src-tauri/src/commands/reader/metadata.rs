@@ -53,16 +53,12 @@ pub async fn translate_title(
     let metadata = store.project_metadata().map_err(err)?;
     let config = Config::load_for(&store);
 
-    let translated = match metadata
+    let mut translated = metadata
         .title_translated
-        .filter(|title| !title.trim().is_empty())
-    {
-        Some(title) => title,
-        None => {
-            let title = metadata
-                .title
-                .filter(|title| !title.trim().is_empty())
-                .ok_or("no_title")?;
+        .filter(|title| !title.trim().is_empty());
+
+    if translated.is_none() {
+        if let Some(title) = metadata.title.filter(|title| !title.trim().is_empty()) {
             let system = format!(
                 "Translate this book title from {} to {}. Output only the translated title, nothing else.",
                 config.source_lang, config.target_lang
@@ -70,9 +66,9 @@ pub async fn translate_title(
             let output = client()?.translate(&system, &title).await.map_err(err)?;
             let output = clean_model_value(&output);
             store.set_meta("title_translated", &output).map_err(err)?;
-            output
+            translated = Some(output);
         }
-    };
+    }
 
     if metadata
         .author_translated
@@ -93,7 +89,7 @@ pub async fn translate_title(
         }
     }
 
-    Ok(translated)
+    Ok(translated.unwrap_or_default())
 }
 
 #[tauri::command]
@@ -114,11 +110,35 @@ pub async fn generate_summary(
 ) -> Result<String, String> {
     let store = ops::project_store(&state, &project_id)?;
     let metadata = store.project_metadata().map_err(err)?;
+    let config = Config::load_for(&store);
+
+    if let Some(blurb) = metadata
+        .source_summary
+        .filter(|s| !s.trim().is_empty())
+    {
+        let system = format!(
+            "Translate this book annotation from {} to {}. \
+             Write it as a concise 3 to 6 sentence book blurb, keeping the premise and tone. \
+             Output only the annotation text: no heading, no quotes, no preamble.",
+            config.source_lang, config.target_lang
+        );
+        let output = client()?
+            .translate(&system, &blurb)
+            .await
+            .map_err(err)?
+            .trim()
+            .to_string();
+        if output.is_empty() {
+            return Err("book_not_found".into());
+        }
+        store.set_meta("summary", &output).map_err(err)?;
+        return Ok(output);
+    }
+
     let title = metadata
         .title
         .filter(|title| !title.trim().is_empty())
         .ok_or("no_title")?;
-    let config = Config::load_for(&store);
 
     let hint = metadata
         .title_translated

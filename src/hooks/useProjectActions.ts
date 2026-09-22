@@ -3,7 +3,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { open, save } from "@tauri-apps/plugin-dialog";
 import type { CallFn } from "../api";
 import type { MenuId } from "../components/Menubar";
-import { baseName, newId, type BookInfo, type Project, type RefInfo, type ViewId } from "../types";
+import { baseName, newId, type BookDetails, type BookInfo, type Project, type RefInfo, type ViewId } from "../types";
 import type { useBookWorkspace } from "./useBookWorkspace";
 import type { useGlossary } from "./useGlossary";
 import type { useProjectList } from "./useProjectList";
@@ -108,7 +108,11 @@ export function useProjectActions({
       await job.refreshProgressFor(p.id);
       await glossary.refreshGlossary();
       if (!still()) return;
-      void book.translateTitle(p.id);
+      void (async () => {
+        await book.translateTitle(p.id);
+        if (!still()) return;
+        await ensureSummary(p.id);
+      })();
 
       // A project whose reference was attached before its cover and annotation
       // were stored has them nowhere. Reading the reference once fixes that, in
@@ -246,6 +250,23 @@ export function useProjectActions({
     } catch (e) {
       logError(String(e));
       setBusyFor(id, null);
+    }
+  }
+
+  async function ensureSummary(projectId: string) {
+    const details = await call<BookDetails>("get_book_details", { projectId });
+    if (details?.summary?.trim()) return;
+    try {
+      await invoke<string>("generate_summary", { projectId });
+      addLogTo(projectId, t("log.summaryGenerated"));
+      if (activeIdOf() === projectId) void book.refreshDetails(projectId);
+    } catch (e) {
+      const msg = String(e);
+      if (msg.includes("no_title")) return;
+      addLogTo(
+        projectId,
+        msg.includes("book_not_found") ? t("log.summaryNotFound") : t("log.error", { msg: errText(msg) }),
+      );
     }
   }
 

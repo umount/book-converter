@@ -144,5 +144,12 @@ mod tests {
         );
         assert_eq!(book.chapters[0].number, Some(1));
         assert!(!book.needs_delimiter);
+        assert_eq!(
+            book.meta.title.as_deref(),
+            Some("苟在诸天从黑暗佛门开始")
+        );
+        assert_eq!(book.meta.author.as_deref(), Some("是桃花酥呀"));
+        let blurb = book.meta.summary.as_deref().expect("parsed 简介");
+        assert!(blurb.contains("黑暗佛门"));
     }
 }
