@@ -13,6 +13,7 @@ pub use blocks::{
     derive_text, markers_in, strip_markers, AssetRef, Block, BlockKind, ChapterBlocks, ChapterKind,
 };
 pub use chunker::split_chapter;
+pub use epub::{asset_file_name, extract_assets as extract_epub_assets};
 pub use load::{detect_format, load_book, InputFormat, LoadedBook};
 pub use parser::{
     build_delimiter_prompt, parse_chapters_with, parse_inferred_pattern, validate, BookMeta,

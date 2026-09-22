@@ -19,6 +19,22 @@ pub async fn export_project(project_id: String, out_path: String) -> Result<(), 
         archive.start_file(name, options).map_err(err)?;
         archive.write_all(bytes).map_err(err)?;
     }
+    // Extracted page images: without them an imported project would show blank
+    // panes where the book had pictures.
+    if let Ok(entries) = std::fs::read_dir(directory.join(super::blocks::ASSETS_DIR)) {
+        for entry in entries.flatten() {
+            let Some(name) = entry.file_name().to_str().map(str::to_string) else {
+                continue;
+            };
+            let Ok(bytes) = std::fs::read(entry.path()) else {
+                continue;
+            };
+            archive
+                .start_file(format!("{}/{name}", super::blocks::ASSETS_DIR), options)
+                .map_err(err)?;
+            archive.write_all(&bytes).map_err(err)?;
+        }
+    }
     archive.finish().map_err(err)?;
     Ok(())
 }
@@ -54,6 +70,21 @@ pub async fn import_project(
             "progress.db" => {
                 std::fs::write(directory.join("progress.db"), bytes).map_err(err)?;
                 has_database = true;
+            }
+            // Page images. Only the file name is honoured: an archive is
+            // untrusted input, and a name like `assets/../../x` must not escape
+            // the project directory.
+            other if other.starts_with(&format!("{}/", super::blocks::ASSETS_DIR)) => {
+                let Some(name) = std::path::Path::new(other)
+                    .file_name()
+                    .and_then(|n| n.to_str())
+                    .filter(|n| !n.is_empty())
+                else {
+                    continue;
+                };
+                let assets = directory.join(super::blocks::ASSETS_DIR);
+                std::fs::create_dir_all(&assets).map_err(err)?;
+                std::fs::write(assets.join(name), bytes).map_err(err)?;
             }
             _ => {}
         }

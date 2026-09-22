@@ -1,6 +1,7 @@
 //! Project creation and activation commands.
 
 mod archive;
+mod blocks;
 mod catalog;
 
 pub use archive::*;
@@ -41,6 +42,7 @@ pub async fn load_source(
     let db = db_path_for_project(&project_id).map_err(err)?;
     let store = Store::open(&db).map_err(err)?;
     store.init_chapters(&book.chapters).map_err(err)?;
+    blocks::persist(&store, &project_id, &path, &book);
     write_manifest(&project_id, &path, None).map_err(err)?;
 
     let title = book
@@ -169,6 +171,7 @@ pub async fn open_project(
         return Err("no_source".into());
     }
     backfill_txt_meta(&store, &project_id);
+    blocks::backfill(&store, &project_id);
     let metadata = store.project_metadata().map_err(err)?;
 
     state.with(&project_id, |session| {
