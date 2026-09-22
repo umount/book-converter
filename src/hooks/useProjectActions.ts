@@ -175,6 +175,7 @@ export function useProjectActions({
 
   async function cancelLangSetup() {
     if (!langSetup) return;
+    if (!confirm(t("langSetup.cancelConfirm"))) return;
     const { projectId } = langSetup;
     setLangSetup(null);
     await call("delete_project", { projectId });

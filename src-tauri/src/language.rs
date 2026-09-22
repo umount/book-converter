@@ -1,8 +1,9 @@
 //! Detect which language a newly imported book is written in.
 //!
 //! Unique writing systems (Han, kana, hangul, Cyrillic) are decided locally
-//! from a short sample. Latin-script languages look alike, so those fall
-//! through to a small model call when an API key is present.
+//! from a short sample. Latin-script languages are scored by stopwords and
+//! diacritics so English or German still import without an API key. Only when
+//! that is also ambiguous do we ask the model.
 
 use crate::book::Chapter;
 use crate::config::Config;
@@ -65,19 +66,49 @@ pub fn sample_book(chapters: &[Chapter]) -> String {
 }
 
 fn sample_from_chapters(chapters: &[Chapter], max_chars: usize) -> String {
+    if chapters.is_empty() || max_chars == 0 {
+        return String::new();
+    }
+    let n = chapters.len();
+    let mut idxs = vec![0];
+    if n > 1 {
+        idxs.push(n / 2);
+    }
+    if n > 2 {
+        idxs.push((n * 4 / 5).min(n - 1));
+    }
+    idxs.sort_unstable();
+    idxs.dedup();
+    let per = (max_chars / idxs.len()).max(1);
     let mut out = String::new();
-    for chapter in chapters {
+    for idx in idxs {
+        let chapter = &chapters[idx];
         if !out.is_empty() {
             out.push('\n');
         }
-        out.push_str(chapter.title.trim());
-        out.push('\n');
-        out.push_str(chapter.body.trim());
+        // Headings carry little language signal; skip a short prefix of a long
+        // body so a foreign preface does not decide the whole book.
+        let body = skip_prefix(chapter.body.trim(), 80);
+        let chunk: String = format!("{}\n{body}", chapter.title.trim())
+            .chars()
+            .take(per)
+            .collect();
+        out.push_str(&chunk);
         if out.chars().count() >= max_chars {
             break;
         }
     }
     out.chars().take(max_chars).collect()
+}
+
+fn skip_prefix(text: &str, n: usize) -> &str {
+    if text.chars().count() <= n * 2 {
+        return text;
+    }
+    match text.char_indices().nth(n) {
+        Some((i, _)) => text[i..].trim_start(),
+        None => text,
+    }
 }
 
 /// Guess from the writing system when the script identifies one listed language.
@@ -115,13 +146,89 @@ pub fn detect_from_script(text: &str) -> Option<&'static str> {
     if cyrillic == dominant && cyrillic * 2 >= letters {
         return Some("Russian");
     }
-    // Latin covers several listed languages; the model has to tell them apart.
+    // Latin covers several listed languages; stopwords tell them apart.
     None
+}
+
+/// Stopword / diacritic scoring for the six Latin languages in the allow-list.
+pub fn detect_from_words(text: &str) -> Option<&'static str> {
+    let mut scores = [
+        ("English", 0i32),
+        ("German", 0i32),
+        ("French", 0i32),
+        ("Spanish", 0i32),
+        ("Italian", 0i32),
+        ("Portuguese", 0i32),
+    ];
+    for word in text.split(|c: char| !c.is_alphabetic()) {
+        if word.is_empty() {
+            continue;
+        }
+        let w = word.to_lowercase();
+        for (lang, score) in scores.iter_mut() {
+            if stopwords(lang).iter().any(|s| *s == w) {
+                *score += 1;
+            }
+        }
+    }
+    for c in text.chars() {
+        match c {
+            'ß' | 'ä' | 'ö' | 'ü' | 'Ä' | 'Ö' | 'Ü' => scores[1].1 += 2,
+            'ç' | 'Ç' | 'œ' | 'Œ' => scores[2].1 += 2,
+            'ñ' | 'Ñ' | '¿' | '¡' => scores[3].1 += 3,
+            'ã' | 'õ' | 'Ã' | 'Õ' => scores[5].1 += 3,
+            _ => {}
+        }
+    }
+    scores.sort_by_key(|(_, s)| -*s);
+    let top = scores[0];
+    let second = scores[1];
+    if top.1 >= 4 && top.1 >= second.1 + 2 {
+        Some(top.0)
+    } else {
+        None
+    }
+}
+
+fn stopwords(lang: &str) -> &'static [&'static str] {
+    match lang {
+        "English" => &[
+            "the", "and", "of", "to", "in", "that", "was", "with", "this", "from", "they", "have",
+            "not", "but", "are", "his", "her", "had", "for", "you",
+        ],
+        "German" => &[
+            "und", "der", "die", "das", "den", "dem", "nicht", "ist", "von", "ein", "eine", "auf",
+            "für", "sich", "auch", "als", "nach", "werden", "wurde",
+        ],
+        "French" => &[
+            "les", "une", "des", "dans", "que", "qui", "est", "pour", "pas", "avec", "plus",
+            "sont", "elle", "nous", "vous", "cette", "aussi",
+        ],
+        "Spanish" => &[
+            "los", "las", "una", "del", "por", "para", "como", "más", "pero", "sus", "está",
+            "ellos", "ella", "cuando", "porque",
+        ],
+        "Italian" => &[
+            "che", "non", "per", "della", "dei", "delle", "come", "più", "sono", "nella", "questo",
+            "anche", "loro", "quando",
+        ],
+        "Portuguese" => &[
+            "não", "uma", "para", "com", "mais", "dos", "das", "pelo", "pela", "está", "também",
+            "ele", "ela", "quando", "porque",
+        ],
+        _ => &[],
+    }
 }
 
 /// Heuristic first; a short model call only when the script is ambiguous.
 pub async fn detect_source_lang(sample: &str, fallback: &str) -> DetectedLang {
     if let Some(name) = detect_from_script(sample) {
+        return DetectedLang {
+            name: name.to_string(),
+            detected: true,
+        };
+    }
+    if let Some(name) = detect_from_words(sample) {
         return DetectedLang {
             name: name.to_string(),
             detected: true,
@@ -235,6 +342,27 @@ mod tests {
     }
 
     #[test]
+    fn words_detect_latin_languages() {
+        let en = "The old man walked into the valley and looked at the mountains that rose \
+                  from the river. They had not seen his village with this much snow.";
+        assert_eq!(detect_from_words(en), Some("English"));
+
+        let de = "Der alte Mann ging in das Tal und sah die Berge, die sich über den Fluss \
+                  erhoben. Er war nicht allein, und die Nacht wurde kalt.";
+        assert_eq!(detect_from_words(de), Some("German"));
+
+        let fr = "Les hommes étaient dans la vallée et elle n'est pas avec eux. \
+                  Cette nuit, nous avons vu les montagnes plus hautes.";
+        assert_eq!(detect_from_words(fr), Some("French"));
+    }
+
+    #[test]
+    fn latin_too_short_or_tied_is_undecided() {
+        assert_eq!(detect_from_words("Hello world."), None);
+        assert_eq!(detect_from_words("para para para para"), None);
+    }
+
+    #[test]
     fn too_short_or_punctuation_is_undecided() {
         assert_eq!(detect_from_script("... ???"), None);
         assert_eq!(detect_from_script("Hi."), None);
@@ -251,6 +379,23 @@ mod tests {
         let chapters = vec![chapter("T", &"字".repeat(5000))];
         let sample = sample_from_chapters(&chapters, 100);
         assert_eq!(sample.chars().count(), 100);
+    }
+
+    #[test]
+    fn sample_draws_from_later_chapters() {
+        let chapters = vec![
+            chapter("A", "AAAAAAAAAA"),
+            chapter("B", "BBBBBBBBBB"),
+            chapter("C", "CCCCCCCCCC"),
+            chapter("D", "DDDDDDDDDD"),
+            chapter("E", "EEEEEEEEEE"),
+        ];
+        let sample = sample_from_chapters(&chapters, 80);
+        assert!(sample.contains('A'), "{sample}");
+        assert!(
+            sample.contains('C') || sample.contains('E'),
+            "expected a later chapter in {sample}"
+        );
     }
 
     #[test]

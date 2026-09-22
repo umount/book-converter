@@ -4,7 +4,7 @@ type Props = {
   /** Class for the dialog box itself (the backdrop is shared). */
   className?: string;
   onClose: () => void;
-  /** When false, only Escape and the dialog's own controls dismiss it. */
+  /** When false, neither Escape nor a backdrop click dismisses the dialog. */
   closeOnBackdrop?: boolean;
   labelledBy?: string;
   children: ReactNode;
@@ -18,12 +18,13 @@ type Props = {
  */
 export function Modal({ className = "", onClose, closeOnBackdrop = true, labelledBy, children }: Props) {
   useEffect(() => {
+    if (!closeOnBackdrop) return;
     function onKey(e: KeyboardEvent) {
       if (e.key === "Escape") onClose();
     }
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [onClose]);
+  }, [onClose, closeOnBackdrop]);
 
   return (
     <div className="modal-backdrop" onClick={closeOnBackdrop ? onClose : undefined}>
