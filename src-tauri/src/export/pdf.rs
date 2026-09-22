@@ -15,7 +15,7 @@ use std::path::Path;
 use anyhow::{anyhow, Result};
 use genpdf::{elements, fonts, style, Alignment, Document, Element as _, Margins};
 
-use super::{OutputMeta, TranslatedChapter};
+use super::{pieces, ExportImage, OutputMeta, Piece, TranslatedChapter};
 
 /// Assemble the book into a `.pdf`.
 pub fn export(chapters: &[TranslatedChapter], meta: &OutputMeta, out_path: &Path) -> Result<()> {
@@ -30,7 +30,7 @@ pub fn export(chapters: &[TranslatedChapter], meta: &OutputMeta, out_path: &Path
     let mut cur = front_pages;
     for ch in chapters {
         starts.push(cur + 1); // 1-based page number of this chapter's first page
-        cur += page_count(&render(family.clone(), |d| push_chapter(d, ch))?)?;
+        cur += page_count(&render(family.clone(), |d| push_chapter(d, ch, meta))?)?;
     }
 
     // --- pass 2: final document with page numbers in the contents ---
@@ -38,7 +38,7 @@ pub fn export(chapters: &[TranslatedChapter], meta: &OutputMeta, out_path: &Path
         push_front_matter(d, meta, chapters, &starts);
         for ch in chapters {
             d.push(elements::PageBreak::new());
-            push_chapter(d, ch);
+            push_chapter(d, ch, meta);
         }
     })?;
     std::fs::write(out_path, &bytes).map_err(|e| anyhow!("writing {}: {e}", out_path.display()))?;
@@ -150,7 +150,7 @@ fn push_front_matter(
     doc.push(table);
 }
 
-fn push_chapter(doc: &mut Document, ch: &TranslatedChapter) {
+fn push_chapter(doc: &mut Document, ch: &TranslatedChapter, meta: &OutputMeta) {
     let title = ch.title.trim();
     if !title.is_empty() {
         doc.push(
@@ -159,9 +159,61 @@ fn push_chapter(doc: &mut Document, ch: &TranslatedChapter) {
                 .padded(Margins::trbl(0.0, 0.0, 4.0, 0.0)),
         );
     }
-    for para in ch.body.lines().map(str::trim).filter(|l| !l.is_empty()) {
-        doc.push(elements::Paragraph::new(para).padded(Margins::trbl(0.0, 0.0, 2.2, 0.0)));
+    let body = pieces(&ch.body);
+    for (i, piece) in body.iter().enumerate() {
+        match piece {
+            Piece::Para(text) => {
+                doc.push(elements::Paragraph::new(*text).padded(Margins::trbl(0.0, 0.0, 2.2, 0.0)));
+            }
+            Piece::Image(id) => {
+                let Some(image) = meta.images.get(*id) else {
+                    continue;
+                };
+                if !push_image(doc, image) {
+                    continue;
+                }
+                // A picture gets a page of its own: it is sized to fill the
+                // text area, so anything after it would spill over anyway.
+                if i + 1 < body.len() {
+                    doc.push(elements::PageBreak::new());
+                }
+            }
+        }
     }
+}
+
+/// Draw one picture on its own page, scaled to fit the text area. Returns
+/// whether it made it in.
+fn push_image(doc: &mut Document, image: &ExportImage) -> bool {
+    let Ok(bytes) = std::fs::read(&image.path) else {
+        tracing::warn!(path = %image.path.display(), "pdf export: image unreadable");
+        return false;
+    };
+    let Some((jpeg, w, h)) = as_jpeg(&bytes) else {
+        tracing::warn!(path = %image.path.display(), "pdf export: image undecodable");
+        return false;
+    };
+    let Ok(element) = elements::Image::from_reader(Cursor::new(jpeg)) else {
+        return false;
+    };
+    doc.push(elements::PageBreak::new());
+    doc.push(
+        element
+            .with_alignment(Alignment::Center)
+            .with_dpi(fitting_dpi(w, h)),
+    );
+    true
+}
+
+/// Dots per inch that make a `w`×`h` picture fit the text area — a bigger DPI
+/// is a smaller picture. Never below 150, so a small illustration is not blown
+/// up to a full page.
+fn fitting_dpi(w: u32, h: u32) -> f64 {
+    const USABLE_WIDTH_MM: f64 = 210.0 - 2.0 * 18.0;
+    const USABLE_HEIGHT_MM: f64 = 297.0 - 2.0 * 18.0;
+    let by_width = w as f64 / (USABLE_WIDTH_MM / 25.4);
+    let by_height = h as f64 / (USABLE_HEIGHT_MM / 25.4);
+    by_width.max(by_height).max(150.0)
 }
 
 /// Decode a base64 cover (any common format), re-encode it as JPEG bytes (genpdf
@@ -171,7 +223,13 @@ fn cover_as_jpeg(base64: &str) -> Option<(Vec<u8>, u32, u32)> {
     let bytes = base64::engine::general_purpose::STANDARD
         .decode(base64.trim())
         .ok()?;
-    let img = image::load_from_memory(&bytes).ok()?;
+    as_jpeg(&bytes)
+}
+
+/// Re-encode an image as JPEG (the only format genpdf embeds) and report its
+/// pixel dimensions.
+fn as_jpeg(bytes: &[u8]) -> Option<(Vec<u8>, u32, u32)> {
+    let img = image::load_from_memory(bytes).ok()?;
     let (w, h) = (img.width(), img.height());
     let rgb = image::DynamicImage::ImageRgb8(img.to_rgb8());
     let mut out = Vec::new();
@@ -247,6 +305,7 @@ fn add_outline(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::collections::HashMap;
 
     #[test]
     fn renders_pdf_with_bookmarks() {
@@ -276,5 +335,47 @@ mod tests {
         let root = doc.trailer.get(b"Root").unwrap().as_reference().unwrap();
         let cat = doc.get_object(root).unwrap().as_dict().unwrap();
         assert!(cat.has(b"Outlines"), "expected an outline (bookmarks)");
+    }
+
+    /// A picture page becomes a page of the PDF, and the contents' page numbers
+    /// still line up (the image is counted in both passes).
+    #[test]
+    fn a_picture_page_becomes_its_own_page() {
+        let dir = std::env::temp_dir().join(format!("bc_pdf_img_{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let png = dir.join("page.png");
+        image::RgbImage::new(1200, 1800).save(&png).unwrap();
+
+        let chapters = vec![TranslatedChapter {
+            index: 1,
+            number: Some(1),
+            title: "Страница 1".into(),
+            body: "[[img:ab12]]".into(),
+        }];
+        let meta = OutputMeta {
+            title: "Манга".into(),
+            images: HashMap::from([(
+                "ab12".to_string(),
+                ExportImage {
+                    path: png,
+                    content_type: "image/png".into(),
+                },
+            )]),
+            ..Default::default()
+        };
+        let out = dir.join("book.pdf");
+        export(&chapters, &meta, &out).unwrap();
+        let doc = lopdf::Document::load(&out).unwrap();
+        // Title page, contents, the chapter's heading page and the picture's.
+        assert_eq!(doc.get_pages().len(), 4);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// The picture is scaled down to fit the text area; a small one is not
+    /// blown up to fill it.
+    #[test]
+    fn dpi_fits_the_page_without_upscaling() {
+        assert!(fitting_dpi(2400, 3600) > 300.0);
+        assert_eq!(fitting_dpi(300, 200), 150.0);
     }
 }

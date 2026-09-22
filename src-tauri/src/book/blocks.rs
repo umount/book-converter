@@ -150,15 +150,17 @@ pub fn marker_for(asset_id: &str) -> String {
 
 /// Asset ids of the image markers in `text`, in order of appearance.
 pub fn markers_in(text: &str) -> Vec<String> {
-    text.lines().filter_map(marker_id).collect()
+    text.lines()
+        .filter_map(marker_id)
+        .map(str::to_string)
+        .collect()
 }
 
 /// The asset id when a line is nothing but an image marker.
-fn marker_id(line: &str) -> Option<String> {
-    let t = line.trim();
-    let inner = t.strip_prefix("[[img:")?.strip_suffix("]]")?;
+pub fn marker_id(line: &str) -> Option<&str> {
+    let inner = line.trim().strip_prefix("[[img:")?.strip_suffix("]]")?;
     let id = inner.trim();
-    (!id.is_empty() && id.chars().all(|c| c.is_ascii_alphanumeric())).then(|| id.to_string())
+    (!id.is_empty() && id.chars().all(|c| c.is_ascii_alphanumeric())).then_some(id)
 }
 
 /// Drop image markers from text, for consumers that only want prose (export,
@@ -194,7 +196,7 @@ pub fn restore_markers(source: &str, translated: &str) -> String {
             continue;
         }
         match marker_id(line) {
-            Some(id) => want.push((id, source_paragraphs)),
+            Some(id) => want.push((id.to_string(), source_paragraphs)),
             None => source_paragraphs += 1,
         }
     }
@@ -203,10 +205,10 @@ pub fn restore_markers(source: &str, translated: &str) -> String {
     let mut kept: Vec<String> = Vec::new();
     let mut present: Vec<String> = Vec::new();
     for line in translated.lines() {
-        match marker_id(line) {
+        match marker_id(line).map(str::to_string) {
             Some(id) if expected.contains(&id) && !present.contains(&id) => {
-                present.push(id.clone());
                 kept.push(marker_for(&id));
+                present.push(id);
             }
             Some(_) => {}
             None => kept.push(line.to_string()),

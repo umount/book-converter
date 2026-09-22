@@ -10,7 +10,7 @@ pub(crate) mod pdf;
 pub(crate) mod source;
 
 pub use blocks::{
-    markers_in, restore_markers, strip_markers, AssetRef, ChapterBlocks, ChapterKind,
+    marker_id, markers_in, restore_markers, strip_markers, AssetRef, ChapterBlocks, ChapterKind,
 };
 pub use chunker::split_chapter;
 pub use epub::{asset_file_name, extract_assets as extract_epub_assets};

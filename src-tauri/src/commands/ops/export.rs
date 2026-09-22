@@ -5,7 +5,7 @@ use std::path::Path;
 
 use crate::config::Config;
 use crate::dto::err;
-use crate::export::{self, OutputFormat, OutputMeta, TranslatedChapter};
+use crate::export::{self, ExportImage, OutputFormat, OutputMeta, TranslatedChapter};
 use crate::session::AppState;
 use crate::state::Store;
 
@@ -64,7 +64,9 @@ fn write_export(store: &Store, project_id: &str, out_path: &str) -> Result<Strin
         crate::session::zipped_input_for(Some(&manifest.source_path), manifest.ref_path.as_deref());
     let out = OutputTarget::resolve(out_path, zipped_input)?;
     let metadata = store.project_metadata().map_err(err)?;
-    let rows = store.translated_chapters().map_err(err)?;
+    // Pages of pictures come along even though they have no translation: they
+    // are the book's actual content in an illustrated edition or a manga.
+    let rows = store.chapters_for_export().map_err(err)?;
     if rows.is_empty() {
         return Err("nothing_translated".into());
     }
@@ -81,10 +83,7 @@ fn write_export(store: &Store, project_id: &str, out_path: &str) -> Result<Strin
             index: idx,
             number: num_by_idx.get(&idx).copied().flatten(),
             title,
-            // Picture markers are internal plumbing: an exported book must not
-            // show `[[img:…]]` to a reader. The pictures themselves are not
-            // carried into the output yet.
-            body: crate::book::strip_markers(&body),
+            body,
         })
         .collect();
 
@@ -112,6 +111,7 @@ fn write_export(store: &Store, project_id: &str, out_path: &str) -> Result<Strin
         lang: crate::i18n::lang_code(&config.target_lang),
         annotation: metadata.summary,
         cover,
+        images: project_images(store, project_id),
     };
 
     if out.zipped {
@@ -127,4 +127,27 @@ fn write_export(store: &Store, project_id: &str, out_path: &str) -> Result<Strin
         export::export(&chapters, out.format, &meta, Path::new(&out.path)).map_err(err)?;
     }
     Ok(out.path)
+}
+
+/// The project's pictures, by asset id, for the writers that can embed them.
+/// Whatever cannot be found is simply not embedded; a chapter's text keeps its
+/// markers, and the formats that cannot hold a picture drop them.
+fn project_images(store: &Store, project_id: &str) -> HashMap<String, ExportImage> {
+    let Ok(dir) = crate::session::project_dir(project_id) else {
+        return HashMap::new();
+    };
+    store
+        .assets()
+        .unwrap_or_default()
+        .into_iter()
+        .map(|asset| {
+            (
+                asset.id,
+                ExportImage {
+                    path: dir.join(&asset.rel_path),
+                    content_type: asset.content_type,
+                },
+            )
+        })
+        .collect()
 }

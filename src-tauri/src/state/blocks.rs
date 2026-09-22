@@ -112,6 +112,57 @@ impl Store {
         Ok(rows)
     }
 
+    /// Every image the project owns.
+    pub fn assets(&self) -> Result<Vec<AssetRow>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT id, rel_path, content_type, bytes, width, height FROM assets ORDER BY id",
+        )?;
+        let rows = stmt
+            .query_map([], |r| {
+                Ok(AssetRow {
+                    id: r.get(0)?,
+                    rel_path: r.get(1)?,
+                    content_type: r.get(2)?,
+                    bytes: r.get::<_, i64>(3)? as u64,
+                    width: r.get::<_, Option<i64>>(4)?.map(|n| n as u32),
+                    height: r.get::<_, Option<i64>>(5)?.map(|n| n as u32),
+                })
+            })?
+            .collect::<rusqlite::Result<Vec<_>>>()?;
+        Ok(rows)
+    }
+
+    /// Chapters an export should contain: everything translated, plus pages of
+    /// pictures that have no words to translate — they are part of the book, and
+    /// leaving them out would silently drop a manga volume's actual content.
+    ///
+    /// Returns `(idx, title, body)` like [`Store::translated_chapters`]; the body
+    /// of a picture page is its marker text.
+    pub fn chapters_for_export(&self) -> Result<Vec<(usize, String, String)>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT idx,
+                    COALESCE(NULLIF(TRIM(translated_title), ''), title),
+                    CASE
+                        WHEN translated IS NOT NULL AND TRIM(translated) != '' THEN translated
+                        ELSE source
+                    END
+             FROM chapters
+             WHERE (status = 'done' AND translated IS NOT NULL AND TRIM(translated) != '')
+                OR COALESCE(kind, 'text') = 'image'
+             ORDER BY idx",
+        )?;
+        let rows = stmt
+            .query_map([], |r| {
+                Ok((
+                    r.get::<_, i64>(0)? as usize,
+                    r.get::<_, String>(1)?,
+                    r.get::<_, String>(2)?,
+                ))
+            })?
+            .collect::<rusqlite::Result<Vec<_>>>()?;
+        Ok(rows)
+    }
+
     /// What one chapter is made of (prose when nothing was recorded).
     pub fn chapter_kind(&self, index: usize) -> Result<ChapterKind> {
         let kind: Option<String> = self

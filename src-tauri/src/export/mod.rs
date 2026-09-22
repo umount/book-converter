@@ -5,10 +5,44 @@ pub(crate) mod fb2;
 pub(crate) mod pdf;
 pub(crate) mod txt;
 
-use std::path::Path;
+use std::collections::HashMap;
+use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result};
 use regex::Regex;
+
+use crate::book::marker_id;
+
+/// A picture an exported book embeds, as it sits in the project directory.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ExportImage {
+    pub path: PathBuf,
+    pub content_type: String,
+}
+
+/// A piece of a chapter body, as the writers consume it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Piece<'a> {
+    Para(&'a str),
+    /// A picture that belongs at this exact point, by asset id.
+    Image(&'a str),
+}
+
+/// Split a chapter body into its paragraphs and the pictures between them.
+///
+/// Every format walks a body this way, so the `[[img:…]]` convention is read in
+/// one place — and a format that cannot hold a picture (plain text) simply
+/// ignores the image pieces.
+pub fn pieces(body: &str) -> Vec<Piece<'_>> {
+    body.lines()
+        .map(str::trim)
+        .filter(|line| !line.is_empty())
+        .map(|line| match marker_id(line) {
+            Some(id) => Piece::Image(id),
+            None => Piece::Para(line),
+        })
+        .collect()
+}
 
 /// A translated chapter ready for export.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -114,6 +148,8 @@ pub struct OutputMeta {
     pub annotation: Option<String>,
     /// Cover image.
     pub cover: Option<fb2::Cover>,
+    /// Pictures the chapter bodies point at with `[[img:<id>]]`, by id.
+    pub images: HashMap<String, ExportImage>,
 }
 
 impl Default for OutputMeta {
@@ -124,6 +160,7 @@ impl Default for OutputMeta {
             lang: "ru".into(),
             annotation: None,
             cover: None,
+            images: HashMap::new(),
         }
     }
 }
@@ -180,6 +217,25 @@ pub fn export_zip(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Every writer reads a body through `pieces`, so this is where the
+    /// `[[img:…]]` convention is pinned down.
+    #[test]
+    fn pieces_separate_paragraphs_from_pictures() {
+        assert_eq!(
+            pieces("До.\n\n[[img:ab12]]\n\nПосле."),
+            vec![
+                Piece::Para("До."),
+                Piece::Image("ab12"),
+                Piece::Para("После."),
+            ]
+        );
+        // A mention of the syntax inside a sentence is just text.
+        assert_eq!(
+            pieces("он сказал [[img:ab12]] вслух"),
+            vec![Piece::Para("он сказал [[img:ab12]] вслух")]
+        );
+    }
 
     #[test]
     fn normalize_titles_fixes_markers() {
