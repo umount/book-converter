@@ -11,6 +11,7 @@ use std::path::Path;
 use tauri::State;
 
 use crate::book::load_book;
+use crate::config::Config;
 use crate::dto::{err, BookInfo};
 use crate::export::fb2::Cover;
 use crate::session::{db_path_for_project, write_manifest, AppState};
@@ -78,6 +79,12 @@ pub async fn load_source(
     store
         .set_source_metadata(&title, &author, &format, &book.encoding)
         .map_err(err)?;
+    // Snapshot the language pair at import so later Settings changes do not
+    // rewrite this book. Detection / the setup modal may overwrite these.
+    let cfg = Config::load();
+    store
+        .set_translation_langs(&cfg.source_lang, &cfg.target_lang)
+        .map_err(err)?;
     if let Some(summary) = &summary {
         store.set_meta("summary", summary).map_err(err)?;
     }
@@ -93,17 +100,22 @@ pub async fn load_source(
         session.db_path = Some(db);
     });
 
-    Ok(BookInfo {
-        title,
-        author,
-        total_chapters: book.chapters.len(),
-        format,
-        encoding: book.encoding,
-        needs_delimiter: book.needs_delimiter,
-        missing: book.report.missing_numbers.len(),
-        duplicates: book.report.duplicate_numbers.len(),
-        had_errors: book.encoding_had_errors,
-    })
+    Ok(with_langs(
+        &store,
+        BookInfo {
+            title,
+            author,
+            total_chapters: book.chapters.len(),
+            format,
+            encoding: book.encoding,
+            needs_delimiter: book.needs_delimiter,
+            missing: book.report.missing_numbers.len(),
+            duplicates: book.report.duplicate_numbers.len(),
+            had_errors: book.encoding_had_errors,
+            source_lang: String::new(),
+            target_lang: String::new(),
+        },
+    ))
 }
 
 #[tauri::command]
@@ -129,15 +141,45 @@ pub async fn open_project(
         session.db_path = Some(db);
     });
 
-    Ok(BookInfo {
-        title: metadata.title.unwrap_or_default(),
-        author: metadata.author.unwrap_or_default(),
-        total_chapters: stats.total,
-        format: metadata.format.unwrap_or_else(|| "-".into()),
-        encoding: metadata.encoding.unwrap_or_else(|| "-".into()),
-        needs_delimiter: false,
-        missing: 0,
-        duplicates: 0,
-        had_errors: false,
-    })
+    Ok(with_langs(
+        &store,
+        BookInfo {
+            title: metadata.title.unwrap_or_default(),
+            author: metadata.author.unwrap_or_default(),
+            total_chapters: stats.total,
+            format: metadata.format.unwrap_or_else(|| "-".into()),
+            encoding: metadata.encoding.unwrap_or_else(|| "-".into()),
+            needs_delimiter: false,
+            missing: 0,
+            duplicates: 0,
+            had_errors: false,
+            source_lang: String::new(),
+            target_lang: String::new(),
+        },
+    ))
+}
+
+/// Persist the language pair chosen in the new-book setup modal.
+#[tauri::command]
+pub async fn set_project_languages(
+    project_id: String,
+    source_lang: String,
+    target_lang: String,
+    state: State<'_, AppState>,
+) -> Result<(), String> {
+    let source = source_lang.trim();
+    let target = target_lang.trim();
+    if source.is_empty() || target.is_empty() {
+        return Err("bad_lang".into());
+    }
+    let store = super::ops::project_store(&state, &project_id)?;
+    store.set_translation_langs(source, target).map_err(err)?;
+    Ok(())
+}
+
+fn with_langs(store: &Store, mut info: BookInfo) -> BookInfo {
+    let cfg = Config::load_for(store);
+    info.source_lang = cfg.source_lang;
+    info.target_lang = cfg.target_lang;
+    info
 }

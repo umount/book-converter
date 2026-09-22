@@ -821,6 +821,16 @@ mod tests {
     }
 
     #[test]
+    fn translation_langs_roundtrip() {
+        let store = Store::open(":memory:").unwrap();
+        assert_eq!(store.project_metadata().unwrap().source_lang, None);
+        store.set_translation_langs("Japanese", "German").unwrap();
+        let meta = store.project_metadata().unwrap();
+        assert_eq!(meta.source_lang.as_deref(), Some("Japanese"));
+        assert_eq!(meta.target_lang.as_deref(), Some("German"));
+    }
+
+    #[test]
     fn translated_title_can_change_without_touching_the_body() {
         let store = Store::open(":memory:").unwrap();
         store.init_chapters(&sample()).unwrap();

@@ -3,6 +3,7 @@ export type BookInfo = {
   title: string; author: string; total_chapters: number;
   format: string; encoding: string; needs_delimiter: boolean; missing: number; duplicates: number;
   had_errors: boolean;
+  source_lang: string; target_lang: string;
 };
 export type RefInfo = { title: string; chapters: number; max_covered: number | null; imported: number };
 export type Progress = {

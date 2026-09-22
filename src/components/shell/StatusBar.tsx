@@ -19,6 +19,9 @@ export function StatusBar({
   const running = !!progress?.running;
   const eta = running && progress?.eta_secs != null && progress.eta_secs > 0 ? formatEta(progress.eta_secs) : null;
 
+  const src = book?.source_lang || srcLang;
+  const tgt = book?.target_lang || tgtLang;
+
   return (
     <footer className="statusbar">
       <div className="sb-item clickable" onClick={onToggleConsole} title={t("status.consoleTip")}>
@@ -45,7 +48,7 @@ export function StatusBar({
 
       {book && <div className="sb-item">{book.format.toUpperCase()}</div>}
       {book && <div className="sb-item">{book.encoding}</div>}
-      <div className="sb-item" title={`${srcLang} → ${tgtLang}`}>{langAbbr(srcLang)}{"→"}{langAbbr(tgtLang)}</div>
+      <div className="sb-item" title={`${src} → ${tgt}`}>{langAbbr(src)}{"→"}{langAbbr(tgt)}</div>
       <div className="sb-item">{t("status.glossary", { n: glossaryCount })}</div>
     </footer>
   );

@@ -81,7 +81,7 @@ pub(crate) async fn harvest(
     };
     chosen.sort_by_key(|(idx, ..)| *idx);
 
-    let config = crate::config::Config::load();
+    let config = crate::config::Config::load_for(&store);
     let client = client()?;
     let mut glossary = store.load_glossary().map_err(err)?;
     let before = glossary.len();
@@ -127,7 +127,7 @@ pub(crate) async fn bootstrap(
         return Err("no_reference".into());
     }
     let cl = client()?;
-    let config = crate::config::Config::load();
+    let config = crate::config::Config::load_for(&store);
     let mut glossary = store.load_glossary().map_err(err)?;
     let extracted = crate::reference::bootstrap_glossary(&cl, &config, &pairs)
         .await

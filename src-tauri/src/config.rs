@@ -162,6 +162,25 @@ impl Config {
         cfg
     }
 
+    /// Overlay a project's stored language pair. Empty / missing values keep
+    /// the global setting, so older projects without meta keys still work.
+    pub fn with_langs(mut self, source: Option<&str>, target: Option<&str>) -> Self {
+        if let Some(v) = source.map(str::trim).filter(|v| !v.is_empty()) {
+            self.source_lang = v.to_string();
+        }
+        if let Some(v) = target.map(str::trim).filter(|v| !v.is_empty()) {
+            self.target_lang = v.to_string();
+        }
+        self
+    }
+
+    /// Global config with this project's `source_lang` / `target_lang` overlaid.
+    pub fn load_for(store: &crate::state::Store) -> Self {
+        let source = store.get_meta("source_lang").ok().flatten();
+        let target = store.get_meta("target_lang").ok().flatten();
+        Self::load().with_langs(source.as_deref(), target.as_deref())
+    }
+
     /// True when an API key is present.
     pub fn has_key(&self) -> bool {
         !self.api_key.trim().is_empty()
@@ -236,5 +255,25 @@ mod tests {
         assert!(!printed.contains("secret"), "{printed}");
         assert!(printed.contains("<set>"));
         assert!(format!("{:?}", Config::default()).contains("<unset>"));
+    }
+
+    #[test]
+    fn with_langs_overlays_nonempty_only() {
+        let cfg = Config::default().with_langs(Some("Japanese"), Some("German"));
+        assert_eq!(cfg.source_lang, "Japanese");
+        assert_eq!(cfg.target_lang, "German");
+
+        let kept = Config::default().with_langs(Some("  "), None);
+        assert_eq!(kept.source_lang, "Chinese");
+        assert_eq!(kept.target_lang, "Russian");
+    }
+
+    #[test]
+    fn load_for_overlays_project_langs() {
+        let store = crate::state::Store::open(":memory:").unwrap();
+        store.set_translation_langs("Korean", "French").unwrap();
+        let cfg = Config::load_for(&store);
+        assert_eq!(cfg.source_lang, "Korean");
+        assert_eq!(cfg.target_lang, "French");
     }
 }

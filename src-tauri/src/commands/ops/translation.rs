@@ -7,6 +7,7 @@ use crate::dto::err;
 use crate::jobs::{self, run_translation};
 use crate::session::AppState;
 use crate::textutil;
+use crate::translator::DeepSeekClient;
 
 use super::project_store;
 
@@ -98,7 +99,8 @@ pub(crate) fn save_manual(
         .map_err(err)?
         .map(|(_, source)| source)
         .unwrap_or_default();
-    let issues = textutil::leftover_foreign(&Config::load().target_lang, title, body, &source);
+    let issues =
+        textutil::leftover_foreign(&Config::load_for(&store).target_lang, title, body, &source);
     store
         .save_manual_translation(index, title, body, &issues)
         .map_err(err)?;
@@ -158,7 +160,7 @@ pub(crate) async fn translate_chapter_title(
         return Err("no_title".into());
     }
 
-    let config = Config::load();
+    let config = Config::load_for(&store);
     let meta = store.project_metadata().map_err(err)?;
     let glossary = store.load_glossary().map_err(err)?;
     let (system, user) = {
@@ -179,7 +181,8 @@ pub(crate) async fn translate_chapter_title(
             crate::translator::prompt::title_user_prompt(&ctx, &source_title),
         )
     };
-    let raw = super::super::util::client()?
+    let raw = DeepSeekClient::new(config.clone())
+        .map_err(err)?
         .translate(&system, &user)
         .await
         .map_err(err)?;

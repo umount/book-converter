@@ -130,9 +130,9 @@ pub(crate) async fn run(
     handle: TurnHandle,
     runtime: Arc<AssistantRuntime>,
 ) -> Result<()> {
-    let config = Config::load();
-    let client = DeepSeekClient::new(config.clone())?;
     let store = Store::open(&db)?;
+    let config = Config::load_for(&store);
+    let client = DeepSeekClient::new(config.clone())?;
 
     let turn = store.assistant_next_turn()?;
     append(

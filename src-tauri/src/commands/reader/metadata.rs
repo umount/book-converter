@@ -51,7 +51,7 @@ pub async fn translate_title(
 ) -> Result<String, String> {
     let store = ops::project_store(&state, &project_id)?;
     let metadata = store.project_metadata().map_err(err)?;
-    let config = Config::load();
+    let config = Config::load_for(&store);
 
     let translated = match metadata
         .title_translated
@@ -118,7 +118,7 @@ pub async fn generate_summary(
         .title
         .filter(|title| !title.trim().is_empty())
         .ok_or("no_title")?;
-    let config = Config::load();
+    let config = Config::load_for(&store);
 
     let hint = metadata
         .title_translated

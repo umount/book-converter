@@ -20,6 +20,10 @@ pub(crate) struct ProjectMetadata {
     pub(crate) reference_style: Option<String>,
     /// Book-wide translation instruction, injected into every chapter prompt.
     pub(crate) book_prompt: Option<String>,
+    /// Per-project source language; missing on projects created before this.
+    pub(crate) source_lang: Option<String>,
+    /// Per-project target language; missing on projects created before this.
+    pub(crate) target_lang: Option<String>,
 }
 
 impl Store {
@@ -62,7 +66,16 @@ impl Store {
             cover_base64: get("cover_b64")?,
             reference_style: get("ref_style")?,
             book_prompt: get("book_prompt")?,
+            source_lang: get("source_lang")?,
+            target_lang: get("target_lang")?,
         })
+    }
+
+    /// Persist the language pair this project will translate with.
+    pub fn set_translation_langs(&self, source: &str, target: &str) -> Result<()> {
+        self.set_meta("source_lang", source.trim())?;
+        self.set_meta("target_lang", target.trim())?;
+        Ok(())
     }
 
     /// Read the book-wide translation instruction (empty → None).

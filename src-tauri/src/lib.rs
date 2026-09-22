@@ -72,6 +72,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             commands::load_source,
             commands::open_project,
+            commands::set_project_languages,
             commands::list_projects,
             commands::load_reference,
             commands::get_reference_info,

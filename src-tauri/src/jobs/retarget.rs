@@ -19,9 +19,9 @@ pub(crate) async fn run(
 ) -> anyhow::Result<usize> {
     use crate::retarget::paragraph_mentions;
 
-    let config = Config::load();
-    let client = DeepSeekClient::new(config.clone())?;
     let store = Store::open(db)?;
+    let config = Config::load_for(&store);
+    let client = DeepSeekClient::new(config.clone())?;
     let lang = &config.target_lang;
 
     let mentions_any = |text: &str| {

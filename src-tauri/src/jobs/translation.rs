@@ -18,9 +18,9 @@ pub(crate) async fn run(
     cancel: &AtomicBool,
     app: &AppHandle,
 ) -> anyhow::Result<()> {
-    let config = Config::load();
-    let client = DeepSeekClient::new(config.clone())?;
     let store = Store::open(db)?;
+    let config = Config::load_for(&store);
+    let client = DeepSeekClient::new(config.clone())?;
     // Nothing else can translate this project while its job slot is held.
     let _ = store.recover();
     let style = store.project_metadata()?.reference_style;

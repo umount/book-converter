@@ -16,6 +16,10 @@ pub struct BookInfo {
     pub duplicates: usize,
     /// Decoding produced replacement characters (likely wrong encoding).
     pub had_errors: bool,
+    /// Language the book is written in (project pair, else global default).
+    pub source_lang: String,
+    /// Language to translate into (project pair, else global default).
+    pub target_lang: String,
 }
 
 /// A project as found on disk, for reconciling the UI's list with reality.
