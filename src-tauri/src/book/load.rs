@@ -10,6 +10,7 @@ use std::path::Path;
 
 use anyhow::Result;
 
+use super::blocks::{AssetRef, ChapterBlocks};
 use super::fb2::{fb2_to_chapters, parse_fb2};
 use super::parser::{parse_book_meta, parse_chapters, validate, BookMeta, Chapter, ParseReport};
 use super::source::{is_epub, read_book_file};
@@ -38,6 +39,11 @@ pub struct LoadedBook {
     pub encoding_had_errors: bool,
     /// Embedded cover (EPUB), if the package declared one.
     pub cover: Option<(String, Vec<u8>)>,
+    /// Typed content for the chapters that have any (EPUB). A chapter absent
+    /// here is plain prose, and `Chapter::body` is all there is to it.
+    pub blocks: Vec<ChapterBlocks>,
+    /// Images the blocks refer to, still inside the source container.
+    pub assets: Vec<AssetRef>,
 }
 
 /// Detect the input format from the decoded text (content-based, not extension).
@@ -77,6 +83,8 @@ pub fn load_book_text(text: &str, encoding: &str) -> Result<LoadedBook> {
                 needs_delimiter: false,
                 encoding_had_errors: false,
                 cover: None,
+                blocks: Vec::new(),
+                assets: Vec::new(),
             }
         }
         InputFormat::Txt => {
@@ -93,6 +101,8 @@ pub fn load_book_text(text: &str, encoding: &str) -> Result<LoadedBook> {
                 needs_delimiter,
                 encoding_had_errors: false,
                 cover: None,
+                blocks: Vec::new(),
+                assets: Vec::new(),
             }
         }
         InputFormat::Epub => anyhow::bail!("epub is loaded from a zip, not decoded text"),

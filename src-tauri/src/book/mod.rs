@@ -1,5 +1,6 @@
 //! Working with the source book: decoding, format detection, parsing, chunking.
 
+pub(crate) mod blocks;
 pub(crate) mod chunker;
 pub(crate) mod epub;
 pub(crate) mod fb2;
@@ -8,6 +9,9 @@ pub(crate) mod parser;
 pub(crate) mod pdf;
 pub(crate) mod source;
 
+pub use blocks::{
+    derive_text, markers_in, strip_markers, AssetRef, Block, BlockKind, ChapterBlocks, ChapterKind,
+};
 pub use chunker::split_chapter;
 pub use load::{detect_format, load_book, InputFormat, LoadedBook};
 pub use parser::{

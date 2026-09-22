@@ -39,6 +39,7 @@ quick-xml = "0.36"     # parse FB2 (FictionBook XML) input and reference
 # --- Archives ---
 zip = { version = "2", default-features = false, features = ["deflate"] }
 base64 = "0.22"        # cover image ↔ base64 (FB2 <binary>, data URLs, EPUB)
+sha2 = "0.10"          # content-addressed ids for extracted images
 
 # --- Export ---
 epub-builder = "0.7"

@@ -2,8 +2,15 @@
 //!
 //! The dialog filter lists `.epub` next to txt/fb2/pdf/zip, so Linux GTK actually
 //! shows those files. This module is the matching importer: OPF metadata + spine
-//! order, with a small HTML-to-text walk (no extra crate).
+//! order, with a small HTML-to-blocks walk (no extra crate).
+//!
+//! A page is read as [`Block`]s rather than a string, because an EPUB page can be
+//! a whole image: manga, illustrated editions, and comic-style web novels all
+//! ship spine items whose entire content is `<img>` or an `<svg><image/>`
+//! wrapper. Flattening those to text produced an empty chapter, which the reader
+//! then showed as a blank pane.
 
+use std::collections::{HashMap, HashSet};
 use std::io::{Read, Seek};
 use std::path::Path;
 
@@ -12,6 +19,7 @@ use quick_xml::events::Event;
 use quick_xml::reader::Reader;
 use zip::ZipArchive;
 
+use super::blocks::{derive_text, AssetRef, Block, BlockKind, ChapterBlocks, ChapterKind};
 use super::fb2::heading_number;
 use super::load::{InputFormat, LoadedBook};
 use super::parser::{validate, BookMeta, Chapter};
@@ -27,12 +35,16 @@ fn load_archive<R: Read + Seek>(mut zip: ZipArchive<R>) -> Result<LoadedBook> {
     let opf_path = find_opf_path(&mut zip)?;
     let opf = zip_text(&mut zip, &opf_path)?;
     let package = parse_opf(&opf)?;
-    let base_dir = opf_path
-        .rsplit_once('/')
-        .map(|(dir, _)| dir.to_string())
-        .unwrap_or_default();
+    let base_dir = dir_of(&opf_path);
 
     let mut chapters = Vec::new();
+    let mut chapter_blocks: Vec<ChapterBlocks> = Vec::new();
+    let mut assets: Vec<AssetRef> = Vec::new();
+    let mut seen_assets: HashSet<String> = HashSet::new();
+    // Zip entry name → asset id, so a page reused across the spine (and a cover
+    // that also appears as a page) is hashed once.
+    let mut by_entry: HashMap<String, Option<String>> = HashMap::new();
+
     for idref in &package.spine {
         let Some(item) = package.manifest.iter().find(|item| item.id == *idref) else {
             continue;
@@ -44,8 +56,34 @@ fn load_archive<R: Read + Seek>(mut zip: ZipArchive<R>) -> Result<LoadedBook> {
         let Ok(xhtml) = zip_text(&mut zip, &href) else {
             continue;
         };
-        let (title, body) = html_to_chapter(&xhtml);
-        if title.is_empty() && body.trim().is_empty() {
+        // Image hrefs inside a page are relative to that page, not to the OPF.
+        let page_dir = dir_of(&href);
+        let (title, raw) = html_to_blocks(&xhtml);
+
+        let mut blocks: Vec<Block> = Vec::new();
+        for part in raw {
+            match part {
+                RawBlock::Text(text) => blocks.push(Block::text(text)),
+                RawBlock::Caption(text) => blocks.push(Block::caption(text)),
+                RawBlock::Image(src) => {
+                    let entry = join_href(&page_dir, &src);
+                    let id = match by_entry.get(&entry) {
+                        Some(cached) => cached.clone(),
+                        None => {
+                            let made = register_asset(&mut zip, &entry, &mut assets, &mut seen_assets);
+                            by_entry.insert(entry, made.clone());
+                            made
+                        }
+                    };
+                    if let Some(id) = id {
+                        blocks.push(Block::image(id));
+                    }
+                }
+            }
+        }
+
+        let kind = ChapterKind::classify(&blocks);
+        if kind == ChapterKind::Empty && title.is_empty() {
             continue;
         }
         let title = if title.is_empty() {
@@ -54,11 +92,21 @@ fn load_archive<R: Read + Seek>(mut zip: ZipArchive<R>) -> Result<LoadedBook> {
             title
         };
         let number = heading_number(&title).map(|(n, _)| n);
+        let index = chapters.len() + 1;
+        // Prose needs no block rows: its only block is the body itself, and
+        // storing it twice would double the database on a book-length text.
+        if kind != ChapterKind::Text {
+            chapter_blocks.push(ChapterBlocks {
+                chapter_index: index,
+                kind,
+                blocks: blocks.clone(),
+            });
+        }
         chapters.push(Chapter {
-            index: chapters.len() + 1,
+            index,
             number,
             title,
-            body,
+            body: derive_text(&blocks),
         });
     }
 
@@ -73,7 +121,98 @@ fn load_archive<R: Read + Seek>(mut zip: ZipArchive<R>) -> Result<LoadedBook> {
         needs_delimiter: false,
         encoding_had_errors: false,
         cover,
+        blocks: chapter_blocks,
+        assets,
     })
+}
+
+/// Hash one image entry and remember it as an asset. `None` when the entry is
+/// missing from the zip or is not an image, so a broken `<img>` costs its block
+/// and not the chapter.
+fn register_asset<R: Read + Seek>(
+    zip: &mut ZipArchive<R>,
+    entry: &str,
+    assets: &mut Vec<AssetRef>,
+    seen: &mut HashSet<String>,
+) -> Option<String> {
+    if !looks_like_image_href(entry) {
+        return None;
+    }
+    let bytes = zip_bytes(zip, entry).ok()?;
+    if bytes.is_empty() {
+        return None;
+    }
+    let id = asset_id(&bytes);
+    // Identical bytes under two names are one asset; the first href wins.
+    if seen.insert(id.clone()) {
+        assets.push(AssetRef {
+            id: id.clone(),
+            href: entry.to_string(),
+            content_type: image_mime(entry),
+            bytes: bytes.len() as u64,
+        });
+    }
+    Some(id)
+}
+
+/// Content-addressed id: the first 8 bytes of the SHA-256, as hex.
+fn asset_id(bytes: &[u8]) -> String {
+    use sha2::{Digest, Sha256};
+    Sha256::digest(bytes)
+        .iter()
+        .take(8)
+        .map(|b| format!("{b:02x}"))
+        .collect()
+}
+
+/// Copy the images `assets` point at out of the `.epub` into `dest_dir`, named
+/// `<id>.<ext>`. Already-present files are left alone, so re-opening a project
+/// costs no unzipping. Returns how many files were written.
+pub fn extract_assets(path: &Path, assets: &[AssetRef], dest_dir: &Path) -> Result<usize> {
+    if assets.is_empty() {
+        return Ok(0);
+    }
+    std::fs::create_dir_all(dest_dir)
+        .with_context(|| format!("creating {}", dest_dir.display()))?;
+    let file = std::fs::File::open(path).with_context(|| format!("opening {}", path.display()))?;
+    let mut zip = ZipArchive::new(file).with_context(|| format!("epub zip {}", path.display()))?;
+    let mut written = 0usize;
+    for asset in assets {
+        let out = dest_dir.join(asset_file_name(asset));
+        if out.exists() {
+            continue;
+        }
+        let Ok(bytes) = zip_bytes(&mut zip, &asset.href) else {
+            continue;
+        };
+        if std::fs::write(&out, &bytes).is_ok() {
+            written += 1;
+        }
+    }
+    Ok(written)
+}
+
+/// On-disk name of an extracted asset: content id plus a real extension, so the
+/// file is openable outside the app and the webview can guess nothing wrong.
+pub fn asset_file_name(asset: &AssetRef) -> String {
+    format!("{}.{}", asset.id, image_ext(&asset.content_type))
+}
+
+fn image_ext(content_type: &str) -> &'static str {
+    match content_type {
+        "image/png" => "png",
+        "image/gif" => "gif",
+        "image/webp" => "webp",
+        "image/svg+xml" => "svg",
+        _ => "jpg",
+    }
+}
+
+/// Directory part of a zip entry name (`""` at the archive root).
+fn dir_of(name: &str) -> String {
+    name.rsplit_once('/')
+        .map(|(dir, _)| dir.to_string())
+        .unwrap_or_default()
 }
 
 struct ManifestItem {
@@ -350,14 +489,42 @@ fn image_mime(href: &str) -> String {
     }
 }
 
-/// First heading (or `<title>`) plus remaining body text.
-fn html_to_chapter(html: &str) -> (String, String) {
+/// One block as the page provides it: an image href is still relative to the page.
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum RawBlock {
+    Text(String),
+    Caption(String),
+    Image(String),
+}
+
+/// Where a character belongs while walking the page.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Sink {
+    DocTitle,
+    Heading,
+    Caption,
+    Body,
+    Drop,
+}
+
+/// First heading (or `<title>`) plus the page's blocks, in document order.
+///
+/// Images end their text run, so a page reads back as prose, picture, prose —
+/// which is what lets the reader show an illustration where it belongs instead
+/// of dropping it.
+fn html_to_blocks(html: &str) -> (String, Vec<RawBlock>) {
     let mut title = String::new();
     let mut fallback_title = String::new();
     let mut body = String::new();
-    let mut skip: Option<&'static str> = None;
-    let mut in_heading = false;
+    let mut caption = String::new();
     let mut heading_buf = String::new();
+    let mut blocks: Vec<RawBlock> = Vec::new();
+    let mut skip: Option<&'static str> = None;
+    // `<svg>` wrappers are how fixed-layout EPUBs (manga) reference a page
+    // image, so the element is walked for its `<image>` and only its text dropped.
+    let mut svg_depth = 0usize;
+    let mut in_caption = false;
+    let mut in_heading = false;
     let mut in_doc_title = false;
     let mut i = 0;
     let bytes = html.as_bytes();
@@ -378,12 +545,39 @@ fn html_to_chapter(html: &str) -> (String, String) {
             }
 
             match name {
-                "script" | "style" | "svg" if !closing => skip = Some(name),
-                "title" if !closing => {
-                    in_doc_title = true;
-                    fallback_title.clear();
+                "script" | "style" if !closing => skip = Some(name),
+                "svg" => {
+                    if closing {
+                        svg_depth = svg_depth.saturating_sub(1);
+                    } else {
+                        svg_depth += 1;
+                    }
                 }
-                "title" if closing => in_doc_title = false,
+                "img" | "image" if !closing => {
+                    if let Some(src) = image_src(tag) {
+                        flush_text(&mut body, &mut blocks);
+                        blocks.push(RawBlock::Image(src));
+                    }
+                }
+                "figcaption" if !closing => {
+                    flush_text(&mut body, &mut blocks);
+                    caption.clear();
+                    in_caption = true;
+                }
+                "figcaption" if closing => {
+                    in_caption = false;
+                    let text = normalize_ws(&caption);
+                    if !text.is_empty() {
+                        blocks.push(RawBlock::Caption(text));
+                    }
+                    caption.clear();
+                }
+                "title" if svg_depth == 0 => {
+                    in_doc_title = !closing;
+                    if !closing {
+                        fallback_title.clear();
+                    }
+                }
                 "br" => push_break(&mut body),
                 name if is_heading(name) && !closing => {
                     in_heading = true;
@@ -403,7 +597,8 @@ fn html_to_chapter(html: &str) -> (String, String) {
                         body.push('\n');
                     }
                 }
-                "p" | "div" | "li" | "tr" | "blockquote" | "hgroup" | "section" | "article" => {
+                "p" | "div" | "li" | "tr" | "blockquote" | "hgroup" | "section" | "article"
+                | "figure" => {
                     push_break(&mut body);
                 }
                 _ => {}
@@ -416,33 +611,140 @@ fn html_to_chapter(html: &str) -> (String, String) {
         if skip.is_some() {
             continue;
         }
-        if ch == '&' {
+        let sink = if svg_depth > 0 {
+            Sink::Drop
+        } else if in_doc_title {
+            Sink::DocTitle
+        } else if in_heading {
+            Sink::Heading
+        } else if in_caption {
+            Sink::Caption
+        } else {
+            Sink::Body
+        };
+        let ch = if ch == '&' {
             let (decoded, consumed) = decode_entity(&html[i - len..]);
             i = i - len + consumed;
-            push_char(
-                decoded,
-                in_doc_title,
-                in_heading,
-                &mut fallback_title,
-                &mut heading_buf,
-                &mut body,
-            );
-            continue;
-        }
+            decoded
+        } else {
+            ch
+        };
         push_char(
             ch,
-            in_doc_title,
-            in_heading,
+            sink,
             &mut fallback_title,
             &mut heading_buf,
+            &mut caption,
             &mut body,
         );
     }
 
+    flush_text(&mut body, &mut blocks);
+    let trailing = normalize_ws(&caption);
+    if !trailing.is_empty() {
+        blocks.push(RawBlock::Caption(trailing));
+    }
     if title.is_empty() {
         title = normalize_ws(&fallback_title);
     }
-    (title, collapse_blank_lines(body.trim()))
+    (title, blocks)
+}
+
+/// End the current text run, dropping it when it held nothing but whitespace.
+fn flush_text(body: &mut String, blocks: &mut Vec<RawBlock>) {
+    let text = collapse_blank_lines(body.trim());
+    body.clear();
+    if !text.is_empty() {
+        blocks.push(RawBlock::Text(text));
+    }
+}
+
+/// The image reference of an `<img>` / SVG `<image>` tag.
+fn image_src(tag: &str) -> Option<String> {
+    tag_attr(tag, "src")
+        .or_else(|| tag_attr(tag, "href"))
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty() && !s.starts_with("data:"))
+}
+
+/// One attribute of a raw tag, matched on its local name so `xlink:href` and
+/// `href` are the same attribute.
+fn tag_attr(tag: &str, want: &str) -> Option<String> {
+    let chars: Vec<char> = tag.chars().collect();
+    let mut i = 0;
+    // Step over the element name.
+    while i < chars.len() && !chars[i].is_whitespace() {
+        i += 1;
+    }
+    while i < chars.len() {
+        while i < chars.len() && (chars[i].is_whitespace() || chars[i] == '/') {
+            i += 1;
+        }
+        let start = i;
+        while i < chars.len()
+            && !chars[i].is_whitespace()
+            && chars[i] != '='
+            && chars[i] != '/'
+        {
+            i += 1;
+        }
+        if start == i {
+            break;
+        }
+        let key: String = chars[start..i].iter().collect();
+        while i < chars.len() && chars[i].is_whitespace() {
+            i += 1;
+        }
+        if i >= chars.len() || chars[i] != '=' {
+            continue; // A valueless attribute (`hidden`); try the next one.
+        }
+        i += 1;
+        while i < chars.len() && chars[i].is_whitespace() {
+            i += 1;
+        }
+        let value: String = if i < chars.len() && (chars[i] == '"' || chars[i] == '\'') {
+            let quote = chars[i];
+            i += 1;
+            let from = i;
+            while i < chars.len() && chars[i] != quote {
+                i += 1;
+            }
+            let value = chars[from..i].iter().collect();
+            if i < chars.len() {
+                i += 1;
+            }
+            value
+        } else {
+            let from = i;
+            while i < chars.len() && !chars[i].is_whitespace() {
+                i += 1;
+            }
+            chars[from..i].iter().collect()
+        };
+        let local = key.rsplit(':').next().unwrap_or(&key);
+        if local.eq_ignore_ascii_case(want) {
+            return Some(decode_entities(&value));
+        }
+    }
+    None
+}
+
+/// Decode every entity in a string (attribute values arrive escaped).
+fn decode_entities(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    let mut i = 0;
+    while i < s.len() {
+        let (ch, len) = next_char(&s[i..]);
+        if ch == '&' {
+            let (decoded, consumed) = decode_entity(&s[i..]);
+            out.push(decoded);
+            i += consumed;
+            continue;
+        }
+        out.push(ch);
+        i += len;
+    }
+    out
 }
 
 fn tag_name(tag: &str) -> &'static str {
@@ -457,6 +759,10 @@ fn tag_name(tag: &str) -> &'static str {
         "svg" => "svg",
         "title" => "title",
         "br" => "br",
+        "img" => "img",
+        "image" => "image",
+        "figure" => "figure",
+        "figcaption" => "figcaption",
         "h1" => "h1",
         "h2" => "h2",
         "h3" => "h3",
@@ -492,21 +798,19 @@ fn push_break(body: &mut String) {
 
 fn push_char(
     ch: char,
-    in_doc_title: bool,
-    in_heading: bool,
+    sink: Sink,
     fallback_title: &mut String,
     heading_buf: &mut String,
+    caption: &mut String,
     body: &mut String,
 ) {
-    if in_doc_title {
-        fallback_title.push(ch);
-        return;
+    match sink {
+        Sink::DocTitle => fallback_title.push(ch),
+        Sink::Heading => heading_buf.push(ch),
+        Sink::Caption => caption.push(ch),
+        Sink::Body => body.push(ch),
+        Sink::Drop => {}
     }
-    if in_heading {
-        heading_buf.push(ch);
-        return;
-    }
-    body.push(ch);
 }
 
 fn next_char(s: &str) -> (char, usize) {
@@ -728,12 +1032,18 @@ mod tests {
     <item id="nav" href="nav.xhtml" media-type="application/xhtml+xml" properties="nav"/>
     <item id="ch1" href="ch1.xhtml" media-type="application/xhtml+xml"/>
     <item id="ch2" href="ch%202.xhtml" media-type="application/xhtml+xml"/>
+    <item id="ch3" href="pages/ch3.xhtml" media-type="application/xhtml+xml"/>
+    <item id="ch4" href="ch4.xhtml" media-type="application/xhtml+xml"/>
+    <item id="page01" href="pages/img/page01.jpg" media-type="image/jpeg"/>
+    <item id="plate" href="img/plate.png" media-type="image/png"/>
     <item id="cover" href="cover.jpg" media-type="image/jpeg"/>
   </manifest>
   <spine>
     <itemref idref="nav"/>
     <itemref idref="ch1"/>
     <itemref idref="ch2"/>
+    <itemref idref="ch3"/>
+    <itemref idref="ch4"/>
   </spine>
 </package>"#,
         )
@@ -751,10 +1061,46 @@ mod tests {
             b"<html><body><h1>Chapter 2</h1><p>The &amp; next day&hellip;</p></body></html>",
         )
         .unwrap();
+        // A fixed-layout page: the whole chapter is one image inside an <svg>,
+        // referenced relative to the page's own directory.
+        zip.start_file("OEBPS/pages/ch3.xhtml", opt).unwrap();
+        zip.write_all(
+            br#"<html xmlns="http://www.w3.org/1999/xhtml"><head><title>p1</title></head><body>
+<div class="page"><svg xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="0 0 800 1200">
+<title>page 1</title><image width="800" height="1200" xlink:href="img/page01.jpg"/>
+</svg></div></body></html>"#,
+        )
+        .unwrap();
+        // A mixed page: prose, an illustration with a caption, then more prose.
+        zip.start_file("OEBPS/ch4.xhtml", opt).unwrap();
+        zip.write_all(
+            br#"<html><body><h1>Chapter 4</h1><p>Before the plate.</p>
+<figure><img src="img/plate.png" alt="x"/><figcaption>Fig. 1 &mdash; a plate.</figcaption></figure>
+<p>After the plate.</p></body></html>"#,
+        )
+        .unwrap();
+        zip.start_file("OEBPS/pages/img/page01.jpg", opt).unwrap();
+        zip.write_all(&[0xFF, 0xD8, 0x01, 0x02, 0xFF, 0xD9]).unwrap();
+        zip.start_file("OEBPS/img/plate.png", opt).unwrap();
+        zip.write_all(&[0x89, b'P', b'N', b'G', 0x03]).unwrap();
         zip.start_file("OEBPS/cover.jpg", opt).unwrap();
         zip.write_all(&[0xFF, 0xD8, 0xFF, 0xD9]).unwrap();
         let cursor = zip.finish().unwrap();
         cursor.into_inner()
+    }
+
+    /// Text of a page, the way it used to be returned before blocks.
+    fn page_text(html: &str) -> (String, String) {
+        let (title, raw) = html_to_blocks(html);
+        let blocks: Vec<Block> = raw
+            .into_iter()
+            .map(|b| match b {
+                RawBlock::Text(t) => Block::text(t),
+                RawBlock::Caption(t) => Block::caption(t),
+                RawBlock::Image(href) => Block::image(href),
+            })
+            .collect();
+        (title, derive_text(&blocks))
     }
 
     #[test]
@@ -766,7 +1112,7 @@ mod tests {
         assert_eq!(book.meta.title.as_deref(), Some("Test Book"));
         assert_eq!(book.meta.author.as_deref(), Some("Jane Doe"));
         assert_eq!(book.meta.summary.as_deref(), Some("A short blurb."));
-        assert_eq!(book.chapters.len(), 2);
+        assert_eq!(book.chapters.len(), 4);
         assert_eq!(book.chapters[0].title, "Chapter 1 The Start");
         assert!(book.chapters[0].body.contains("Once upon a time."));
         assert!(!book.chapters[0].body.contains("Chapter 1 The Start"));
@@ -775,9 +1121,112 @@ mod tests {
         assert!(book.cover.is_some());
     }
 
+    /// The page that used to import as an empty chapter: an `<svg><image/>`
+    /// wrapper with no prose at all.
+    #[test]
+    fn an_image_only_page_becomes_an_image_chapter() {
+        let zip = ZipArchive::new(Cursor::new(sample_epub_bytes())).unwrap();
+        let book = load_archive(zip).unwrap();
+
+        let blocks = book
+            .blocks
+            .iter()
+            .find(|b| b.chapter_index == 3)
+            .expect("blocks for the fixed-layout page");
+        assert_eq!(blocks.kind, ChapterKind::Image);
+        assert_eq!(blocks.blocks.len(), 1);
+        assert_eq!(blocks.blocks[0].kind, BlockKind::Image);
+
+        // The body is the marker, so the chapter is no longer blank.
+        let id = blocks.blocks[0].asset_id.clone().unwrap();
+        assert_eq!(book.chapters[2].body, format!("[[img:{id}]]"));
+        // The href resolved against the page's directory, not the OPF's.
+        let asset = book.assets.iter().find(|a| a.id == id).unwrap();
+        assert_eq!(asset.href, "OEBPS/pages/img/page01.jpg");
+        assert_eq!(asset.content_type, "image/jpeg");
+    }
+
+    #[test]
+    fn a_mixed_page_keeps_prose_picture_and_caption_in_order() {
+        let zip = ZipArchive::new(Cursor::new(sample_epub_bytes())).unwrap();
+        let book = load_archive(zip).unwrap();
+
+        let blocks = book
+            .blocks
+            .iter()
+            .find(|b| b.chapter_index == 4)
+            .expect("blocks for the illustrated page");
+        assert_eq!(blocks.kind, ChapterKind::Mixed);
+        let kinds: Vec<BlockKind> = blocks.blocks.iter().map(|b| b.kind).collect();
+        assert_eq!(
+            kinds,
+            vec![
+                BlockKind::Text,
+                BlockKind::Image,
+                BlockKind::Caption,
+                BlockKind::Text
+            ]
+        );
+        assert_eq!(blocks.blocks[2].text, "Fig. 1 — a plate.");
+
+        let body = &book.chapters[3].body;
+        assert!(body.starts_with("Before the plate."));
+        assert!(body.ends_with("After the plate."));
+        assert_eq!(super::super::blocks::markers_in(body).len(), 1);
+    }
+
+    /// Prose chapters cost no block rows: their only block is the body itself.
+    #[test]
+    fn prose_chapters_store_no_blocks() {
+        let zip = ZipArchive::new(Cursor::new(sample_epub_bytes())).unwrap();
+        let book = load_archive(zip).unwrap();
+        assert!(book.blocks.iter().all(|b| b.chapter_index > 2));
+    }
+
+    /// Two references to the same bytes are one asset, which is what keeps a
+    /// manga volume from being unpacked twice.
+    #[test]
+    fn identical_images_collapse_into_one_asset() {
+        let (_, raw) = html_to_blocks(
+            r#"<body><img src="a.png"/><p>x</p><img src="a.png"/></body>"#,
+        );
+        let images: Vec<&RawBlock> = raw
+            .iter()
+            .filter(|b| matches!(b, RawBlock::Image(_)))
+            .collect();
+        assert_eq!(images.len(), 2, "both references are kept as blocks");
+
+        let zip = ZipArchive::new(Cursor::new(sample_epub_bytes())).unwrap();
+        let book = load_archive(zip).unwrap();
+        let ids: HashSet<&String> = book.assets.iter().map(|a| &a.id).collect();
+        assert_eq!(ids.len(), book.assets.len(), "asset ids are unique");
+    }
+
+    #[test]
+    fn extract_assets_writes_each_image_once() {
+        let dir = std::env::temp_dir().join(format!("bc_epub_assets_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let epub = dir.join("book.epub");
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(&epub, sample_epub_bytes()).unwrap();
+
+        let book = load(&epub).unwrap();
+        let assets = dir.join("assets");
+        assert_eq!(
+            extract_assets(&epub, &book.assets, &assets).unwrap(),
+            book.assets.len()
+        );
+        for asset in &book.assets {
+            assert!(assets.join(asset_file_name(asset)).exists());
+        }
+        // Re-running is free: nothing is rewritten.
+        assert_eq!(extract_assets(&epub, &book.assets, &assets).unwrap(), 0);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
     #[test]
     fn html_heading_is_title_not_duplicated() {
-        let (title, body) = html_to_chapter(
+        let (title, body) = page_text(
             "<html><body><h1>Chapter 1 The Start</h1><p>Once upon a time.</p></body></html>",
         );
         assert_eq!(title, "Chapter 1 The Start");
@@ -786,8 +1235,43 @@ mod tests {
 
     #[test]
     fn html_decodes_entities() {
-        let (_, body) = html_to_chapter("<p>A &amp; B&nbsp;C&hellip;</p>");
+        let (_, body) = page_text("<p>A &amp; B&nbsp;C&hellip;</p>");
         assert!(body.contains("A & B"));
         assert!(body.contains('…'));
+    }
+
+    #[test]
+    fn tag_attr_reads_namespaced_quoted_and_escaped_values() {
+        assert_eq!(
+            tag_attr(r#"image xlink:href="img/a&amp;b.jpg" width="8""#, "href").as_deref(),
+            Some("img/a&b.jpg")
+        );
+        assert_eq!(
+            tag_attr(r#"img alt='x' src=plain.png /"#, "src").as_deref(),
+            Some("plain.png")
+        );
+        // A valueless attribute must not swallow the one we are after.
+        assert_eq!(
+            tag_attr(r#"img hidden src="a.png""#, "src").as_deref(),
+            Some("a.png")
+        );
+        assert_eq!(tag_attr("img alt=\"x\"", "src"), None);
+    }
+
+    /// An inline data URI is not an asset, and a missing file is not a chapter
+    /// killer.
+    #[test]
+    fn unusable_image_references_are_dropped() {
+        let (_, raw) = html_to_blocks(r#"<body><img src="data:image/png;base64,AA"/><p>x</p></body>"#);
+        assert!(!raw.iter().any(|b| matches!(b, RawBlock::Image(_))));
+
+        let mut zip = ZipArchive::new(Cursor::new(sample_epub_bytes())).unwrap();
+        let mut assets = Vec::new();
+        let mut seen = HashSet::new();
+        assert_eq!(
+            register_asset(&mut zip, "OEBPS/img/missing.png", &mut assets, &mut seen),
+            None
+        );
+        assert!(assets.is_empty());
     }
 }
