@@ -4,6 +4,7 @@ import { Console } from "./components/Console";
 import { GlossaryView } from "./components/GlossaryView";
 import { About } from "./components/About";
 import { Legend } from "./components/Legend";
+import { LanguageSetup } from "./components/LanguageSetup";
 import { Menubar, type MenuId } from "./components/Menubar";
 import { Overview } from "./components/Overview";
 import { Reader } from "./components/Reader";
@@ -124,7 +125,7 @@ export default function App() {
   });
   const {
     openBook, removeProject, openReference, saveProject, openProjectArchive,
-    generateSummary, exportAs,
+    generateSummary, exportAs, langSetup, confirmLangSetup, cancelLangSetup,
   } = useProjectActions({
     call, t, errText, addLog, addLogTo, logError,
     setBusyFor, setBusyById, setError, setView, setMenu,
@@ -550,6 +551,17 @@ export default function App() {
 
       {showLegend && <Legend t={t} onClose={() => setShowLegend(false)} />}
       {showAbout && <About t={t} call={call} onClose={() => setShowAbout(false)} />}
+      {langSetup && (
+        <LanguageSetup
+          t={t}
+          name={langSetup.name}
+          source={langSetup.info.source_lang}
+          target={langSetup.info.target_lang}
+          detected={langSetup.info.source_detected}
+          onConfirm={(source, target) => void confirmLangSetup(source, target)}
+          onCancel={() => void cancelLangSetup()}
+        />
+      )}
     </div>
   );
 }

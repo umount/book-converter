@@ -85,7 +85,7 @@ fn write_export(store: &Store, project_id: &str, out_path: &str) -> Result<Strin
         })
         .collect();
 
-    let config = Config::load_for(&store);
+    let config = Config::load_for(store);
     let chapter_label = crate::i18n::label(&config.target_lang, "chapter");
     export::normalize_titles(&mut chapters, &chapter_label);
     let cover = match (metadata.cover_content_type, metadata.cover_base64) {

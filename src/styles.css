@@ -657,6 +657,24 @@ tr.add-row input::placeholder { color: var(--fg-subtle); }
 .about-actions { display: flex; gap: 8px; align-self: flex-end; margin-top: 18px; }
 
 /* ============================================================================
+   New-book language pair
+   ========================================================================== */
+.lang-setup {
+  position: relative; z-index: 49;
+  width: min(400px, 100%); padding: 22px 24px 18px;
+  background: var(--bg-elevated); border: 1px solid var(--border-strong);
+  border-radius: var(--r-lg); box-shadow: var(--shadow);
+  display: flex; flex-direction: column; gap: 14px;
+}
+.lang-setup-title { font-size: 16px; font-weight: 650; }
+.lang-setup-hint { margin: 0; color: var(--fg-muted); font-size: 12px; line-height: 1.45; }
+.lang-setup-field { display: flex; flex-direction: column; gap: 5px; font-size: 12px; }
+.lang-setup-field > span:first-child { color: var(--fg); font-weight: 550; }
+.lang-setup-field select { width: 100%; }
+.lang-setup-note { color: var(--fg-muted); font-size: 11px; line-height: 1.4; }
+.lang-setup-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 4px; }
+
+/* ============================================================================
    Assistant dock (right chat)
    ========================================================================== */
 .assistant {

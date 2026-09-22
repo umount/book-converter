@@ -177,7 +177,11 @@ pub async fn set_project_languages(
 }
 
 fn with_langs(store: &Store, mut info: BookInfo) -> BookInfo {
-    let cfg = Config::load_for(store);
+    let meta = store.project_metadata().ok();
+    let cfg = Config::load().with_langs(
+        meta.as_ref().and_then(|m| m.source_lang.as_deref()),
+        meta.as_ref().and_then(|m| m.target_lang.as_deref()),
+    );
     info.source_lang = cfg.source_lang;
     info.target_lang = cfg.target_lang;
     info

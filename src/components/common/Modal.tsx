@@ -4,6 +4,9 @@ type Props = {
   /** Class for the dialog box itself (the backdrop is shared). */
   className?: string;
   onClose: () => void;
+  /** When false, only Escape and the dialog's own controls dismiss it. */
+  closeOnBackdrop?: boolean;
+  labelledBy?: string;
   children: ReactNode;
 };
 
@@ -13,7 +16,7 @@ type Props = {
  * Centring is done with flexbox rather than `translate(-50%, -50%)`: a
  * half-pixel offset from an odd height makes WebKit render the box blurry.
  */
-export function Modal({ className = "", onClose, children }: Props) {
+export function Modal({ className = "", onClose, closeOnBackdrop = true, labelledBy, children }: Props) {
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
       if (e.key === "Escape") onClose();
@@ -23,8 +26,14 @@ export function Modal({ className = "", onClose, children }: Props) {
   }, [onClose]);
 
   return (
-    <div className="modal-backdrop" onClick={onClose}>
-      <div className={className} role="dialog" aria-modal="true" onClick={(e) => e.stopPropagation()}>
+    <div className="modal-backdrop" onClick={closeOnBackdrop ? onClose : undefined}>
+      <div
+        className={className}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={labelledBy}
+        onClick={(e) => e.stopPropagation()}
+      >
         {children}
       </div>
     </div>

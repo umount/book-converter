@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { open, save } from "@tauri-apps/plugin-dialog";
 import type { CallFn } from "../api";
@@ -45,6 +45,12 @@ export function useProjectActions({
 
   const activatingRef = useRef<string | null>(null);
   const activateGenRef = useRef(0);
+  const [langSetup, setLangSetup] = useState<{
+    projectId: string;
+    path: string;
+    name: string;
+    info: BookInfo;
+  } | null>(null);
   // Read at call time: a background refresh must not land on another project.
   const activeIdRef = useRef(activeId);
   activeIdRef.current = activeId;
@@ -137,7 +143,8 @@ export function useProjectActions({
 
   // Adding a book is a one-time import: the file is parsed into the project's DB
   // here, and from then on everything works from the DB. Each add (even the same
-  // file) is a distinct, isolated project.
+  // file) is a distinct, isolated project. The language pair is confirmed in a
+  // modal before the project is added to the list.
   async function openBook() {
     setMenu(null);
     const path = await open({ filters: [{ name: "Book", extensions: ["txt", "fb2", "pdf", "zip"] }] });
@@ -146,16 +153,31 @@ export function useProjectActions({
     setBusyFor(id, t("busy.opening", { name: baseName(path) }));
     setError(null);
     const info = await call<BookInfo>("load_source", { projectId: id, path }, { critical: true });
-    if (!info) {
-      setBusyFor(id, null);
-      return; // parse failed (e.g. unreadable PDF): don't create a broken project
-    }
+    setBusyFor(id, null);
+    if (!info) return; // parse failed (e.g. unreadable PDF): don't create a broken project
     if (info.had_errors) addLogTo(id, t("log.warnEncoding", { encoding: info.encoding }));
     if (info.missing > 0 || info.duplicates > 0) {
       addLogTo(id, t("log.warnChapters", { missing: info.missing, duplicates: info.duplicates }));
     }
-    // Leave busy set; activation (via setActive) will refresh and clear it.
-    addProject({ id, path, name: baseName(path) });
+    setLangSetup({ projectId: id, path, name: baseName(path), info });
+  }
+
+  async function confirmLangSetup(source: string, target: string) {
+    if (!langSetup) return;
+    const { projectId, path, name } = langSetup;
+    const ok = await call("set_project_languages", {
+      projectId, sourceLang: source, targetLang: target,
+    }, { critical: true });
+    if (ok === undefined) return;
+    setLangSetup(null);
+    addProject({ id: projectId, path, name });
+  }
+
+  async function cancelLangSetup() {
+    if (!langSetup) return;
+    const { projectId } = langSetup;
+    setLangSetup(null);
+    await call("delete_project", { projectId });
   }
 
   async function removeProject(idx: number) {
@@ -256,5 +278,6 @@ export function useProjectActions({
     openBook, removeProject, openReference,
     saveProject, openProjectArchive,
     generateSummary, exportAs,
+    langSetup, confirmLangSetup, cancelLangSetup,
   };
 }
