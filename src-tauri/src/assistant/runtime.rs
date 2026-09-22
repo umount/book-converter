@@ -24,6 +24,7 @@ pub enum ConfirmDecision {
 pub(crate) struct TurnHandle {
     pub(crate) cancel: Arc<AtomicBool>,
     pub(crate) notify: Arc<Notify>,
+    pub(crate) auto_run: Arc<AtomicBool>,
 }
 
 pub(crate) struct PendingConfirmView {
@@ -44,6 +45,7 @@ struct PendingConfirm {
 struct TurnSlot {
     cancel: Arc<AtomicBool>,
     notify: Arc<Notify>,
+    auto_run: Arc<AtomicBool>,
     confirm: Option<PendingConfirm>,
 }
 
@@ -79,22 +81,28 @@ impl AssistantRuntime {
         }
     }
 
-    pub fn begin_turn(&self, project_id: &str) -> Result<TurnHandle, String> {
+    pub fn begin_turn(&self, project_id: &str, auto_run: bool) -> Result<TurnHandle, String> {
         let mut map = self.turns.lock().unwrap_or_else(|p| p.into_inner());
         if map.contains_key(project_id) {
             return Err("assistant_busy".into());
         }
         let cancel = Arc::new(AtomicBool::new(false));
         let notify = Arc::new(Notify::new());
+        let auto_run = Arc::new(AtomicBool::new(auto_run));
         map.insert(
             project_id.to_string(),
             TurnSlot {
                 cancel: cancel.clone(),
                 notify: notify.clone(),
+                auto_run: auto_run.clone(),
                 confirm: None,
             },
         );
-        Ok(TurnHandle { cancel, notify })
+        Ok(TurnHandle {
+            cancel,
+            notify,
+            auto_run,
+        })
     }
 
     pub fn finish_turn(&self, project_id: &str) {
@@ -109,6 +117,23 @@ impl AssistantRuntime {
             slot.notify.notify_waiters();
             if let Some(pending) = slot.confirm.take() {
                 let _ = pending.tx.send(false);
+            }
+        }
+    }
+
+    pub fn set_auto_run(&self, project_id: &str, auto_run: bool) {
+        let mut map = self.turns.lock().unwrap_or_else(|p| p.into_inner());
+        let Some(slot) = map.get_mut(project_id) else {
+            return;
+        };
+        slot.auto_run.store(auto_run, Ordering::Relaxed);
+        if auto_run {
+            if let Some(pending) = slot.confirm.as_ref() {
+                if !pending.heavy {
+                    if let Some(pending) = slot.confirm.take() {
+                        let _ = pending.tx.send(true);
+                    }
+                }
             }
         }
     }
@@ -229,8 +254,8 @@ mod tests {
     #[test]
     fn begin_turn_twice_is_busy() {
         let rt = AssistantRuntime::new();
-        rt.begin_turn("p").unwrap();
-        assert_eq!(rt.begin_turn("p").unwrap_err(), "assistant_busy");
+        rt.begin_turn("p", false).unwrap();
+        assert_eq!(rt.begin_turn("p", false).unwrap_err(), "assistant_busy");
         assert!(rt.is_running("p"));
         rt.finish_turn("p");
         assert!(!rt.is_running("p"));
@@ -239,7 +264,7 @@ mod tests {
     #[tokio::test]
     async fn cancel_resolves_confirm_as_cancelled() {
         let rt = Arc::new(AssistantRuntime::new());
-        let _h = rt.begin_turn("p").unwrap();
+        let _h = rt.begin_turn("p", false).unwrap();
         let rt2 = rt.clone();
         let waiter = tokio::spawn(async move {
             // AppHandle is required to emit; skip emit by resolving via cancel.
@@ -268,7 +293,7 @@ mod tests {
     #[test]
     fn pending_is_visible() {
         let rt = AssistantRuntime::new();
-        rt.begin_turn("p").unwrap();
+        rt.begin_turn("p", false).unwrap();
         let (tx, _rx) = oneshot::channel();
         {
             let mut map = rt.turns.lock().unwrap();
@@ -288,7 +313,7 @@ mod tests {
     #[test]
     fn turn_guard_releases_on_drop() {
         let rt = Arc::new(AssistantRuntime::new());
-        rt.begin_turn("p").unwrap();
+        rt.begin_turn("p", false).unwrap();
         {
             let _g = TurnGuard::new(rt.clone(), "p".into());
             assert!(rt.is_running("p"));

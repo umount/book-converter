@@ -291,6 +291,15 @@ pub(crate) fn find(name: &str) -> Option<&'static ToolDef> {
     TOOLS.iter().find(|d| d.name == name)
 }
 
+/// Confirm writes unless Auto-run is on; Heavy actions always ask, like Cursor.
+pub(crate) fn needs_confirm(policy: ToolPolicy, auto_run: bool) -> bool {
+    match policy {
+        ToolPolicy::Auto => false,
+        ToolPolicy::Confirm => !auto_run,
+        ToolPolicy::Heavy => true,
+    }
+}
+
 pub(crate) fn specs() -> Vec<ToolSpec> {
     TOOLS
         .iter()
@@ -330,6 +339,15 @@ mod tests {
         names.sort_unstable();
         names.dedup();
         assert_eq!(names.len(), TOOLS.len());
+    }
+
+    #[test]
+    fn auto_run_skips_confirm_but_not_heavy() {
+        assert!(!needs_confirm(ToolPolicy::Auto, false));
+        assert!(needs_confirm(ToolPolicy::Confirm, false));
+        assert!(!needs_confirm(ToolPolicy::Confirm, true));
+        assert!(needs_confirm(ToolPolicy::Heavy, true));
+        assert!(needs_confirm(ToolPolicy::Heavy, false));
     }
 
     #[test]

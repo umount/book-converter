@@ -62,28 +62,100 @@ fn preview_from_store(
             let parsed: ExportBookArgs = parse(args)?;
             let format =
                 OutputFormat::from_ext(&parsed.format).ok_or_else(|| anyhow!("bad_format"))?;
-            let path = export_path(format)?;
-            Ok(format!("export {ext} → {path}", ext = format.ext(),))
+            let _ = export_path(format);
+            Ok(format!("Export as {}.", format.ext().to_ascii_uppercase()))
         }
         "replace_in_book" => {
             let a: ReplaceInBookArgs = parse(args)?;
             let Some(store) = store else {
-                return Ok(serde_json::to_string_pretty(args).unwrap_or_else(|_| args.to_string()));
+                return Ok(format!("Replace «{}» → «{}».", a.find, a.replace));
             };
             Ok(preview_replace(store, &a)?)
         }
         "update_chapter_translation" => {
             let a: UpdateChapterTranslationArgs = parse(args)?;
-            let Some(store) = store else {
-                return Ok(serde_json::to_string_pretty(args).unwrap_or_else(|_| args.to_string()));
-            };
-            Ok(preview_update_chapter(store, &a)?)
+            Ok(preview_update_chapter(store, &a))
         }
         "set_book_prompt" => {
             let a: SetBookPromptArgs = parse(args)?;
             Ok(preview_set_book_prompt(&a))
         }
-        _ => Ok(serde_json::to_string_pretty(args).unwrap_or_else(|_| args.to_string())),
+        "start_translation" => {
+            let a: StartTranslationArgs = parse(args)?;
+            Ok(match a.limit {
+                Some(n) => format!("Translate the next {n} pending chapter(s)."),
+                None => "Translate remaining pending chapters.".into(),
+            })
+        }
+        "pause_translation" => Ok("Pause after the current chapter.".into()),
+        "translate_chapter" => {
+            let a: TranslateChapterArgs = parse(args)?;
+            Ok(format!("Translate chapter {}.", a.index))
+        }
+        "translate_chapter_title" => {
+            let a: TranslateChapterArgs = parse(args)?;
+            Ok(format!("Translate the title of chapter {}.", a.index))
+        }
+        "reset_translation" => {
+            let a: ResetTranslationArgs = parse(args)?;
+            Ok(match a.from_number {
+                Some(n) => format!("Reset translations from chapter {n} onward."),
+                None => "Reset all chapter translations.".into(),
+            })
+        }
+        "update_term" => {
+            let a: UpdateTermArgs = parse(args)?;
+            Ok(format!("Save glossary term {} → {}.", a.source, a.target))
+        }
+        "delete_term" => {
+            let a: DeleteTermArgs = parse(args)?;
+            Ok(format!("Delete glossary term «{}».", a.source))
+        }
+        "retarget_terms" => {
+            let a: RetargetTermsArgs = parse(args)?;
+            Ok(format!(
+                "Apply {} glossary rename(s) in the translation.",
+                a.changes.len()
+            ))
+        }
+        "harvest_glossary" => {
+            let a: HarvestGlossaryArgs = parse(args)?;
+            Ok(format!(
+                "Extract glossary terms from {} translated chapter(s).",
+                a.sample
+            ))
+        }
+        "bootstrap_glossary" => {
+            let a: BootstrapGlossaryArgs = parse(args)?;
+            Ok(format!(
+                "Bootstrap the glossary from {} reference pair(s).",
+                a.sample
+            ))
+        }
+        "set_chapter_prompt" => {
+            let a: SetChapterPromptArgs = parse(args)?;
+            let t = a.prompt.trim();
+            if t.is_empty() {
+                Ok(format!("Clear the prompt for chapter {}.", a.index))
+            } else {
+                Ok(format!(
+                    "Set a prompt on chapter {}:\n{}",
+                    a.index,
+                    clip_text(t, 240)
+                ))
+            }
+        }
+        "set_chapter_context" => {
+            let a: SetChapterContextArgs = parse(args)?;
+            Ok(format!(
+                "Update rolling context before chapter {}.",
+                a.index
+            ))
+        }
+        "use_reference_as_base" => {
+            Ok("Re-seed pending chapters from the reference translation.".into())
+        }
+        _ => Ok(String::new()),
     }
 }
 
@@ -116,28 +188,19 @@ fn preview_replace(store: &Store, a: &ReplaceInBookArgs) -> Result<String> {
     Ok(lines.join("\n"))
 }
 
-fn preview_update_chapter(store: &Store, a: &UpdateChapterTranslationArgs) -> Result<String> {
-    let Some(ch) = store.chapter_full(a.index)? else {
-        return Ok(format!("update chapter idx={} (not found)", a.index));
-    };
-    let current = ch.translated.as_deref().unwrap_or("");
-    Ok(format!(
-        "update chapter idx={} number={:?} status={}\n\
-         title: {} → {}\n\
-         current: {}\n\
-         new: {}",
-        a.index,
-        ch.number,
-        ch.status,
-        ch.translated_title.as_deref().unwrap_or(&ch.source_title),
-        if a.translated_title.is_empty() {
-            "(unchanged)"
-        } else {
-            a.translated_title.as_str()
-        },
-        clip_text(current, 280),
-        clip_text(&a.translated, 280),
-    ))
+fn preview_update_chapter(store: Option<&Store>, a: &UpdateChapterTranslationArgs) -> String {
+    let number = store
+        .and_then(|s| s.chapter_full(a.index).ok().flatten())
+        .and_then(|ch| ch.number)
+        .unwrap_or(a.index);
+    if a.translated_title.trim().is_empty() {
+        format!("Update the translation of chapter {number}.")
+    } else {
+        format!(
+            "Update chapter {number} (title: {}).",
+            clip_text(a.translated_title.trim(), 80)
+        )
+    }
 }
 
 fn preview_set_book_prompt(a: &SetBookPromptArgs) -> String {
@@ -551,7 +614,7 @@ mod tests {
     }
 
     #[test]
-    fn update_chapter_preview_shows_current_and_new() {
+    fn update_chapter_preview_is_a_short_summary() {
         let store = seed();
         let def = find("update_chapter_translation").unwrap();
         let out = preview_from_store(
@@ -561,9 +624,10 @@ mod tests {
             |_| Ok("unused".into()),
         )
         .unwrap();
-        assert!(out.contains("idx=1"));
-        assert!(out.contains("перевод один"));
-        assert!(out.contains("новый текст"));
+        assert!(out.contains("chapter 1"));
+        assert!(out.contains("Глава 1"));
+        assert!(!out.contains("idx="));
+        assert!(!out.contains("новый текст"));
     }
 
     #[test]

@@ -525,6 +525,7 @@ export default function App() {
           status={assistant.status}
           pendingConfirm={assistant.pendingConfirm}
           confirmExpired={assistant.confirmExpired}
+          autoRun={assistant.autoRun}
           onClose={() => {
             setShowAssistant(false);
             localStorage.setItem("bc.assistant.open", "0");
@@ -534,6 +535,7 @@ export default function App() {
           onApprove={(id) => void assistant.approve(id)}
           onDeny={(id) => void assistant.deny(id)}
           onCancel={() => void assistant.cancel()}
+          onAutoRun={(next) => void assistant.setAutoRun(next)}
         />
       </div>
       <StatusBar

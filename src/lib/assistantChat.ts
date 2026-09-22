@@ -46,7 +46,7 @@ export function groupAssistantMessages(
       && !(isLastTurn && opts.turnInProgress);
     const answer = finishedAnswer ? chunk[lastAsst] : null;
     const rawReasoning = finishedAnswer ? chunk.slice(0, lastAsst) : chunk;
-    const steps = rawReasoning.filter((s) => s.content.trim());
+    const steps = rawReasoning.filter((s) => s.content.trim() || s.tool_name);
 
     if (isLastTurn && steps.length) {
       items.push({ type: "reasoning", id: steps[0].id, steps });
@@ -56,6 +56,13 @@ export function groupAssistantMessages(
     }
   }
   return items;
+}
+
+/** Display name for a tool when the locale has no dedicated label. */
+export function humanizeToolName(name: string): string {
+  const s = name.replace(/_/g, " ").trim();
+  if (!s) return name;
+  return s.charAt(0).toUpperCase() + s.slice(1);
 }
 
 function lastAssistantIndex(chunk: AssistantChatRow[]): number {

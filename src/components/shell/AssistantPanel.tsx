@@ -4,7 +4,7 @@ import type {
   AssistantMessage,
   AssistantStatus,
 } from "../../hooks/useAssistant";
-import { groupAssistantMessages } from "../../lib/assistantChat";
+import { groupAssistantMessages, humanizeToolName } from "../../lib/assistantChat";
 
 type Props = {
   t: (key: string, vars?: Record<string, string | number>) => string;
@@ -15,18 +15,25 @@ type Props = {
   status: AssistantStatus;
   pendingConfirm: AssistantConfirm | null;
   confirmExpired: boolean;
+  autoRun: boolean;
   onClose: () => void;
   onClear: () => void;
   onSend: (text: string) => void;
   onApprove: (confirmId: string) => void;
   onDeny: (confirmId: string) => void;
   onCancel: () => void;
+  onAutoRun: (next: boolean) => void;
 };
+
+function looksLikeDump(text: string): boolean {
+  const s = text.trim();
+  return s.startsWith("{") || s.startsWith("[") || s.startsWith("→ ");
+}
 
 /** Right-side project assistant dock (Cursor-style chat). */
 export function AssistantPanel({
   t, open, width, enabled, messages, status, pendingConfirm, confirmExpired,
-  onClose, onClear, onSend, onApprove, onDeny, onCancel,
+  autoRun, onClose, onClear, onSend, onApprove, onDeny, onCancel, onAutoRun,
 }: Props) {
   const [draft, setDraft] = useState("");
   const [reasoningOpen, setReasoningOpen] = useState(false);
@@ -53,11 +60,18 @@ export function AssistantPanel({
     onSend(text);
   }
 
+  function toolLabel(name: string) {
+    const key = `assistant.tool.${name}`;
+    const label = t(key);
+    return label === key ? humanizeToolName(name) : label;
+  }
+
   const statusLabel =
     status === "running" ? t("assistant.status.running")
     : status === "awaiting_confirm" ? t("assistant.status.awaitingConfirm")
     : status === "error" ? t("assistant.status.error")
     : null;
+  const busy = status === "running" || status === "awaiting_confirm";
 
   return (
     <aside className="assistant" style={{ width }} aria-label={t("assistant.title")}>
@@ -112,10 +126,9 @@ export function AssistantPanel({
                       {item.steps.map((step) =>
                         step.role === "tool" ? (
                           <div key={step.id} className="assistant-tool">
-                            <span className="assistant-tool-name">{step.tool_name || "tool"}</span>
-                            <pre>{step.content}</pre>
+                            {toolLabel(step.tool_name || "tool")}
                           </div>
-                        ) : (
+                        ) : looksLikeDump(step.content) ? null : (
                           <div key={step.id} className="assistant-reasoning-text">{step.content}</div>
                         ),
                       )}
@@ -129,18 +142,19 @@ export function AssistantPanel({
             )}
             {pendingConfirm && (
               <div className="assistant-confirm">
-                <div className="assistant-confirm-title">{t("assistant.confirm.title")}</div>
-                <div className="assistant-confirm-tool">{pendingConfirm.tool}</div>
-                <pre className="assistant-confirm-args">{pendingConfirm.args}</pre>
+                <div className="assistant-confirm-title">{toolLabel(pendingConfirm.tool)}</div>
+                {pendingConfirm.args && !looksLikeDump(pendingConfirm.args) && (
+                  <div className="assistant-confirm-detail">{pendingConfirm.args}</div>
+                )}
                 {pendingConfirm.heavy && (
                   <div className="assistant-confirm-warn">{t("assistant.confirm.heavy")}</div>
                 )}
                 <div className="assistant-confirm-actions">
-                  <button className="primary" onClick={() => onApprove(pendingConfirm.id)}>
-                    {t("assistant.confirm.approve")}
-                  </button>
                   <button onClick={() => onDeny(pendingConfirm.id)}>
-                    {t("assistant.confirm.deny")}
+                    {t("assistant.confirm.skip")}
+                  </button>
+                  <button className="primary" onClick={() => onApprove(pendingConfirm.id)}>
+                    {t("assistant.confirm.run")}
                   </button>
                 </div>
               </div>
@@ -151,7 +165,7 @@ export function AssistantPanel({
             <div className="assistant-status">
               <span className="spinner tiny" />
               <span>{statusLabel}</span>
-              { (status === "running" || status === "awaiting_confirm") && (
+              {busy && (
                 <button className="linkish" onClick={onCancel}>{t("assistant.cancel")}</button>
               )}
             </div>
@@ -162,7 +176,7 @@ export function AssistantPanel({
               rows={3}
               value={draft}
               placeholder={t("assistant.placeholder")}
-              disabled={status === "running" || status === "awaiting_confirm"}
+              disabled={busy}
               onChange={(e) => setDraft(e.target.value)}
               onKeyDown={(e) => {
                 if (e.key === "Enter" && !e.shiftKey) {
@@ -171,13 +185,24 @@ export function AssistantPanel({
                 }
               }}
             />
-            <button
-              className="primary"
-              disabled={!draft.trim() || status === "running" || status === "awaiting_confirm"}
-              onClick={submit}
-            >
-              {t("assistant.send")}
-            </button>
+            <div className="assistant-composer-bar">
+              <select
+                className="assistant-mode"
+                value={autoRun ? "auto" : "ask"}
+                title={autoRun ? t("assistant.mode.autoTip") : t("assistant.mode.askTip")}
+                onChange={(e) => onAutoRun(e.target.value === "auto")}
+              >
+                <option value="ask">{t("assistant.mode.ask")}</option>
+                <option value="auto">{t("assistant.mode.auto")}</option>
+              </select>
+              <button
+                className="primary"
+                disabled={!draft.trim() || busy}
+                onClick={submit}
+              >
+                {t("assistant.send")}
+              </button>
+            </div>
           </div>
         </>
       )}

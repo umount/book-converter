@@ -119,6 +119,7 @@ pub fn run() {
             commands::assistant_state,
             commands::assistant_send,
             commands::assistant_approve,
+            commands::assistant_set_auto_run,
             commands::assistant_cancel,
         ])
         .run(tauri::generate_context!())

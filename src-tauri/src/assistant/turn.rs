@@ -339,64 +339,52 @@ async fn dispatch_one(
         return Ok(result);
     }
 
-    let preview = executor::confirm_preview(app, project_id, def, &args)
-        .unwrap_or_else(|_| serde_json::to_string_pretty(&args).unwrap_or_default());
-    let _ = app.emit(
-        "assistant_step",
-        serde_json::json!({
-            "project": project_id,
-            "role": "tool",
-            "phase": "call",
-            "tool_name": def.name,
-            "content": format!("→ {} {preview}", def.name),
-        }),
-    );
+    let preview = executor::confirm_preview(app, project_id, def, &args).unwrap_or_default();
 
-    let allowed = match def.policy {
-        ToolPolicy::Auto => true,
-        ToolPolicy::Confirm | ToolPolicy::Heavy => {
-            let decision = runtime
-                .request_confirm(
+    let allowed = if tools::needs_confirm(def.policy, handle.auto_run.load(Ordering::Relaxed)) {
+        let decision = runtime
+            .request_confirm(
+                app,
+                project_id,
+                def.name,
+                &preview,
+                matches!(def.policy, ToolPolicy::Heavy),
+            )
+            .await;
+        match decision {
+            ConfirmDecision::Approved => true,
+            ConfirmDecision::Denied => {
+                finish_tool(
+                    store,
+                    turn,
                     app,
                     project_id,
-                    def.name,
-                    &preview,
-                    matches!(def.policy, ToolPolicy::Heavy),
+                    def,
+                    &call.id,
+                    "user_denied",
+                    false,
                 )
-                .await;
-            match decision {
-                ConfirmDecision::Approved => true,
-                ConfirmDecision::Denied => {
-                    finish_tool(
-                        store,
-                        turn,
-                        app,
-                        project_id,
-                        def,
-                        &call.id,
-                        "user_denied",
-                        false,
-                    )
-                    .await?;
-                    return Ok("user_denied".into());
-                }
-                ConfirmDecision::TimedOut => {
-                    finish_tool(
-                        store,
-                        turn,
-                        app,
-                        project_id,
-                        def,
-                        &call.id,
-                        "confirm_timeout",
-                        false,
-                    )
-                    .await?;
-                    return Ok("confirm_timeout".into());
-                }
-                ConfirmDecision::Cancelled => return Err(anyhow!("cancelled")),
+                .await?;
+                return Ok("user_denied".into());
             }
+            ConfirmDecision::TimedOut => {
+                finish_tool(
+                    store,
+                    turn,
+                    app,
+                    project_id,
+                    def,
+                    &call.id,
+                    "confirm_timeout",
+                    false,
+                )
+                .await?;
+                return Ok("confirm_timeout".into());
+            }
+            ConfirmDecision::Cancelled => return Err(anyhow!("cancelled")),
         }
+    } else {
+        true
     };
 
     if !allowed {

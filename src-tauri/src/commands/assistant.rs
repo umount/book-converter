@@ -75,6 +75,7 @@ pub fn assistant_send(
     project_id: String,
     message: String,
     open_chapter: Option<usize>,
+    auto_run: Option<bool>,
     app: AppHandle,
     state: State<'_, AppState>,
     runtime: State<'_, Arc<AssistantRuntime>>,
@@ -87,7 +88,7 @@ pub fn assistant_send(
     let db = state
         .with(&project_id, |s| s.db_path.clone())
         .ok_or("no_source")?;
-    let handle = runtime.begin_turn(&project_id)?;
+    let handle = runtime.begin_turn(&project_id, auto_run.unwrap_or(false))?;
     let runtime = runtime.inner().clone();
     let app2 = app.clone();
     let project = project_id.clone();
@@ -136,6 +137,17 @@ pub fn assistant_approve(
 ) -> Result<(), String> {
     validate_project_id(&project_id).map_err(|e| e.to_string())?;
     runtime.resolve_confirm(&project_id, &confirm_id, approved)
+}
+
+#[tauri::command]
+pub fn assistant_set_auto_run(
+    project_id: String,
+    auto_run: bool,
+    runtime: State<'_, Arc<AssistantRuntime>>,
+) -> Result<(), String> {
+    validate_project_id(&project_id).map_err(|e| e.to_string())?;
+    runtime.set_auto_run(&project_id, auto_run);
+    Ok(())
 }
 
 #[tauri::command]

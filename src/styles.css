@@ -718,26 +718,20 @@ tr.add-row input::placeholder { color: var(--fg-subtle); }
   white-space: pre-wrap; word-break: break-word;
 }
 .assistant-tool {
-  width: 100%; font-size: 11px; color: var(--fg-muted);
-  border: 1px dashed var(--border-strong); border-radius: var(--r-md); padding: 6px 8px;
-}
-.assistant-tool-name { font-family: var(--font-mono); color: var(--fg); }
-.assistant-tool pre {
-  margin: 4px 0 0; white-space: pre-wrap; word-break: break-word;
-  font-family: var(--font-mono); font-size: 10px; max-height: 120px; overflow: auto;
+  width: 100%; font-size: 12px; color: var(--fg-muted);
+  padding: 2px 0;
 }
 .assistant-confirm {
-  border: 1px solid var(--warning, #c9a227); background: var(--bg-inset);
+  border: 1px solid var(--border-strong); background: var(--bg-inset);
   border-radius: var(--r-md); padding: 10px; display: flex; flex-direction: column; gap: 6px;
 }
-.assistant-confirm-title { font-size: 12px; font-weight: 600; }
-.assistant-confirm-tool { font-family: var(--font-mono); font-size: 12px; }
-.assistant-confirm-args {
-  margin: 0; font-family: var(--font-mono); font-size: 10px; white-space: pre-wrap;
-  max-height: 140px; overflow: auto; color: var(--fg-muted);
+.assistant-confirm-title { font-size: 13px; font-weight: 600; }
+.assistant-confirm-detail {
+  font-size: 12px; line-height: 1.45; color: var(--fg-muted); white-space: pre-wrap;
+  word-break: break-word;
 }
 .assistant-confirm-warn { font-size: 11px; color: var(--danger, #d35); }
-.assistant-confirm-actions { display: flex; gap: 8px; }
+.assistant-confirm-actions { display: flex; gap: 8px; justify-content: flex-end; }
 .assistant-status {
   display: flex; align-items: center; gap: 8px; padding: 6px 10px;
   border-top: 1px solid var(--border); font-size: 11px; color: var(--fg-muted);
@@ -752,7 +746,14 @@ tr.add-row input::placeholder { color: var(--fg-subtle); }
   width: 100%; resize: none; font: inherit; font-size: 13px; line-height: 1.4;
   padding: 8px 10px; border-radius: var(--r-md);
 }
-.assistant-input button.primary { align-self: flex-end; }
+.assistant-composer-bar {
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+}
+.assistant-mode {
+  font: inherit; font-size: 12px; padding: 4px 8px; border-radius: var(--r-md);
+  max-width: 55%;
+}
+.assistant-input button.primary { align-self: auto; }
 
 @media (max-width: 760px) {
   .sidebar { position: absolute; z-index: 15; height: calc(100vh - var(--h-menubar)); left: var(--w-activitybar); }

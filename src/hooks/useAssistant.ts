@@ -53,6 +53,11 @@ export function useAssistant({ call, activeId, enabled, onInvalidated }: Opts) {
   const [status, setStatus] = useState<AssistantStatus>("idle");
   const [pendingConfirm, setPendingConfirm] = useState<AssistantConfirm | null>(null);
   const [confirmExpired, setConfirmExpired] = useState(false);
+  const [autoRun, setAutoRunState] = useState(() => {
+    try { return localStorage.getItem("bc.assistant.autoRun") === "1"; } catch { return false; }
+  });
+  const autoRunRef = useRef(autoRun);
+  autoRunRef.current = autoRun;
   const activeIdRef = useRef(activeId);
   activeIdRef.current = activeId;
   const onInvalidatedRef = useRef(onInvalidated);
@@ -86,8 +91,16 @@ export function useAssistant({ call, activeId, enabled, onInvalidated }: Opts) {
     const st = await call<AssistantStateDto>("assistant_state", { projectId });
     if (activeIdRef.current !== projectId) return;
     if (st?.pending) {
-      setPendingConfirm(st.pending);
-      setStatus("awaiting_confirm");
+      if (autoRunRef.current && !st.pending.heavy) {
+        setPendingConfirm(null);
+        setStatus("running");
+        void call("assistant_approve", {
+          projectId, confirmId: st.pending.id, approved: true,
+        });
+      } else {
+        setPendingConfirm(st.pending);
+        setStatus("awaiting_confirm");
+      }
     } else if (st?.running) {
       setPendingConfirm(null);
       setStatus("running");
@@ -144,12 +157,21 @@ export function useAssistant({ call, activeId, enabled, onInvalidated }: Opts) {
           project: string; id: string; tool: string; args: string; heavy: boolean;
         }>("assistant_need_confirm", (e) => {
           if (e.payload.project !== activeIdRef.current) return;
-          setPendingConfirm({
+          const pending = {
             id: e.payload.id,
             tool: e.payload.tool,
             args: e.payload.args,
             heavy: e.payload.heavy,
-          });
+          };
+          if (autoRunRef.current && !pending.heavy) {
+            void call("assistant_approve", {
+              projectId: e.payload.project, confirmId: pending.id, approved: true,
+            });
+            setPendingConfirm(null);
+            setStatus("running");
+            return;
+          }
+          setPendingConfirm(pending);
           setConfirmExpired(false);
           setStatus("awaiting_confirm");
         }),
@@ -191,7 +213,9 @@ export function useAssistant({ call, activeId, enabled, onInvalidated }: Opts) {
       ...ms,
       { id: Date.now(), role: "user", content: text },
     ]);
-    const ok = await call("assistant_send", { projectId: activeId, message: text, openChapter });
+    const ok = await call("assistant_send", {
+      projectId: activeId, message: text, openChapter, autoRun: autoRunRef.current,
+    });
     if (ok === undefined) {
       void loadHistory(activeId);
       void restoreState(activeId);
@@ -229,8 +253,20 @@ export function useAssistant({ call, activeId, enabled, onInvalidated }: Opts) {
     setStatus("idle");
   }
 
+  async function setAutoRun(next: boolean) {
+    autoRunRef.current = next;
+    setAutoRunState(next);
+    try { localStorage.setItem("bc.assistant.autoRun", next ? "1" : "0"); } catch { /* ignore */ }
+    if (activeId) {
+      await call("assistant_set_auto_run", { projectId: activeId, autoRun: next });
+    }
+    if (next && pendingConfirm && !pendingConfirm.heavy) {
+      await approve(pendingConfirm.id);
+    }
+  }
+
   return {
-    messages, status, pendingConfirm, confirmExpired,
-    sendWithChapter, clear, approve, deny, cancel, loadHistory,
+    messages, status, pendingConfirm, confirmExpired, autoRun,
+    sendWithChapter, clear, approve, deny, cancel, setAutoRun, loadHistory,
   };
 }
