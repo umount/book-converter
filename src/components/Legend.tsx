@@ -10,7 +10,7 @@ type Props = {
 const FLAGGED: MarkerId[] = ["failed", "issues"];
 
 /** Badges shown in the translation pane's header, beside the chapter title. */
-const BADGES = ["reference", "manual", "queued", "translating", "failed", "issues"] as const;
+const BADGES = ["reference", "manual", "queued", "translating", "failed", "issues", "pictures"] as const;
 
 /** Help → Markers: what every glyph and badge in the UI stands for. */
 export function Legend({ t, onClose }: Props) {

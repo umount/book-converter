@@ -12,6 +12,8 @@ export type Progress = {
   done: number;
   total: number;
   failed: number;
+  /** Chapters with nothing to translate (pages of pictures); part of `total`. */
+  skipped: number;
   pending: number;
   running: boolean;
   job_done?: number;

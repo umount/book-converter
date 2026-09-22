@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { formatEta } from "../lib/format";
+import { formatEta, translatable } from "../lib/format";
 import type { BookDetails, Progress, RefInfo } from "../types";
 import { Panel } from "./Panel";
 
@@ -40,15 +40,17 @@ export function Overview({
   const jobTotal = progress?.job_total && progress.job_total > 0 ? progress.job_total : null;
   const jobDone = progress?.job_done ?? 0;
   const showJob = !!(progress?.running && jobTotal);
+  // Pages of pictures are out of the denominator: they can never be "done".
+  const target = progress ? translatable(progress) : 0;
   const pct = showJob
     ? Math.round((jobDone / jobTotal!) * 100)
-    : progress && progress.total > 0
-      ? Math.round((progress.done / progress.total) * 100)
+    : target > 0
+      ? Math.round(((progress?.done ?? 0) / target) * 100)
       : 0;
   const barLabel = showJob
     ? `${jobDone}/${jobTotal}`
     : progress
-      ? `${progress.done}/${progress.total}`
+      ? `${progress.done}/${target}`
       : "";
   const eta =
     progress?.running && progress.eta_secs != null && progress.eta_secs > 0
@@ -91,6 +93,12 @@ export function Overview({
           <div className="stat"><div className="stat-n">{progress.done}</div><div className="stat-l">{t("overview.statDone")}</div></div>
           <div className="stat"><div className="stat-n">{progress.pending}</div><div className="stat-l">{t("overview.statPending")}</div></div>
           <div className={`stat ${progress.failed > 0 ? "failed" : ""}`}><div className="stat-n">{progress.failed}</div><div className="stat-l">{t("overview.statFailed")}</div></div>
+          {progress.skipped > 0 && (
+            <div className="stat" title={t("overview.statPicturesTip")}>
+              <div className="stat-n">{progress.skipped}</div>
+              <div className="stat-l">{t("overview.statPictures")}</div>
+            </div>
+          )}
         </div>
       )}
 

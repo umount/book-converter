@@ -25,6 +25,7 @@ import { useFindReplace } from "./hooks/useFindReplace";
 import { useHotkeys } from "./hooks/useHotkeys";
 import { useTabs } from "./hooks/useTabs";
 import type { FindOpts } from "./lib/find";
+import { translatable } from "./lib/format";
 import { useBookWorkspace } from "./hooks/useBookWorkspace";
 import { useGlossary } from "./hooks/useGlossary";
 import { useProjectActions } from "./hooks/useProjectActions";
@@ -419,7 +420,7 @@ export default function App() {
                     <div className="worksub">
                       {book.book && `${t("overview.chapters", { n: book.book.total_chapters })} · ${book.book.format} · ${book.book.encoding}`}
                       {book.ref && ` · ${t("overview.ref", { n: book.ref.max_covered ?? "?" })}`}
-                      {progress && ` · ${t("overview.done", { done: progress.done, total: progress.total })}`}
+                      {progress && ` · ${t("overview.done", { done: progress.done, total: translatable(progress) })}`}
                     </div>
                   </div>
 

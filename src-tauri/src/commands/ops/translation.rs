@@ -41,6 +41,15 @@ pub(crate) fn translate_chapter(
     project_id: &str,
     index: usize,
 ) -> Result<(), String> {
+    // A page of pictures has no words to send to a text model, and the
+    // assistant can ask for any chapter by number.
+    if !project_store(state, project_id)?
+        .chapter_kind(index)
+        .map_err(err)?
+        .is_translatable()
+    {
+        return Err("chapter_no_text".into());
+    }
     let slot = jobs::lease(app, state, project_id)?;
     let db = slot.db.clone();
     jobs::spawn(

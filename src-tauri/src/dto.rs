@@ -59,6 +59,9 @@ pub struct Progress {
     pub total: usize,
     pub failed: usize,
     pub pending: usize,
+    /// Chapters with nothing to translate (pages of pictures). Part of `total`,
+    /// so the UI measures progress against `total - skipped`.
+    pub skipped: usize,
     pub running: bool,
     /// Chapters finished in the current job (0..job_total).
     #[serde(default)]

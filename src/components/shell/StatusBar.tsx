@@ -1,4 +1,4 @@
-import { formatEta, langAbbr } from "../../lib/format";
+import { formatEta, langAbbr, translatable } from "../../lib/format";
 import type { BookInfo, Progress } from "../../types";
 
 type Props = {
@@ -30,7 +30,7 @@ export function StatusBar({
         ) : progress ? (
           <>
             <span className={`sb-dot ${running ? "running" : ""}`} />
-            <span>{t("status.progress", { done: progress.done, total: progress.total })}</span>
+            <span>{t("status.progress", { done: progress.done, total: translatable(progress) })}</span>
             {progress.failed > 0 && <span className="sb-item">{t("progress.failed", { n: progress.failed })}</span>}
           </>
         ) : (

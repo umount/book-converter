@@ -59,8 +59,17 @@ impl Store {
                  ON CONFLICT(chapter_idx, ord) DO NOTHING",
             )?;
             let mut kind = tx.prepare("UPDATE chapters SET kind = ?2 WHERE idx = ?1")?;
+            // A page with no words is taken out of the queue right here, so it
+            // never costs an API call and never reads as unfinished work.
+            let mut skip = tx.prepare(
+                "UPDATE chapters SET status = 'skipped', updated_at = datetime('now')
+                 WHERE idx = ?1 AND status = 'pending'",
+            )?;
             for chapter in chapters {
                 kind.execute(params![chapter.chapter_index as i64, chapter.kind.as_str()])?;
+                if !chapter.kind.is_translatable() {
+                    skip.execute(params![chapter.chapter_index as i64])?;
+                }
                 for (ord, b) in chapter.blocks.iter().enumerate() {
                     block.execute(params![
                         chapter.chapter_index as i64,
@@ -268,6 +277,26 @@ mod tests {
     fn untranslatable_chapters_are_the_image_ones() {
         let store = store();
         assert_eq!(store.untranslatable_chapters().unwrap(), vec![2]);
+    }
+
+    /// A page of pictures leaves the queue, and progress is measured against
+    /// what can actually be translated.
+    #[test]
+    fn an_image_chapter_is_skipped_not_pending() {
+        let store = store();
+        assert_eq!(store.pending_chapters().unwrap(), vec![1]);
+        let stats = store.stats().unwrap();
+        assert_eq!((stats.total, stats.pending, stats.skipped), (2, 1, 1));
+    }
+
+    /// Re-translating the book must not queue the pictures back up.
+    #[test]
+    fn a_reset_leaves_skipped_chapters_alone() {
+        let store = store();
+        store.save_translation(1, "Chapter 1", "перевод").unwrap();
+        assert_eq!(store.reset_from(None).unwrap(), 1);
+        assert_eq!(store.pending_chapters().unwrap(), vec![1]);
+        assert_eq!(store.stats().unwrap().skipped, 1);
     }
 
     /// Two names for the same bytes are one asset row.

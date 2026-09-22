@@ -34,6 +34,7 @@ pub(crate) async fn run(
                 total: event.stats.total,
                 failed: event.stats.failed,
                 pending: event.stats.pending,
+                skipped: event.stats.skipped,
                 running: true,
                 job_done: event.job_done,
                 job_total: event.job_total,

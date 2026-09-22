@@ -47,6 +47,7 @@ pub async fn get_progress(
         total: st.total,
         failed: st.failed,
         pending: st.pending,
+        skipped: st.skipped,
         running,
         job_done: 0,
         job_total: 0,

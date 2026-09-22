@@ -382,15 +382,23 @@ impl Store {
     /// current glossary). `from_index` limits it to chapters at/after that reading-order
     /// index; `None` resets the whole book. Existing translated text is left in place
     /// until a re-run overwrites it. Returns the number of chapters reset.
+    /// Chapters with nothing to translate stay skipped: a re-translation run
+    /// must not queue up pages of pictures again.
     pub fn reset_from(&self, from_index: Option<usize>) -> Result<usize> {
+        const TRANSLATABLE: &str = "COALESCE(kind, 'text') NOT IN ('image', 'empty')";
         let n = match from_index {
             Some(idx) => self.conn.execute(
-                "UPDATE chapters SET status = 'pending', updated_at = datetime('now')
-                 WHERE idx >= ?1",
+                &format!(
+                    "UPDATE chapters SET status = 'pending', updated_at = datetime('now')
+                     WHERE idx >= ?1 AND {TRANSLATABLE}"
+                ),
                 params![idx as i64],
             )?,
             None => self.conn.execute(
-                "UPDATE chapters SET status = 'pending', updated_at = datetime('now')",
+                &format!(
+                    "UPDATE chapters SET status = 'pending', updated_at = datetime('now')
+                     WHERE {TRANSLATABLE}"
+                ),
                 [],
             )?,
         };
@@ -438,6 +446,7 @@ impl Store {
                 Status::InProgress => stats.in_progress += count,
                 Status::Done => stats.done += count,
                 Status::Failed => stats.failed += count,
+                Status::Skipped => stats.skipped += count,
             }
         }
         Ok(stats)

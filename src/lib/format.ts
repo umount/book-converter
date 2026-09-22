@@ -1,5 +1,18 @@
 // Shared formatting helpers used across views.
 
+import type { Progress } from "../types";
+
+/**
+ * Chapters the translator can actually finish.
+ *
+ * A page of pictures counts as a chapter of the book but can never become
+ * "done", so it must stay out of the denominator — otherwise a manga volume
+ * would sit at 40% forever.
+ */
+export function translatable(p: Progress): number {
+  return Math.max(0, p.total - p.skipped);
+}
+
 /** Human-readable duration from seconds: "45s", "3m", "2h 10m". */
 export function formatEta(secs: number): string {
   const s = Math.max(0, Math.round(secs));

@@ -66,8 +66,8 @@ pub fn build_snapshot(
             meta.encoding.as_deref().unwrap_or("?"),
         ),
         format!(
-            "progress: done={} pending={} failed={} total={} job_running={}",
-            stats.done, stats.pending, stats.failed, stats.total, job_running
+            "progress: done={} pending={} failed={} skipped={} total={} job_running={}",
+            stats.done, stats.pending, stats.failed, stats.skipped, stats.total, job_running
         ),
         format!("next_pending: {next:?}"),
         format!("max_chapter_number: {max_n:?}"),
@@ -87,8 +87,9 @@ pub fn build_snapshot(
     if let Some(idx) = open_chapter {
         if let Some(ch) = store.chapter_full(idx)? {
             lines.push(format!(
-                "open_chapter: idx={idx} number={:?} status={} origin={:?} title={:?} lang_issues={:?}",
-                ch.number, ch.status, ch.origin, ch.translated_title.or(Some(ch.source_title)),
+                "open_chapter: idx={idx} number={:?} status={} kind={} origin={:?} title={:?} lang_issues={:?}",
+                ch.number, ch.status, ch.kind, ch.origin,
+                ch.translated_title.or(Some(ch.source_title)),
                 ch.lang_issues,
             ));
         }

@@ -37,6 +37,10 @@ pub enum Status {
     InProgress,
     Done,
     Failed,
+    /// Nothing for the text pipeline to translate: a page that is only pictures.
+    /// Not a failure and not work in waiting — it is the finished state for such
+    /// a chapter, until reading the words off the page itself is implemented.
+    Skipped,
 }
 
 impl Status {
@@ -46,6 +50,7 @@ impl Status {
             Status::InProgress => "in_progress",
             Status::Done => "done",
             Status::Failed => "failed",
+            Status::Skipped => "skipped",
         }
     }
 
@@ -54,6 +59,7 @@ impl Status {
             "in_progress" => Status::InProgress,
             "done" => Status::Done,
             "failed" => Status::Failed,
+            "skipped" => Status::Skipped,
             _ => Status::Pending,
         }
     }
@@ -67,6 +73,9 @@ pub struct Stats {
     pub failed: usize,
     pub in_progress: usize,
     pub pending: usize,
+    /// Chapters with nothing to translate. They are part of `total` but can
+    /// never become `done`, so progress is measured against `total - skipped`.
+    pub skipped: usize,
 }
 
 /// Connection pragmas, applied before the schema on every connection.
