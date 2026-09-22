@@ -30,7 +30,12 @@ pub async fn load_source(
         ensure_chapters(&path, &mut book).await;
     }
     if book.chapters.is_empty() {
-        return Err("no_text_extracted".into());
+        let code = if path.to_lowercase().ends_with(".pdf") {
+            "no_text_extracted"
+        } else {
+            "empty_book"
+        };
+        return Err(code.into());
     }
 
     let db = db_path_for_project(&project_id).map_err(err)?;

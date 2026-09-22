@@ -57,9 +57,13 @@ pub(crate) async fn ensure_chapters(path: &str, book: &mut crate::book::LoadedBo
         Ok(d) => d.text,
         Err(_) => return,
     };
-    // Don't build chapters from mis-decoded / empty text (a broken PDF): let the
-    // caller report that instead of producing garbage.
-    if !crate::book::looks_like_text(&text) {
+    if text.trim().is_empty() {
+        return;
+    }
+    // The quality gate is for mis-decoded PDF fonts. CJK novels (and any
+    // already-decoded TXT) rarely use ASCII word spaces; applying it here
+    // rejected readable books as "unreadable PDF".
+    if path.to_lowercase().ends_with(".pdf") && !crate::book::looks_like_text(&text) {
         return;
     }
 

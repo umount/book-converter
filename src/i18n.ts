@@ -418,6 +418,7 @@ const en: Dict = {
   "err.nothing_translated": "Nothing has been translated yet.",
   "err.nothing_to_update": "Nothing to update.",
   "err.no_text_extracted": "Could not extract readable text from this file. A PDF may be scanned or use a non-standard font encoding; installing Poppler (pdftotext) or using a text-based version usually helps.",
+  "err.empty_book": "This file has no readable text.",
   "err.archive_no_book": "The archive has no book file.",
 };
 
@@ -827,6 +828,7 @@ const ru: Dict = {
   "err.nothing_translated": "Пока ничего не переведено.",
   "err.nothing_to_update": "Нечего обновлять.",
   "err.no_text_extracted": "Не удалось извлечь читаемый текст из файла. PDF может быть сканом или использовать нестандартную кодировку шрифта; обычно помогает установка Poppler (pdftotext) или текстовая версия файла.",
+  "err.empty_book": "В файле нет читаемого текста.",
   "err.archive_no_book": "В архиве нет файла книги.",
 };
 
@@ -1236,6 +1238,7 @@ const zh: Dict = {
   "err.nothing_translated": "尚未翻译任何内容。",
   "err.nothing_to_update": "没有需要更新的内容。",
   "err.no_text_extracted": "无法从该文件提取可读文本。PDF 可能是扫描件或使用了非标准字体编码；安装 Poppler（pdftotext）或使用文本版通常有帮助。",
+  "err.empty_book": "该文件没有可读文本。",
   "err.archive_no_book": "归档中没有书籍文件。",
 };
 

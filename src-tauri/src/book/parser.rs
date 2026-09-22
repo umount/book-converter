@@ -406,6 +406,18 @@ mod tests {
     }
 
     #[test]
+    fn detects_numbered_dot_headings() {
+        let text = "书名\n作者: x\n\n第1卷\n\n1.极乐\n　　body one\n\n2.我...是谁？\n　　body two\n\n47. 有空格\n　　body three\n";
+        let chapters = parse_chapters(text);
+        assert_eq!(chapters.len(), 3, "{chapters:?}");
+        assert_eq!(chapters[0].number, Some(1));
+        assert_eq!(chapters[0].title, "1.极乐");
+        assert_eq!(chapters[0].body, "body one");
+        assert_eq!(chapters[2].number, Some(47));
+        assert_eq!(chapters[2].title, "47. 有空格");
+    }
+
+    #[test]
     fn no_pattern_returns_empty() {
         let text = "Just prose with no chapter headings at all. One line.\n";
         assert!(parse_chapters(text).is_empty());

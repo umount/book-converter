@@ -1,5 +1,10 @@
 [
   {
+    "name": "numbered-dot",
+    "description": "Numbered heading: 1.极乐 / 12. Title (common web-novel layout)",
+    "pattern": "(?m)^([0-9]{1,4})\\.\\s*\\S[^\\n]{0,60}$"
+  },
+  {
     "name": "cjk",
     "description": "Chinese/Japanese: 第1章 / 第一章 (Arabic or CJK numerals; 章/回/話/节 unit)",
     "pattern": "(?m)^第([0-9]+|[一二三四五六七八九十百千零两〇]+)[章回話话節节][^\\n]*"

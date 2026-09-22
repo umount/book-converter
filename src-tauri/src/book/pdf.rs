@@ -186,16 +186,35 @@ pub fn toc_chapters(path: &Path) -> Option<Vec<(String, String)>> {
 }
 
 /// Heuristic: does this look like natural-language text (not empty, not a mis-decoded
-/// font)? Requires a reasonable letter ratio and some word spaces.
+/// font)? Latin scripts need word spaces; CJK prose usually has none, so Han/kana/
+/// hangul (and ideographic spaces) count as evidence on their own.
 pub fn looks_like_text(s: &str) -> bool {
     let sample: Vec<char> = s.chars().take(4000).collect();
     let total = sample.iter().filter(|c| !c.is_control()).count();
     if total < 30 {
         return false;
     }
-    let spaces = sample.iter().filter(|c| **c == ' ').count();
     let letters = sample.iter().filter(|c| c.is_alphabetic()).count();
-    (spaces as f64 / total as f64) > 0.03 && (letters as f64 / total as f64) > 0.5
+    if (letters as f64 / total as f64) <= 0.5 {
+        return false;
+    }
+    let spaces = sample
+        .iter()
+        .filter(|c| **c == ' ' || **c == '\u{3000}')
+        .count();
+    let cjk = sample.iter().copied().filter(|&c| is_cjk(c)).count();
+    (spaces as f64 / total as f64) > 0.03 || (cjk as f64 / total as f64) > 0.2
+}
+
+fn is_cjk(c: char) -> bool {
+    matches!(
+        c,
+        '\u{3400}'..='\u{9fff}'
+            | '\u{f900}'..='\u{faff}'
+            | '\u{3040}'..='\u{30ff}'
+            | '\u{ac00}'..='\u{d7af}'
+            | '\u{1100}'..='\u{11ff}'
+    )
 }
 
 // --- internals ---
@@ -290,4 +309,25 @@ fn dest_page(doc: &Document, item: &Dictionary, page_num: &HashMap<ObjectId, u32
     let arr = dest.as_array().ok()?;
     let page_ref = arr.first()?.as_reference().ok()?;
     page_num.get(&page_ref).copied()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn latin_text_needs_spaces() {
+        assert!(looks_like_text(
+            "He walked into the valley and looked at the distant mountains."
+        ));
+        assert!(!looks_like_text("ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"));
+    }
+
+    #[test]
+    fn cjk_text_does_not_need_ascii_spaces() {
+        let zh = "李玄一头栽入瑰丽玄奇的诸天世界，而第一个便是黑暗佛门世界。读经声有些颤抖。";
+        assert!(looks_like_text(zh), "Chinese prose without ASCII spaces");
+        let indent = "　".repeat(2) + zh;
+        assert!(looks_like_text(&indent), "ideographic indent counts");
+    }
 }

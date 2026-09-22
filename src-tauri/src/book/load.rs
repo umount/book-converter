@@ -127,4 +127,22 @@ mod tests {
         assert!(book.chapters.is_empty());
         assert!(book.needs_delimiter);
     }
+
+    #[test]
+    fn numbered_dot_web_novel_sample_if_present() {
+        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../samples/苟在诸天从黑暗佛门开始.txt");
+        if !path.exists() {
+            return;
+        }
+        let book = load_book(&path).unwrap();
+        assert_eq!(book.format, InputFormat::Txt);
+        assert!(
+            book.chapters.len() >= 140,
+            "got {} chapters",
+            book.chapters.len()
+        );
+        assert_eq!(book.chapters[0].number, Some(1));
+        assert!(!book.needs_delimiter);
+    }
 }
