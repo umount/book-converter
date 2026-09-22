@@ -446,7 +446,8 @@ impl Store {
     /// List chapters for the UI in reading order.
     pub fn list_chapters(&self) -> Result<Vec<ChapterListRow>> {
         let mut stmt = self.conn.prepare(
-            "SELECT idx, number, title, translated_title, status, origin, lang_issues
+            "SELECT idx, number, title, translated_title, status, origin, lang_issues,
+                    COALESCE(kind, 'text')
              FROM chapters ORDER BY idx",
         )?;
         let rows = stmt
@@ -459,6 +460,7 @@ impl Store {
                     status: r.get(4)?,
                     origin: r.get(5)?,
                     lang_issues: r.get(6)?,
+                    kind: r.get(7)?,
                 })
             })?
             .collect::<rusqlite::Result<Vec<_>>>()?;
@@ -477,7 +479,8 @@ impl Store {
         let offset = offset as i64;
         let issues = i64::from(only_issues);
         let mut stmt = self.conn.prepare(
-            "SELECT idx, number, title, translated_title, status, origin, lang_issues
+            "SELECT idx, number, title, translated_title, status, origin, lang_issues,
+                    COALESCE(kind, 'text')
              FROM chapters
              WHERE (?1 IS NULL OR status = ?1)
                AND (?2 = 0 OR (lang_issues IS NOT NULL AND trim(lang_issues) != ''))
@@ -494,6 +497,7 @@ impl Store {
                     status: r.get(4)?,
                     origin: r.get(5)?,
                     lang_issues: r.get(6)?,
+                    kind: r.get(7)?,
                 })
             })?
             .collect::<rusqlite::Result<Vec<_>>>()?;
@@ -505,7 +509,8 @@ impl Store {
         let row = self
             .conn
             .query_row(
-                "SELECT number, title, source, status, translated_title, translated, origin, user_prompt, lang_issues
+                "SELECT number, title, source, status, translated_title, translated, origin, user_prompt, lang_issues,
+                        COALESCE(kind, 'text')
                  FROM chapters WHERE idx = ?1",
                 params![index as i64],
                 |r| {
@@ -519,6 +524,7 @@ impl Store {
                         origin: r.get(6)?,
                         user_prompt: r.get(7)?,
                         lang_issues: r.get(8)?,
+                        kind: r.get(9)?,
                     })
                 },
             )

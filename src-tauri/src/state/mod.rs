@@ -6,9 +6,14 @@
 //!
 //! ## Schema
 //! - `chapters(idx PK, number, title, source, status, translated, …,
-//!   rolling_summary, prev_tail)` — status: pending | in_progress | done | failed.
-//!   `rolling_summary` / `prev_tail` are the continuity context *after* this chapter
-//!   finished, used to resume or translate a later chapter in isolation.
+//!   rolling_summary, prev_tail)` — status: pending | in_progress | done | failed
+//!   | skipped. `rolling_summary` / `prev_tail` are the continuity context *after*
+//!   this chapter finished, used to resume or translate a later chapter in
+//!   isolation. `kind` says what the chapter is made of (text | image | mixed).
+//! - `chapter_blocks(chapter_idx, ord PK, kind, text, translated, asset_id)` —
+//!   typed content for chapters that are not plain prose.
+//! - `assets(id PK, rel_path, content_type, bytes, width, height)` — images
+//!   extracted from the source into the project directory.
 //! - `glossary(source PK, target, kind, frequency, pinned)`
 //! - `meta(key PK, value)` — book path, run settings, book-level `running_summary`
 //!
@@ -19,6 +24,7 @@ use anyhow::Result;
 use rusqlite::Connection;
 
 pub(crate) mod assistant;
+mod blocks;
 mod chapters;
 mod glossary;
 mod meta;
@@ -106,6 +112,25 @@ CREATE TABLE IF NOT EXISTS glossary (
     frequency INTEGER NOT NULL DEFAULT 1,
     pinned    INTEGER NOT NULL DEFAULT 0
 );
+CREATE TABLE IF NOT EXISTS assets (
+    id           TEXT PRIMARY KEY,
+    -- Path inside the project directory, e.g. "assets/1a2b3c.jpg".
+    rel_path     TEXT NOT NULL,
+    content_type TEXT NOT NULL,
+    bytes        INTEGER NOT NULL DEFAULT 0,
+    width        INTEGER,
+    height       INTEGER
+);
+CREATE TABLE IF NOT EXISTS chapter_blocks (
+    chapter_idx  INTEGER NOT NULL,
+    ord          INTEGER NOT NULL,
+    -- text | image | caption
+    kind         TEXT NOT NULL,
+    text         TEXT,
+    translated   TEXT,
+    asset_id     TEXT,
+    PRIMARY KEY (chapter_idx, ord)
+);
 CREATE TABLE IF NOT EXISTS assistant_messages (
     id           INTEGER PRIMARY KEY,
     turn         INTEGER NOT NULL DEFAULT 0,
@@ -127,11 +152,39 @@ pub(crate) struct ChapterListRow {
     pub(crate) status: String,
     pub(crate) origin: Option<String>,
     pub(crate) lang_issues: Option<String>,
+    /// `text` | `image` | `mixed` | `empty`.
+    pub(crate) kind: String,
+}
+
+/// One stored block of a chapter, with its image resolved.
+pub(crate) struct BlockRow {
+    pub(crate) ord: usize,
+    /// `text` | `image` | `caption`.
+    pub(crate) kind: String,
+    pub(crate) text: Option<String>,
+    pub(crate) translated: Option<String>,
+    pub(crate) asset_id: Option<String>,
+    pub(crate) rel_path: Option<String>,
+    pub(crate) content_type: Option<String>,
+    pub(crate) width: Option<u32>,
+    pub(crate) height: Option<u32>,
+}
+
+/// An image extracted into the project directory.
+pub(crate) struct AssetRow {
+    pub(crate) id: String,
+    pub(crate) rel_path: String,
+    pub(crate) content_type: String,
+    pub(crate) bytes: u64,
+    pub(crate) width: Option<u32>,
+    pub(crate) height: Option<u32>,
 }
 
 /// Complete chapter data used by the reader and translation coordinator.
 pub(crate) struct ChapterRecord {
     pub(crate) number: Option<usize>,
+    /// `text` | `image` | `mixed` | `empty`.
+    pub(crate) kind: String,
     pub(crate) source_title: String,
     pub(crate) source: String,
     pub(crate) status: String,
@@ -207,6 +260,9 @@ impl Store {
         self.ensure_column("chapters", "user_prompt", "TEXT")?;
         self.ensure_column("chapters", "translate_ms", "INTEGER")?;
         self.ensure_column("chapters", "lang_issues", "TEXT")?;
+        // What the chapter is made of. NULL on projects imported before typed
+        // content, which is read as plain prose — the only thing they could be.
+        self.ensure_column("chapters", "kind", "TEXT")?;
         self.ensure_column("assistant_messages", "turn", "INTEGER NOT NULL DEFAULT 0")?;
         self.ensure_column("assistant_messages", "tool_calls", "TEXT")?;
         self.conn.execute_batch(

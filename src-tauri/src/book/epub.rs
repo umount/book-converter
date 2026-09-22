@@ -19,7 +19,7 @@ use quick_xml::events::Event;
 use quick_xml::reader::Reader;
 use zip::ZipArchive;
 
-use super::blocks::{derive_text, AssetRef, Block, BlockKind, ChapterBlocks, ChapterKind};
+use super::blocks::{derive_text, AssetRef, Block, ChapterBlocks, ChapterKind};
 use super::fb2::heading_number;
 use super::load::{InputFormat, LoadedBook};
 use super::parser::{validate, BookMeta, Chapter};
@@ -997,6 +997,7 @@ fn bytes_to_text(bytes: &[u8]) -> String {
 
 #[cfg(test)]
 mod tests {
+    use super::super::blocks::{markers_in, BlockKind};
     use super::*;
     use std::io::{Cursor, Write};
     use zip::write::SimpleFileOptions;
@@ -1172,7 +1173,7 @@ mod tests {
         let body = &book.chapters[3].body;
         assert!(body.starts_with("Before the plate."));
         assert!(body.ends_with("After the plate."));
-        assert_eq!(super::super::blocks::markers_in(body).len(), 1);
+        assert_eq!(markers_in(body).len(), 1);
     }
 
     /// Prose chapters cost no block rows: their only block is the body itself.
