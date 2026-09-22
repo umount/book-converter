@@ -56,6 +56,44 @@ fn has_ext(path: &Path, ext: &str) -> bool {
         .unwrap_or(false)
 }
 
+/// Decode `%XX` escapes. Hrefs inside an EPUB are URLs (`ch%202.xhtml`), and so
+/// are the asset URLs the webview asks for.
+pub fn percent_decode(s: &str) -> String {
+    let bytes = s.as_bytes();
+    let mut out = Vec::with_capacity(bytes.len());
+    let mut i = 0;
+    while i < bytes.len() {
+        if bytes[i] == b'%' && i + 2 < bytes.len() {
+            if let Ok(b) =
+                u8::from_str_radix(std::str::from_utf8(&bytes[i + 1..i + 3]).unwrap_or(""), 16)
+            {
+                out.push(b);
+                i += 3;
+                continue;
+            }
+        }
+        out.push(bytes[i]);
+        i += 1;
+    }
+    String::from_utf8_lossy(&out).into_owned()
+}
+
+/// MIME type of an image, from its file name.
+pub fn image_mime(name: &str) -> String {
+    let n = name.to_ascii_lowercase();
+    if n.ends_with(".png") {
+        "image/png".into()
+    } else if n.ends_with(".gif") {
+        "image/gif".into()
+    } else if n.ends_with(".webp") {
+        "image/webp".into()
+    } else if n.ends_with(".svg") {
+        "image/svg+xml".into()
+    } else {
+        "image/jpeg".into()
+    }
+}
+
 /// True if `path` looks like a zip archive (by extension).
 pub fn is_zip(path: &Path) -> bool {
     has_ext(path, "zip")

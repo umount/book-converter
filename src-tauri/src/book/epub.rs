@@ -23,7 +23,7 @@ use super::blocks::{derive_text, AssetRef, Block, ChapterBlocks, ChapterKind};
 use super::fb2::heading_number;
 use super::load::{InputFormat, LoadedBook};
 use super::parser::{validate, BookMeta, Chapter};
-use super::source::decode_book_bytes;
+use super::source::{decode_book_bytes, image_mime, percent_decode};
 
 /// Load an `.epub` zip into a [`LoadedBook`].
 pub fn load(path: &Path) -> Result<LoadedBook> {
@@ -474,21 +474,6 @@ fn looks_like_image_href(href: &str) -> bool {
         || h.ends_with(".svg")
 }
 
-fn image_mime(href: &str) -> String {
-    let h = href.to_ascii_lowercase();
-    if h.ends_with(".png") {
-        "image/png".into()
-    } else if h.ends_with(".gif") {
-        "image/gif".into()
-    } else if h.ends_with(".webp") {
-        "image/webp".into()
-    } else if h.ends_with(".svg") {
-        "image/svg+xml".into()
-    } else {
-        "image/jpeg".into()
-    }
-}
-
 /// One block as the page provides it: an image href is still relative to the page.
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum RawBlock {
@@ -928,26 +913,6 @@ fn join_href(base_dir: &str, href: &str) -> String {
         }
     }
     stack.join("/")
-}
-
-fn percent_decode(s: &str) -> String {
-    let bytes = s.as_bytes();
-    let mut out = Vec::with_capacity(bytes.len());
-    let mut i = 0;
-    while i < bytes.len() {
-        if bytes[i] == b'%' && i + 2 < bytes.len() {
-            if let Ok(b) =
-                u8::from_str_radix(std::str::from_utf8(&bytes[i + 1..i + 3]).unwrap_or(""), 16)
-            {
-                out.push(b);
-                i += 3;
-                continue;
-            }
-        }
-        out.push(bytes[i]);
-        i += 1;
-    }
-    String::from_utf8_lossy(&out).into_owned()
 }
 
 fn find_zip_index<R: Read + Seek>(zip: &mut ZipArchive<R>, name: &str) -> Option<usize> {

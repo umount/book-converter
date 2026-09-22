@@ -7,6 +7,7 @@
 //! Architecture and design: see `docs/ARCHITECTURE.md` and `docs/DECISIONS.md`.
 //! The modules below are UI-agnostic; the frontend calls them via `commands`.
 
+mod assets;
 mod assistant;
 mod book;
 mod commands;
@@ -48,6 +49,9 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
+        // Page images are fetched by the webview instead of travelling through
+        // the IPC bridge as data URLs; see `assets`.
+        .register_uri_scheme_protocol(assets::SCHEME, assets::respond)
         .setup(|app| {
             // Locate the bundled pdfium library (for cross-platform PDF text): the
             // app's resource dir (packaged builds) or next to the executable (raw
