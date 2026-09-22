@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, type MouseEvent } from "react";
 import type { Line } from "../../lib/highlight";
+import { LineTokens } from "./LineTokens";
 
 type Props = {
   lines: Line[];
@@ -70,29 +71,10 @@ export function EditorSurface({
           <div className="ed-line" key={i}>
             <span className="ed-gutter">{i + 1}</span>
             <span className="ed-content">
-              {tokens.length === 0
-                ? "​"
-                : tokens.map((tk, j) => {
-                    if (tk.search != null) {
-                      return (
-                        <span key={j} className={`search-hit ${tk.search === currentSearch ? "search-current" : ""}`}>
-                          {tk.text}
-                        </span>
-                      );
-                    }
-                    if (tk.key) {
-                      return (
-                        <span
-                          key={j}
-                          className={`term ${tk.key === activeKey ? "term-active" : ""}`}
-                          onClick={(e) => onTermClick?.(tk.key!, e.currentTarget.getBoundingClientRect())}
-                        >
-                          {tk.text}
-                        </span>
-                      );
-                    }
-                    return <span key={j}>{tk.text}</span>;
-                  })}
+              <LineTokens
+                tokens={tokens} activeKey={activeKey}
+                onTermClick={onTermClick} currentSearch={currentSearch}
+              />
             </span>
           </div>
         ))}

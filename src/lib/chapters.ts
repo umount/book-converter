@@ -4,12 +4,13 @@ import type { ChapterRow } from "../types";
 
 /** What a chapter's marker in the tree means. */
 export type MarkerId =
-  | "failed" | "issues" | "in_progress" | "reference" | "manual" | "done" | "pending";
+  | "failed" | "issues" | "in_progress" | "image" | "reference" | "manual" | "done" | "pending";
 
 export const MARKER_GLYPHS: Record<MarkerId, string> = {
   failed: "✕",
   issues: "⚠",
   in_progress: "◌",
+  image: "▣",
   reference: "◆",
   manual: "✎",
   done: "✓",
@@ -18,18 +19,20 @@ export const MARKER_GLYPHS: Record<MarkerId, string> = {
 
 /** Legend order: problems first, then provenance, then plain progress. */
 export const MARKER_ORDER: MarkerId[] = [
-  "failed", "issues", "in_progress", "reference", "manual", "done", "pending",
+  "failed", "issues", "in_progress", "image", "reference", "manual", "done", "pending",
 ];
 
 /**
  * Which marker a chapter gets. Problems outrank provenance: a failed chapter, or
  * one whose translation kept foreign words, is what has to stand out in a
- * 1350-row tree.
+ * 1350-row tree. A page of pictures is marked as such, because its lack of a
+ * translation is the finished state, not a missing one.
  */
 export function chapterMarker(c: ChapterRow): MarkerId {
   if (c.status === "failed") return "failed";
   if (c.lang_issues) return "issues";
   if (c.status === "in_progress") return "in_progress";
+  if (c.kind === "image" || c.kind === "empty") return "image";
   if (c.origin === "reference") return "reference";
   if (c.origin === "manual") return "manual";
   if (c.status === "done") return "done";

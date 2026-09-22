@@ -8,7 +8,7 @@ pub use search::*;
 
 use tauri::State;
 
-use crate::dto::{err, ChapterRow, ChapterView};
+use crate::dto::{err, ChapterBlock, ChapterRow, ChapterView};
 use crate::session::AppState;
 
 use super::ops;
@@ -31,6 +31,7 @@ pub async fn list_chapters(
             status: row.status,
             origin: row.origin,
             lang_issues: row.lang_issues,
+            kind: row.kind,
         })
         .collect())
 }
@@ -47,6 +48,25 @@ pub async fn get_chapter(
         .map_err(err)?
         .ok_or("chapter not found")?;
     let (rolling_summary, prev_tail) = store.context_before(index).map_err(err)?;
+    // Only a chapter with pictures has stored blocks; prose is its own text.
+    let blocks = store
+        .chapter_blocks(index)
+        .map_err(err)?
+        .into_iter()
+        .map(|block| ChapterBlock {
+            ord: block.ord,
+            kind: block.kind,
+            text: block.text,
+            translated: block.translated,
+            asset: block
+                .rel_path
+                .as_deref()
+                .and_then(asset_file)
+                .map(|file| format!("{project_id}/{file}")),
+            width: block.width,
+            height: block.height,
+        })
+        .collect();
     Ok(ChapterView {
         idx: index,
         number: row.number,
@@ -59,7 +79,14 @@ pub async fn get_chapter(
         user_prompt: row.user_prompt,
         rolling_summary: (!rolling_summary.trim().is_empty()).then_some(rolling_summary),
         prev_tail,
+        kind: row.kind,
+        blocks,
     })
+}
+
+/// File name part of a stored `assets/<file>` path.
+fn asset_file(rel_path: &str) -> Option<&str> {
+    rel_path.rsplit('/').next().filter(|f| !f.is_empty())
 }
 
 #[tauri::command]

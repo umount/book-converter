@@ -6,6 +6,7 @@ import type { ChapterRow, ChapterView, Term } from "../types";
 import { ResizeHandle } from "./common/ResizeHandle";
 import { EditorSurface } from "./reader/EditorSurface";
 import { FindReplaceBar } from "./reader/FindReplaceBar";
+import { PageSurface } from "./reader/PageSurface";
 import { TermPopover } from "./reader/TermPopover";
 
 type PaneState = { orig: boolean; transl: boolean };
@@ -135,6 +136,12 @@ export function Reader({
   // text is shown whenever it exists, and the state is stated in the header.
   const hasTranslation = !!chapter?.translated?.trim();
   const chapterBusy = chapter?.status === "in_progress";
+  // A chapter that is not plain prose (an EPUB page of pictures, an illustrated
+  // chapter) is rendered from its blocks instead of its text. A page with no
+  // words has nothing for the translator to do, and says so.
+  const pageBlocks = chapter?.blocks ?? [];
+  const isPage = pageBlocks.length > 0;
+  const imageOnly = chapter?.kind === "image";
   // The backend refuses edits to a chapter mid-translation (`chapter_busy`).
   const canEdit = hasTranslation && !chapterBusy;
   // Words the run could not get out of the translation (flagged in the tree too).
@@ -435,7 +442,12 @@ export function Reader({
               <button className="icon" onClick={() => setPanes((p) => ({ ...p, orig: false }))}>×</button>
             </div>
             <div className="pane-body">
-              {chapterLoading ? <div className="loading"><span className="spinner" /> {t("reader.loading")}</div> : (
+              {chapterLoading ? <div className="loading"><span className="spinner" /> {t("reader.loading")}</div> : isPage ? (
+                <PageSurface
+                  t={t} blocks={pageBlocks} matches={hl ? srcMatches : []}
+                  activeKey={activeTerm} onTermClick={onTermClick}
+                />
+              ) : (
                 <EditorSurface lines={sourceLines} activeKey={activeTerm} onTermClick={onTermClick} />
               )}
             </div>
@@ -494,7 +506,13 @@ export function Reader({
               <button className="icon" onClick={() => setPanes((p) => ({ ...p, transl: false }))}>×</button>
             </div>
             <div className="pane-body">
-              {chapterLoading ? <div className="loading"><span className="spinner" /> {t("reader.loading")}</div> : hasTranslation ? (
+              {chapterLoading ? <div className="loading"><span className="spinner" /> {t("reader.loading")}</div> : imageOnly ? (
+                // The page itself is the translation: there are no words on it.
+                <>
+                  <div className="pane-note muted">{t("reader.imageOnlyNote")}</div>
+                  <PageSurface t={t} blocks={pageBlocks} matches={[]} activeKey={null} />
+                </>
+              ) : hasTranslation ? (
                 <EditorSurface
                   lines={translLines} activeKey={activeTerm} onTermClick={onTermClick}
                   currentSearch={searchSpec ? find.current : undefined}

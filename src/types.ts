@@ -47,6 +47,22 @@ export type ChapterRow = {
   translated_title: string | null; status: string; origin: string | null;
   /** Words the translation kept in the wrong language, comma-separated. */
   lang_issues: string | null;
+  /** What the chapter holds — a page of pictures has nothing to translate. */
+  kind: ChapterKind;
+};
+/** What a chapter is made of. */
+export type ChapterKind = "text" | "image" | "mixed" | "empty";
+/** One typed piece of a chapter, in document order. */
+export type ChapterBlock = {
+  ord: number;
+  kind: "text" | "image" | "caption";
+  text: string | null;
+  /** Translation of this block alone (a caption; later, a manga bubble). */
+  translated: string | null;
+  /** `<projectId>/<file>`, resolved to a URL with `assetUrl()`. */
+  asset: string | null;
+  width: number | null;
+  height: number | null;
 };
 export type ChapterView = {
   idx: number; number: number | null; source_title: string; source: string;
@@ -57,6 +73,9 @@ export type ChapterView = {
   rolling_summary: string | null;
   /** Previous chapter ending used for continuity. */
   prev_tail: string | null;
+  kind: ChapterKind;
+  /** Empty when the chapter is exactly its `source` text. */
+  blocks: ChapterBlock[];
 };
 
 export type EffectiveConfig = {

@@ -418,6 +418,18 @@ tr.add-row input::placeholder { color: var(--fg-subtle); }
 .ed-gutter { flex: 0 0 auto; width: 42px; padding-right: 14px; text-align: right; color: var(--fg-subtle); font-family: var(--font-mono); font-size: 12px; line-height: 1.7; user-select: none; opacity: .55; }
 .ed-line:hover .ed-gutter { opacity: 1; color: var(--fg-muted); }
 .ed-content { flex: 1; min-width: 0; white-space: pre-wrap; word-break: break-word; }
+/* Page surface: a chapter that is not plain prose (pictures, captions).
+   No line-number gutter - a page of a book is not a listing of lines. */
+.page-surface { display: flex; flex-direction: column; gap: 14px; font-size: 14px; line-height: 1.7; }
+.page-text, .page-caption { white-space: pre-wrap; word-break: break-word; }
+.page-caption { color: var(--fg-muted); font-size: 13px; text-align: center; }
+.page-image {
+  display: block; max-width: 100%; height: auto; margin: 0 auto;
+  border-radius: var(--r-sm); background: var(--bg-inset);
+}
+.page-image-missing { padding: 24px; text-align: center; border: 1px dashed var(--border); border-radius: var(--r-sm); }
+/* A one-line explanation above a pane's content (e.g. nothing to translate). */
+.pane-note { margin-bottom: 12px; font-size: 13px; }
 .term { text-decoration: underline dotted; text-decoration-color: var(--term-underline); text-underline-offset: 3px; cursor: pointer; border-radius: 2px; }
 .term:hover { background: var(--accent-soft); }
 .term-active { background: color-mix(in srgb, var(--accent) 28%, transparent); text-decoration-color: var(--accent-hover); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 45%, transparent); }

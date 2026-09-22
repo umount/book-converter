@@ -113,6 +113,23 @@ pub struct ChapterRow {
     pub origin: Option<String>,
     /// Words the translation kept in the wrong language, if any survived repair.
     pub lang_issues: Option<String>,
+    /// What the chapter holds: `text`, `image`, `mixed` or `empty`.
+    pub kind: String,
+}
+
+/// One typed piece of a chapter, in document order.
+#[derive(Serialize)]
+pub struct ChapterBlock {
+    pub ord: usize,
+    /// `text`, `image` or `caption`.
+    pub kind: String,
+    pub text: Option<String>,
+    /// Translation of this block alone (captions; later, manga bubbles).
+    pub translated: Option<String>,
+    /// `<project_id>/<file>`, to be turned into a `bookasset://` URL by the UI.
+    pub asset: Option<String>,
+    pub width: Option<u32>,
+    pub height: Option<u32>,
 }
 
 /// One matching line of a book-wide search, with its position in the chapter.
@@ -153,6 +170,11 @@ pub struct ChapterView {
     pub rolling_summary: Option<String>,
     /// Closing lines of the previous chapter (continuity), for this chapter's prompt.
     pub prev_tail: Option<String>,
+    /// What the chapter holds: `text`, `image`, `mixed` or `empty`.
+    pub kind: String,
+    /// Typed content, for a chapter that is not plain prose. Empty means the
+    /// chapter is exactly its `source` text.
+    pub blocks: Vec<ChapterBlock>,
 }
 
 /// Book cover + metadata for the UI.
