@@ -429,7 +429,9 @@ impl<'a, C: Translate> Orchestrator<'a, C> {
         }
         Ok((
             out_title.unwrap_or_else(|| title.trim().to_string()),
-            bodies.join("\n\n"),
+            // A picture marker the model dropped would lose an illustration for
+            // good, so the result is checked rather than trusted.
+            crate::book::restore_markers(source, &bodies.join("\n\n")),
         ))
     }
 
@@ -457,7 +459,9 @@ impl<'a, C: Translate> Orchestrator<'a, C> {
     }
 
     async fn update_summary(&self, translation: &str) -> Result<String> {
-        let (system, user) = prompt::build_summary_prompt(self.config, &self.summary, translation);
+        // The synopsis is prose about the story; picture markers are plumbing.
+        let translation = crate::book::strip_markers(translation);
+        let (system, user) = prompt::build_summary_prompt(self.config, &self.summary, &translation);
         self.client.translate(&system, &user).await
     }
 

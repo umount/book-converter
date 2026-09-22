@@ -172,9 +172,9 @@ pub(crate) struct BlockRow {
     pub(crate) kind: String,
     pub(crate) text: Option<String>,
     pub(crate) translated: Option<String>,
-    pub(crate) asset_id: Option<String>,
+    /// Where the image lives inside the project (`assets/<file>`), when the
+    /// block has one.
     pub(crate) rel_path: Option<String>,
-    pub(crate) content_type: Option<String>,
     pub(crate) width: Option<u32>,
     pub(crate) height: Option<u32>,
 }

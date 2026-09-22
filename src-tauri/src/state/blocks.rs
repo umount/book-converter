@@ -9,7 +9,7 @@
 use anyhow::Result;
 use rusqlite::{params, OptionalExtension};
 
-use crate::book::{Block, BlockKind, ChapterBlocks, ChapterKind};
+use crate::book::{ChapterBlocks, ChapterKind};
 
 use super::{AssetRow, BlockRow, Store};
 
@@ -89,8 +89,8 @@ impl Store {
     /// Empty for a prose chapter.
     pub fn chapter_blocks(&self, index: usize) -> Result<Vec<BlockRow>> {
         let mut stmt = self.conn.prepare(
-            "SELECT b.ord, b.kind, b.text, b.translated, b.asset_id,
-                    a.rel_path, a.content_type, a.width, a.height
+            "SELECT b.ord, b.kind, b.text, b.translated,
+                    a.rel_path, a.width, a.height
              FROM chapter_blocks b
              LEFT JOIN assets a ON a.id = b.asset_id
              WHERE b.chapter_idx = ?1
@@ -103,11 +103,9 @@ impl Store {
                     kind: r.get(1)?,
                     text: r.get(2)?,
                     translated: r.get(3)?,
-                    asset_id: r.get(4)?,
-                    rel_path: r.get(5)?,
-                    content_type: r.get(6)?,
-                    width: r.get::<_, Option<i64>>(7)?.map(|n| n as u32),
-                    height: r.get::<_, Option<i64>>(8)?.map(|n| n as u32),
+                    rel_path: r.get(4)?,
+                    width: r.get::<_, Option<i64>>(5)?.map(|n| n as u32),
+                    height: r.get::<_, Option<i64>>(6)?.map(|n| n as u32),
                 })
             })?
             .collect::<rusqlite::Result<Vec<_>>>()?;
@@ -140,56 +138,13 @@ impl Store {
         Ok(n > 0)
     }
 
-    /// Reading-order indices of chapters the text pipeline cannot translate
-    /// (images with no prose), so they can be taken out of the queue.
-    pub fn untranslatable_chapters(&self) -> Result<Vec<usize>> {
-        let mut stmt = self
-            .conn
-            .prepare("SELECT idx FROM chapters WHERE kind IN ('image', 'empty') ORDER BY idx")?;
-        let rows = stmt
-            .query_map([], |r| r.get::<_, i64>(0))?
-            .collect::<rusqlite::Result<Vec<i64>>>()?;
-        Ok(rows.into_iter().map(|n| n as usize).collect())
-    }
-
-    /// Save a translation for one block (a caption today, a speech bubble once
-    /// manga pages are read).
-    pub fn save_block_translation(&self, index: usize, ord: usize, text: &str) -> Result<()> {
-        self.conn.execute(
-            "UPDATE chapter_blocks SET translated = ?3 WHERE chapter_idx = ?1 AND ord = ?2",
-            params![index as i64, ord as i64, text],
-        )?;
-        Ok(())
-    }
-}
-
-/// Blocks as the parser produced them, for a chapter that stores none.
-pub(crate) fn prose_blocks(source: &str) -> Vec<Block> {
-    if source.trim().is_empty() {
-        return Vec::new();
-    }
-    vec![Block::text(source)]
-}
-
-/// Rebuild the block list of a chapter: stored rows when it has them, otherwise
-/// the single text block its source amounts to.
-pub(crate) fn blocks_from_rows(rows: &[BlockRow], source: &str) -> Vec<Block> {
-    if rows.is_empty() {
-        return prose_blocks(source);
-    }
-    rows.iter()
-        .map(|row| Block {
-            kind: BlockKind::from_str(&row.kind),
-            text: row.text.clone().unwrap_or_default(),
-            asset_id: row.asset_id.clone(),
-        })
-        .collect()
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
+    use crate::book::blocks::Block;
     use crate::book::Chapter;
 
     fn chapters() -> Vec<Chapter> {
@@ -238,28 +193,35 @@ mod tests {
         let rows = store.chapter_blocks(2).unwrap();
         assert_eq!(rows.len(), 1);
         assert_eq!(rows[0].kind, "image");
-        assert_eq!(rows[0].asset_id.as_deref(), Some("ab12"));
         assert_eq!(rows[0].rel_path.as_deref(), Some("assets/ab12.jpg"));
         assert_eq!(rows[0].width, Some(800));
         assert_eq!(store.chapter_kind(2).unwrap(), ChapterKind::Image);
         assert!(store.has_chapter_blocks().unwrap());
     }
 
-    /// A prose chapter stores nothing and still reads back as one text block.
+    /// A prose chapter stores no rows: reading it back is reading its text.
     #[test]
-    fn prose_chapters_reconstruct_from_their_source() {
+    fn prose_chapters_store_nothing() {
         let store = store();
         assert!(store.chapter_blocks(1).unwrap().is_empty());
         assert_eq!(store.chapter_kind(1).unwrap(), ChapterKind::Text);
-        let blocks = blocks_from_rows(&store.chapter_blocks(1).unwrap(), "prose");
-        assert_eq!(blocks, vec![Block::text("prose")]);
     }
 
-    /// Re-importing a book must not wipe a block translation.
+    /// Re-importing a book must not wipe a block translation. Nothing writes
+    /// one yet (a caption is translated as part of the chapter's text), but the
+    /// column is what reading words off a page will fill in, and an import must
+    /// not be able to throw that away.
     #[test]
     fn re_init_keeps_block_translations() {
         let store = store();
-        store.save_block_translation(2, 0, "Подпись").unwrap();
+        store
+            .conn
+            .execute(
+                "UPDATE chapter_blocks SET translated = 'Подпись'
+                 WHERE chapter_idx = 2 AND ord = 0",
+                [],
+            )
+            .unwrap();
         store
             .init_chapter_blocks(&[ChapterBlocks {
                 chapter_index: 2,
@@ -271,12 +233,6 @@ mod tests {
             store.chapter_blocks(2).unwrap()[0].translated.as_deref(),
             Some("Подпись")
         );
-    }
-
-    #[test]
-    fn untranslatable_chapters_are_the_image_ones() {
-        let store = store();
-        assert_eq!(store.untranslatable_chapters().unwrap(), vec![2]);
     }
 
     /// A page of pictures leaves the queue, and progress is measured against

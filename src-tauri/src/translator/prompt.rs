@@ -10,6 +10,7 @@
 
 use std::fmt::Write as _;
 
+use crate::book::markers_in;
 use crate::config::Config;
 use crate::glossary::{Term, TermKind};
 use crate::translator::reply;
@@ -222,6 +223,17 @@ pub fn user_prompt(ctx: &PromptContext, text: &str, shape: ReplyShape) -> String
         }
     }
 
+    // Only illustrated chapters carry markers, so plain books never pay for
+    // this rule. The lines are what tie the translation back to the pictures.
+    if !markers_in(text).is_empty() {
+        out.push_str(
+            "The text contains lines of the form [[img:XXXX]]. Each one marks a \
+             picture that belongs at that exact point in the chapter. Copy every \
+             such line into your output unchanged, on its own line, in the same \
+             place. Never translate, renumber, drop or invent one.\n\n",
+        );
+    }
+
     out.push_str("Translate the following text:\n\n");
     out.push_str(text);
     out.push_str("\n\n");
@@ -379,6 +391,17 @@ mod tests {
         // The text is followed only by the reply format rule (see
         // `the_format_instruction_comes_after_the_text`).
         assert!(p.contains("Translate the following text:\n\n王林走了。"));
+    }
+
+    /// An illustrated chapter tells the model to carry its picture markers
+    /// through; a plain one is not burdened with the rule.
+    #[test]
+    fn marker_rule_appears_only_for_illustrated_text() {
+        let ctx = PromptContext::default();
+        let with = user_prompt(&ctx, "Абзац.\n\n[[img:ab12]]", ReplyShape::BodyOnly);
+        assert!(with.contains("[[img:XXXX]]"));
+        assert!(with.find("[[img:XXXX]]").unwrap() < with.find("Translate the following").unwrap());
+        assert!(!user_prompt(&ctx, "Абзац.", ReplyShape::BodyOnly).contains("[[img:"));
     }
 
     #[test]

@@ -220,6 +220,15 @@ pub fn foreign_fragments(
 
 #[cfg(test)]
 mod tests {
+    /// A chapter's picture markers must not read as untranslated foreign words:
+    /// the repair pass would rewrite those lines and destroy the markers. They
+    /// survive because they appear verbatim in the source too.
+    #[test]
+    fn image_markers_are_not_leftover_foreign_words() {
+        let text = "Первый абзац.\n\n[[img:ab12cd34]]\n\nВторой абзац.";
+        assert!(super::leftover_foreign("Russian", "Глава 1", text, text).is_empty());
+    }
+
     use super::*;
 
     #[test]

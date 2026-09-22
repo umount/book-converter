@@ -81,7 +81,10 @@ fn write_export(store: &Store, project_id: &str, out_path: &str) -> Result<Strin
             index: idx,
             number: num_by_idx.get(&idx).copied().flatten(),
             title,
-            body,
+            // Picture markers are internal plumbing: an exported book must not
+            // show `[[img:…]]` to a reader. The pictures themselves are not
+            // carried into the output yet.
+            body: crate::book::strip_markers(&body),
         })
         .collect();
 
