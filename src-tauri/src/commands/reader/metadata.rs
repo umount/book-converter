@@ -112,10 +112,7 @@ pub async fn generate_summary(
     let metadata = store.project_metadata().map_err(err)?;
     let config = Config::load_for(&store);
 
-    if let Some(blurb) = metadata
-        .source_summary
-        .filter(|s| !s.trim().is_empty())
-    {
+    if let Some(blurb) = metadata.source_summary.filter(|s| !s.trim().is_empty()) {
         let system = format!(
             "Translate this book annotation from {} to {}. \
              Write it as a concise 3 to 6 sentence book blurb, keeping the premise and tone. \

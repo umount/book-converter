@@ -61,6 +61,11 @@ pub fn is_zip(path: &Path) -> bool {
     has_ext(path, "zip")
 }
 
+/// True if `path` is an EPUB (a zip of XHTML, not a text file).
+pub fn is_epub(path: &Path) -> bool {
+    has_ext(path, "epub")
+}
+
 /// Read the bytes of the first book entry inside a zip archive.
 fn read_first_book_from_zip(path: &Path) -> std::io::Result<Vec<u8>> {
     use std::io::Read;

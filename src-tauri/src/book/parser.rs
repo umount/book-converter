@@ -269,9 +269,8 @@ fn is_preamble_label(line: &str) -> bool {
 /// Collect the `简介：` block until a blank line or the next label/volume header.
 fn extract_blurb(preamble: &str) -> Option<String> {
     static RE: OnceLock<Regex> = OnceLock::new();
-    let re = RE.get_or_init(|| {
-        Regex::new(r"(?m)^(?:简介|簡介)[:：]\s*(.*)$").expect("blurb regex")
-    });
+    let re =
+        RE.get_or_init(|| Regex::new(r"(?m)^(?:简介|簡介)[:：]\s*(.*)$").expect("blurb regex"));
     let caps = re.captures(preamble)?;
     let mut parts = Vec::new();
     if let Some(first) = caps

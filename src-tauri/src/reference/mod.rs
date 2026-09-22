@@ -17,7 +17,7 @@ use std::path::Path;
 
 use anyhow::Result;
 
-use crate::book::{detect_format, load_book_text, read_book_file, BookMeta, Chapter, InputFormat};
+use crate::book::{detect_format, load_book, read_book_file, BookMeta, Chapter, InputFormat};
 use crate::config::Config;
 use crate::export::fb2::{extract_head, Fb2Head};
 use crate::glossary::{self, Term};
@@ -34,10 +34,11 @@ pub struct Reference {
 
 /// Load a reference translation from a file (any supported format).
 pub fn load_reference(path: &Path) -> Result<Reference> {
-    let decoded = read_book_file(path)?;
-    let book = load_book_text(&decoded.text, decoded.encoding)?;
-    let head = if detect_format(&decoded.text) == InputFormat::Fb2 {
-        Some(extract_head(&decoded.text))
+    let book = load_book(path)?;
+    let head = if book.format == InputFormat::Fb2 {
+        crate::book::read_book_file(path)
+            .ok()
+            .map(|decoded| extract_head(&decoded.text))
     } else {
         None
     };

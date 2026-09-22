@@ -1,6 +1,7 @@
 //! Working with the source book: decoding, format detection, parsing, chunking.
 
 pub(crate) mod chunker;
+pub(crate) mod epub;
 pub(crate) mod fb2;
 pub(crate) mod load;
 pub(crate) mod parser;
@@ -8,7 +9,7 @@ pub(crate) mod pdf;
 pub(crate) mod source;
 
 pub use chunker::split_chapter;
-pub use load::{detect_format, load_book, load_book_text, InputFormat, LoadedBook};
+pub use load::{detect_format, load_book, InputFormat, LoadedBook};
 pub use parser::{
     build_delimiter_prompt, parse_chapters_with, parse_inferred_pattern, validate, BookMeta,
     Chapter,

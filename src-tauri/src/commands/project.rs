@@ -76,6 +76,13 @@ pub async fn load_source(
     } else {
         None
     };
+    let epub_cover = book.cover.as_ref().map(|(content_type, bytes)| {
+        use base64::Engine as _;
+        Cover {
+            content_type: content_type.clone(),
+            base64: base64::engine::general_purpose::STANDARD.encode(bytes),
+        }
+    });
 
     let saved = store.project_metadata().map_err(err)?;
     let saved_cover = match (saved.cover_content_type.clone(), saved.cover_base64.clone()) {
@@ -90,7 +97,8 @@ pub async fn load_source(
         .or_else(|| head.as_ref().and_then(|value| value.annotation.clone()));
     let cover = saved_cover
         .or_else(|| head.as_ref().and_then(|value| value.cover.clone()))
-        .or(pdf_cover);
+        .or(pdf_cover)
+        .or(epub_cover);
 
     let format = format!("{:?}", book.format);
     store

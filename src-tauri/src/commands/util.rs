@@ -52,6 +52,10 @@ pub(crate) async fn ensure_chapters(path: &str, book: &mut crate::book::LoadedBo
             }
         }
     }
+    // EPUB chapters come from the spine; do not decode the zip as text.
+    if path.to_lowercase().ends_with(".epub") {
+        return;
+    }
 
     let text = match crate::book::read_book_file(Path::new(path)) {
         Ok(d) => d.text,

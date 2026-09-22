@@ -1,7 +1,7 @@
 //! Format-agnostic book loading: detect the input format, decode, and parse into
 //! chapters — the single entry point the rest of the app uses.
 //!
-//! Supports TXT and FB2 today. When a TXT layout has no recognizable chapter
+//! Supports TXT, FB2, PDF and EPUB. When a TXT layout has no recognizable chapter
 //! headings, `needs_delimiter` is set so the caller can fall back to a
 //! model-inferred delimiter (`parser::build_delimiter_prompt` +
 //! `parser::parse_chapters_with`).
@@ -12,13 +12,14 @@ use anyhow::Result;
 
 use super::fb2::{fb2_to_chapters, parse_fb2};
 use super::parser::{parse_book_meta, parse_chapters, validate, BookMeta, Chapter, ParseReport};
-use super::source::read_book_file;
+use super::source::{is_epub, read_book_file};
 
 /// Detected input format.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum InputFormat {
     Txt,
     Fb2,
+    Epub,
 }
 
 /// A loaded book, format-agnostic.
@@ -35,6 +36,8 @@ pub struct LoadedBook {
     /// The decode produced replacement characters — the encoding guess is likely
     /// wrong (garbled text). Only set by `load_book` (which owns the raw bytes).
     pub encoding_had_errors: bool,
+    /// Embedded cover (EPUB), if the package declared one.
+    pub cover: Option<(String, Vec<u8>)>,
 }
 
 /// Detect the input format from the decoded text (content-based, not extension).
@@ -49,6 +52,9 @@ pub fn detect_format(text: &str) -> InputFormat {
 
 /// Read a file, decode it, detect the format, and parse into chapters.
 pub fn load_book(path: &Path) -> Result<LoadedBook> {
+    if is_epub(path) {
+        return super::epub::load(path);
+    }
     let decoded = read_book_file(path)?;
     let mut book = load_book_text(&decoded.text, decoded.encoding)?;
     book.encoding_had_errors = decoded.had_errors;
@@ -70,6 +76,7 @@ pub fn load_book_text(text: &str, encoding: &str) -> Result<LoadedBook> {
                 report,
                 needs_delimiter: false,
                 encoding_had_errors: false,
+                cover: None,
             }
         }
         InputFormat::Txt => {
@@ -85,8 +92,10 @@ pub fn load_book_text(text: &str, encoding: &str) -> Result<LoadedBook> {
                 report,
                 needs_delimiter,
                 encoding_had_errors: false,
+                cover: None,
             }
         }
+        InputFormat::Epub => anyhow::bail!("epub is loaded from a zip, not decoded text"),
     };
     Ok(book)
 }
@@ -144,10 +153,7 @@ mod tests {
         );
         assert_eq!(book.chapters[0].number, Some(1));
         assert!(!book.needs_delimiter);
-        assert_eq!(
-            book.meta.title.as_deref(),
-            Some("苟在诸天从黑暗佛门开始")
-        );
+        assert_eq!(book.meta.title.as_deref(), Some("苟在诸天从黑暗佛门开始"));
         assert_eq!(book.meta.author.as_deref(), Some("是桃花酥呀"));
         let blurb = book.meta.summary.as_deref().expect("parsed 简介");
         assert!(blurb.contains("黑暗佛门"));

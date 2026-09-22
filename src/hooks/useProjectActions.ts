@@ -151,7 +151,7 @@ export function useProjectActions({
   // modal before the project is added to the list.
   async function openBook() {
     setMenu(null);
-    const path = await open({ filters: [{ name: "Book", extensions: ["txt", "fb2", "pdf", "zip"] }] });
+    const path = await open({ filters: [{ name: "Book", extensions: ["txt", "fb2", "pdf", "epub", "zip"] }] });
     if (typeof path !== "string") return;
     const id = newId();
     setBusyFor(id, t("busy.opening", { name: baseName(path) }));
@@ -199,7 +199,7 @@ export function useProjectActions({
   async function openReference() {
     setMenu(null);
     if (!activeProject) return;
-    const path = await open({ filters: [{ name: "Reference", extensions: ["fb2", "txt", "pdf", "zip"] }] });
+    const path = await open({ filters: [{ name: "Reference", extensions: ["fb2", "txt", "pdf", "epub", "zip"] }] });
     if (typeof path !== "string") return;
     setBusyFor(activeId, t("busy.loadingReference"));
     addLog(t("log.loadingReference", { name: baseName(path) }));
