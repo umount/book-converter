@@ -190,14 +190,37 @@ App data layout (see also `PROJECT_ISOLATION.md`):
   projects/<id>/
     progress.db
     project.json
+    assets/           images extracted from the source (`<content hash>.<ext>`)
 ```
 
 | Table | Purpose |
 |-------|---------|
-| **chapters** | Source, status (`pending` / `in_progress` / `done` / `failed`), translation, origin |
+| **chapters** | Source, status (`pending` / `in_progress` / `done` / `failed` / `skipped`), `kind` (`text` / `image` / `mixed`), translation, origin |
+| **chapter_blocks** | Typed content of a chapter that is not plain prose: text, pictures and captions in page order |
+| **assets** | Images extracted into `assets/`, by content hash (`rel_path`, MIME type, pixel size) |
 | **glossary** | Canonical terms (`source`, `target`, `kind`, `frequency`, `pinned`) |
 | **assistant_messages** | Per-project assistant transcript (`turn`, `role`, `content`, `tool_calls`) |
 | **meta** | Sole durable source for title/author/cover/summary, `running_summary`, `book_prompt`, format, encoding |
+
+## Chapters That Are Not Text
+
+An EPUB page can be a whole picture — manga, illustrated editions, comic-style
+web novels all ship spine items whose content is one `<img>` or `<svg><image/>`.
+Such a page is read into typed **blocks**, and `chapters.source` stays the single
+text projection of them, with each picture held in place by an `[[img:<id>]]`
+line. That keeps one text pipeline: chunker, glossary, search, find/replace and
+the reader's autosave all still work on a string.
+
+The consequences of that one convention:
+
+- Images are copied into `projects/<id>/assets/` at import and served to the
+  webview over the `bookasset://` scheme (`assets`), never as data URLs.
+- A page with no words is `skipped`: out of the queue, out of the ETA, and out of
+  the progress denominator, so a manga volume can reach 100%.
+- The model is told to copy marker lines through, and
+  `book::restore_markers` puts back any it dropped, so a picture cannot be lost
+  to a translation.
+- EPUB, FB2 and PDF export re-embed the pictures; plain text drops the markers.
 
 Every connection runs in WAL with a busy timeout: a translation run holds a
 writer on a background thread while the UI opens short-lived readers, which the

@@ -199,6 +199,33 @@ quality and complicates reassembly.
 
 ---
 
+## A chapter's pictures live in its text, as `[[img:<id>]]` lines
+
+**Decision:** an EPUB page is parsed into typed blocks (text / image / caption),
+but `chapters.source` remains the single source string the pipeline works on,
+with each picture standing in it as a line `[[img:<content hash>]]`. The image
+files are copied into the project (`assets/`) and served to the webview over a
+`bookasset://` scheme. A page with no words gets its own status, `skipped`.
+
+**Why:** every stage downstream of parsing — chunker, prompts, glossary, search,
+find/replace, retarget, the reader's autosave, export — is built on a chapter
+being a string. A picture is positional information, and a marker line is the
+cheapest way to carry a position through all of them: it survives translation
+(the model is told to copy it, and `restore_markers` repairs what it drops),
+book-wide replace, and a hand edit in the reader, with no stage needing to learn
+about blocks. Pages that are only pictures would otherwise be imported as empty
+chapters and sit in the queue forever, costing API calls on nothing and holding
+progress below 100%.
+
+**Alternatives considered:** (a) blocks as the only truth, every stage rewritten
+to walk them — a large change to earn nothing for the text-only books that are
+the common case; (b) HTML kept verbatim as the chapter body — the model would
+translate the markup and the reader would have to sanitize it; (c) images as
+data URLs in the IPC payload — a manga page is megabytes, and the reader would
+re-encode every page it scrolls past.
+
+---
+
 ## Consistency via an auto-growing glossary
 
 **Decision:** maintain a glossary of canonical translations (names, locations,
