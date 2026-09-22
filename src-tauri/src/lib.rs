@@ -16,6 +16,7 @@ mod export;
 mod glossary;
 mod i18n;
 mod jobs;
+mod language;
 mod orchestrator;
 mod paths;
 mod reference;

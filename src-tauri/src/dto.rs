@@ -20,6 +20,8 @@ pub struct BookInfo {
     pub source_lang: String,
     /// Language to translate into (project pair, else global default).
     pub target_lang: String,
+    /// True when source_lang came from detection, not the Settings fallback.
+    pub source_detected: bool,
 }
 
 /// A project as found on disk, for reconciling the UI's list with reality.

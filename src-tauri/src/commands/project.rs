@@ -79,11 +79,11 @@ pub async fn load_source(
     store
         .set_source_metadata(&title, &author, &format, &book.encoding)
         .map_err(err)?;
-    // Snapshot the language pair at import so later Settings changes do not
-    // rewrite this book. Detection / the setup modal may overwrite these.
     let cfg = Config::load();
+    let sample = crate::language::sample_book(&book.chapters);
+    let detected = crate::language::detect_source_lang(&sample, &cfg.source_lang).await;
     store
-        .set_translation_langs(&cfg.source_lang, &cfg.target_lang)
+        .set_translation_langs(&detected.name, &cfg.target_lang)
         .map_err(err)?;
     if let Some(summary) = &summary {
         store.set_meta("summary", summary).map_err(err)?;
@@ -114,6 +114,7 @@ pub async fn load_source(
             had_errors: book.encoding_had_errors,
             source_lang: String::new(),
             target_lang: String::new(),
+            source_detected: detected.detected,
         },
     ))
 }
@@ -155,6 +156,7 @@ pub async fn open_project(
             had_errors: false,
             source_lang: String::new(),
             target_lang: String::new(),
+            source_detected: metadata.source_lang.is_some(),
         },
     ))
 }
@@ -167,11 +169,8 @@ pub async fn set_project_languages(
     target_lang: String,
     state: State<'_, AppState>,
 ) -> Result<(), String> {
-    let source = source_lang.trim();
-    let target = target_lang.trim();
-    if source.is_empty() || target.is_empty() {
-        return Err("bad_lang".into());
-    }
+    let source = crate::language::canonical_lang(&source_lang).ok_or("bad_lang")?;
+    let target = crate::language::canonical_lang(&target_lang).ok_or("bad_lang")?;
     let store = super::ops::project_store(&state, &project_id)?;
     store.set_translation_langs(source, target).map_err(err)?;
     Ok(())
