@@ -7,6 +7,8 @@
 //! Architecture and design: see `docs/ARCHITECTURE.md` and `docs/DECISIONS.md`.
 //! The modules below are UI-agnostic; the frontend calls them via `commands`.
 
+pub mod app;
+pub mod project;
 mod assets;
 mod assistant;
 mod book;
@@ -75,6 +77,7 @@ pub fn run() {
         .manage(commands::AppState::new())
         .manage(std::sync::Arc::new(assistant::AssistantRuntime::new()))
         .invoke_handler(tauri::generate_handler![
+            commands::project_inspect_manifest,
             commands::load_source,
             commands::open_project,
             commands::set_project_languages,

@@ -1,0 +1,19 @@
+// Generated from Rust. Run npm run contracts:generate; do not edit.
+export type ProjectKind = "book" | "manga";
+export type ProjectId = string;
+export type ErrorCode = "invalid_input" | "unsupported_version" | "wrong_project_kind" | "revision_conflict" | "not_found" | "capability_unavailable" | "storage";
+export type AppError = { code: ErrorCode, messageKey: string, params: { [key in string]: string }, retryable: boolean, };
+export type SourceDescriptor = { format: string, displayName: string, originalPath: string | null, };
+export type ProjectDescriptor = { id: ProjectId, kind: ProjectKind, name: string, formatVersion: number, createdAt: string, source: SourceDescriptor, };
+export type JobState = "queued" | "running" | "succeeded" | "failed" | "cancelling" | "cancelled" | "interrupted";
+export type Revision = string;
+export type EntitySelection = { "kind": "all" } | { "kind": "explicit_ids", ids: Array<string>, } | { "kind": "range", first: string, last: string, };
+export type JobRef = { projectId: ProjectId, jobId: string, };
+export type EventPayload = { "type": "job.updated", "payload": { state: JobState, } } | { "type": "entity.changed", "payload": { id: string, revision: Revision, } } | { "type": "glossary.changed", "payload": { revision: Revision, } } | { "type": "assistant.updated", "payload": { revision: Revision, } };
+export type ProjectEvent = { version: number, projectId: ProjectId, jobId: string | null, seq: Revision, event: EventPayload, };
+export type PixelBounds = { x: number, y: number, width: number, height: number, };
+export type BookBlockContent = { "kind": "text", text: string, } | { "kind": "caption", text: string, } | { "kind": "image", asset_id: string, alt: string, };
+export type BookBlockView = { id: string, chapterId: string, position: number, revision: Revision, content: BookBlockContent, translatedText: string | null, };
+export type MangaStage = "detection" | "recognition" | "translation" | "masks" | "inpainting" | "lettering";
+export type CapabilityRequirement = { stage: MangaStage, available: boolean, reasonKey: string | null, };
+export type MangaPreflight = { requirements: Array<CapabilityRequirement>, };
