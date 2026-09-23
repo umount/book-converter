@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<FictionBook xmlns="http://www.gribuser.ru/xml/fictionbook/2.0"><description><title-info>
+<book-title>Synthetic reference</book-title><lang>en</lang></title-info></description>
+<body><section><title><p>1. Beginning</p></title><p>This is chapter one.</p></section>
+<section><title><p>2. Journey</p></title><p>This is chapter two.</p></section></body></FictionBook>
