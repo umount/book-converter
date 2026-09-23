@@ -1,7 +1,7 @@
 # book-converter — Documentation
 
 > Design reference for book-converter.
-> Last updated 2026-09-18
+> Last updated 2026-09-23
 
 ## Navigation
 
@@ -13,6 +13,9 @@
 | **[SETTINGS.md](SETTINGS.md)** | Where configuration lives (env, settings DB, localStorage, project meta) |
 | **[FRONTEND_REDESIGN.md](FRONTEND_REDESIGN.md)** | Planned Cursor-style IDE frontend rework: shell, editor, highlight, find/replace, settings |
 | **[ASSISTANT.md](ASSISTANT.md)** | Living plan: right-side project assistant chat (agent + tools + confirm) |
+| **[REFACTORING.md](REFACTORING.md)** | Full breaking-refactor execution plan: contracts, schema, P00–P13, acceptance and AI handoff |
+| **[MANGA_TOOLING.md](MANGA_TOOLING.md)** | Verified tooling assessment, lightweight model budgets and Windows/macOS/Linux release gates |
+| **[MANGA.md](MANGA.md)** | Architecture proposal: Book/Manga project types, separate workspaces, manga pipeline and staged migration |
 | **[../README.md](../README.md)** | Product overview, requirements, setup, usage |
 
 ## At a glance
