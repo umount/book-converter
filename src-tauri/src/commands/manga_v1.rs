@@ -202,9 +202,17 @@ pub(super) fn dispatch(
     project: crate::app::contracts::ProjectId,
     job: String,
 ) -> Result<(), AppError> {
+    let translation=context.manager.lease(&project)?.with_connection(|db,_|Ok(crate::storage::runs::get_run(db,&job)?.kind=="manga_translation"))?;
+    if translation {
+        let pipeline=crate::application::manga::runtime::resume_translation(&context.manager,&project,&job)?;
+        launch(context,app,project,job,pipeline)
+    }else{
+        let pipeline=crate::application::manga::runtime::resume_provider(&context.manager,&project,&job)?;
+        launch(context,app,project,job,pipeline)
+    }
+}
+fn launch<P:crate::jobs::durable::StepExecutor+'static>(context:&AppContext,app:tauri::AppHandle,project:crate::app::contracts::ProjectId,job:String,pipeline:P)->Result<(),AppError>{
     use tauri::Emitter;
-    let pipeline =
-        crate::application::manga::runtime::resume_provider(&context.manager, &project, &job)?;
     let cancel = context.book_jobs.reserve(&project, &job)?;
     let manager = context.manager.clone();
     let runtime = context.book_jobs.clone();

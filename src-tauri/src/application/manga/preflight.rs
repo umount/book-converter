@@ -17,6 +17,16 @@ pub(super) fn recognition_provider(
         .ok_or_else(|| AppError::invalid("mangaRecognitionProfile"))?;
     checked_provider(id)
 }
+pub(super) fn translation_provider(
+    settings: &shared::ProcessingSettings,
+) -> Result<(ProviderProfile, String), AppError> {
+    checked_provider(
+        settings
+            .manga_translation_profile
+            .as_deref()
+            .ok_or_else(|| AppError::invalid("mangaTranslationProfile"))?,
+    )
+}
 fn checked_provider(id: &str) -> Result<(ProviderProfile, String), AppError> {
     let (profile, key) = provider_profile(Some(id))?;
     ChatCompletions::new(profile.clone(), key.clone())?;
@@ -52,10 +62,7 @@ fn inspect_with(
         requirements: vec![
             requirement(MangaStage::Detection, recognition),
             requirement(MangaStage::Recognition, recognition),
-            requirement(
-                MangaStage::Translation,
-                translation.or(Some("mangaTranslationUnavailable")),
-            ),
+            requirement(MangaStage::Translation, translation),
             requirement(MangaStage::Masks, Some("mangaMasksUnavailable")),
             // Downloaded weights are not a tested inference adapter. Do not suggest that
             // downloading the experimental catalog candidate makes processing ready.
@@ -130,7 +137,8 @@ mod tests {
         .unwrap();
         assert_eq!(checked, ["vision", "dialogue"]);
         assert!(result.requirements[0].available && result.requirements[1].available);
-        assert!(result.requirements[2..].iter().all(|r| !r.available));
+        assert!(result.requirements[2].available);
+        assert!(result.requirements[3..].iter().all(|r| !r.available));
         assert!(!result.ready());
         let result = inspect_with(&mut db, |_| {
             Err(AppError {

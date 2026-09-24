@@ -92,3 +92,12 @@ Opening or refreshing it never uploads pages, downloads models or creates jobs.
 Configured recognition means the local profile validates, not that provider image
 access or OCR quality has been verified. Downloaded weights do not bypass missing
 segmentation, cleanup runtime or lettering capabilities.
+
+## Implemented dialogue translation backend
+
+The explicit translation stage uses the project's manga translation API profile,
+fixed languages, ordered OCR regions and locally matched glossary terms. It preserves
+manual translations, publishes a complete versioned result atomically and resumes
+without translating already completed pages again. Malformed or stale replies cannot
+replace region text. Full automatic processing is still gated on local image stages
+and lettering. Qwen/local LLM deployment is explicitly outside this implementation.

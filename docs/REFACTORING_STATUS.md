@@ -1068,3 +1068,23 @@ used fake providers and synthetic local assets; no paid API request was made.
 Validation for the Koharu border adaptation: 14 native unit tests; opt-in real CPU
 mask/LaMa smoke passed (exact unmasked pixels, immutable original, no overwrite);
 191 desktop Rust tests and frontend tests/production build passed.
+
+### P09 checkpointed dialogue translation
+
+- Recognition and dialogue translation have independent API profiles. User explicitly
+  ruled out running Qwen: no local LLM runtime/model will be introduced. Koharu remains
+  the reference for image processing and lettering, not a bundled LLM dependency.
+- Added the translation stage to admission, dispatch/resume and local preflight. It
+  translates only recognized pages, obeys the requested page limit and skips current
+  results unless forced. An empty/unlocked-free page does not make a paid API call.
+- Prompts carry immutable source/target languages, ordered region context and only
+  literal glossary matches. Manual translations are context-only and are never replaced.
+- Reject missing/duplicate/foreign IDs, blank text and truncated/tool-call responses.
+  Region text, immutable result and successful checkpoint share one transaction.
+  Late source/settings/glossary/manual edits reject publication. A restart reuses
+  completed pages without paying for them twice.
+- Eighteen manga tests passed, including resumed partial failure, locked translations,
+  glossary filtering and rejection of a response after a source edit. Fake providers
+  only; this does not verify live provider translation quality.
+- Full automatic page processing remains unfinished: connect local mask/cleanup worker,
+  lettering, result display and bounded full-pipeline admission before enabling it.

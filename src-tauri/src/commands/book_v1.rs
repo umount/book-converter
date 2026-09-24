@@ -51,7 +51,7 @@ fn dispatch(
     job: String,
 ) -> Result<(), AppError> {
     let kind = context.manager.lease(&project)?.with_connection(|db, _| Ok(runs::get_run(db, &job)?.kind))?;
-    if kind == "manga_recognition" { return super::manga_v1::dispatch(context, app, project, job); }
+    if matches!(kind.as_str(), "manga_recognition" | "manga_translation") { return super::manga_v1::dispatch(context, app, project, job); }
     let pipeline = crate::application::runtime::resume_provider(&context.manager, &project, &job)?;
     let cancel = context.book_jobs.reserve(&project, &job)?;
     let manager = context.manager.clone();

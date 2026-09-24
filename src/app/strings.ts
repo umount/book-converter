@@ -305,6 +305,7 @@ const en = {
   translateTitle: "Translate title",
   translatedChapterTitle: "Translated chapter title",
   manga_recognition: "Manga recognition",
+  manga_translation: "Manga translation",
   book_glossary: "Term extraction",
 };
 type Key = keyof typeof en;
@@ -617,6 +618,7 @@ const ru: Record<Key, string> = {
   translateTitle: "Перевести заголовок",
   translatedChapterTitle: "Переведённый заголовок главы",
   manga_recognition: "Распознавание манги",
+  manga_translation: "Перевод манги",
   book_glossary: "Извлечение терминов",
 };
 const zh: Record<Key, string> = {
@@ -911,6 +913,7 @@ const zh: Record<Key, string> = {
   translateTitle: "翻译标题",
   translatedChapterTitle: "翻译后的章节标题",
   manga_recognition: "漫画识别",
+  manga_translation: "漫画翻译",
   book_glossary: "提取术语",
 };
 export type T = (key: Key) => string;

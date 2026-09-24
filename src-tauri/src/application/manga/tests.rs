@@ -542,3 +542,274 @@ async fn page_view_distinguishes_unrecognized_blank_and_stale_results() {
     let mut book = crate::storage::tests::database(ProjectKind::Book);
     assert!(super::view::page(&mut book, &page).is_err());
 }
+
+struct DialogueFake {
+    profile: ProviderProfile,
+    calls: AtomicUsize,
+    fail_on: usize,
+    hook: Option<Box<dyn Fn() + Send + Sync>>,
+    requests: Mutex<Vec<serde_json::Value>>,
+}
+impl DialogueFake {
+    fn new(fail_on: usize) -> Self {
+        Self {
+            profile: profile(),
+            calls: AtomicUsize::new(0),
+            fail_on,
+            hook: None,
+            requests: Mutex::new(vec![]),
+        }
+    }
+}
+impl Provider for DialogueFake {
+    fn profile(&self) -> &ProviderProfile {
+        &self.profile
+    }
+    fn complete(
+        &self,
+        request: Request,
+    ) -> Pin<Box<dyn Future<Output = Result<Completion, AppError>> + Send + '_>> {
+        let Request::Structured { system, user } = request else {
+            panic!("dialogue must use text JSON API")
+        };
+        assert!(system.contains("lockedTranslation"));
+        let payload: serde_json::Value = serde_json::from_str(&user).unwrap();
+        self.requests.lock().unwrap().push(payload.clone());
+        let call = self.calls.fetch_add(1, Ordering::SeqCst) + 1;
+        Box::pin(async move {
+            if let Some(hook) = &self.hook {
+                hook();
+            }
+            if call == self.fail_on {
+                return Err(AppError::invalid("injectedFailure"));
+            }
+            Ok(Completion{text:serde_json::json!({"regions":payload["translateIds"].as_array().unwrap().iter().rev().map(|id|serde_json::json!({"id":id,"translatedText":"Перевод"})).collect::<Vec<_>>()} ).to_string(),finish_reason:"stop".into(),usage:Default::default(),tool_calls:vec![]})
+        })
+    }
+}
+async fn recognized_fixture(pages: u32) -> Fixture {
+    let f = Fixture::new(pages);
+    durable::execute(
+        &f.manager,
+        &f.id,
+        "run",
+        &RecognitionPipeline {
+            provider: Arc::new(Fake::new(0)),
+        },
+        Arc::new(AtomicBool::new(false)),
+        |_| {},
+    )
+    .await
+    .unwrap();
+    f
+}
+fn create_dialogue(f: &Fixture, id: &str, pages: u32) {
+    f.manager
+        .lease(&f.id)
+        .unwrap()
+        .with_connection(|db, _| {
+            runtime::create_stage(
+                db,
+                id,
+                &EntitySelection::All,
+                pages,
+                false,
+                profile(),
+                crate::app::contracts::MangaStage::Translation,
+            )
+        })
+        .unwrap();
+}
+#[tokio::test]
+async fn dialogue_resumes_without_retranslating_published_pages() {
+    let f = recognized_fixture(2).await;
+    create_dialogue(&f, "dialogue", 2);
+    let fake = Arc::new(DialogueFake::new(2));
+    let pipeline = super::translation_pipeline::TranslationPipeline {
+        provider: fake.clone(),
+    };
+    assert!(durable::execute(
+        &f.manager,
+        &f.id,
+        "dialogue",
+        &pipeline,
+        Arc::new(AtomicBool::new(false)),
+        |_| {}
+    )
+    .await
+    .is_err());
+    let reopened = ProjectManager::new(f.root.clone());
+    durable::execute(
+        &reopened,
+        &f.id,
+        "dialogue",
+        &pipeline,
+        Arc::new(AtomicBool::new(false)),
+        |_| {},
+    )
+    .await
+    .unwrap();
+    assert_eq!(fake.calls.load(Ordering::SeqCst), 3);
+    reopened.lease(&f.id).unwrap().with_connection(|db,_|{
+        assert_eq!(runs::get_run(db,"dialogue")?.state,JobState::Succeeded);
+        assert_eq!(db.query_row("SELECT COUNT(*) FROM manga_regions WHERE translated_text='Перевод'",[],|r|r.get::<_,i64>(0)).unwrap(),2);
+        assert_eq!(db.query_row("SELECT COUNT(*) FROM manga_results WHERE stage='translation' AND validity='current'",[],|r|r.get::<_,i64>(0)).unwrap(),2);
+        assert!(runtime::create_stage(db,"again",&EntitySelection::All,2,false,profile(),crate::app::contracts::MangaStage::Translation).is_err());Ok(())
+    }).unwrap();
+    let requests = fake.requests.lock().unwrap();
+    assert_eq!(requests[0]["targetLanguage"], "ru");
+    assert_eq!(requests[0]["sourceLanguage"], "ja");
+}
+#[tokio::test]
+async fn dialogue_keeps_manual_translations_without_api_calls() {
+    let f = recognized_fixture(1).await;
+    f.manager
+        .lease(&f.id)
+        .unwrap()
+        .with_connection(|db, _| {
+            let id: String = db
+                .query_row("SELECT id FROM manga_regions LIMIT 1", [], |r| r.get(0))
+                .unwrap();
+            edits::update_region(
+                db,
+                &id,
+                &Revision("0".into()),
+                &RegionPatch::TranslatedText {
+                    text: "Авторская правка".into(),
+                },
+            )?;
+            Ok(())
+        })
+        .unwrap();
+    create_dialogue(&f, "dialogue", 1);
+    let fake = Arc::new(DialogueFake::new(0));
+    durable::execute(
+        &f.manager,
+        &f.id,
+        "dialogue",
+        &super::translation_pipeline::TranslationPipeline {
+            provider: fake.clone(),
+        },
+        Arc::new(AtomicBool::new(false)),
+        |_| {},
+    )
+    .await
+    .unwrap();
+    assert_eq!(fake.calls.load(Ordering::SeqCst), 0);
+    f.manager
+        .lease(&f.id)
+        .unwrap()
+        .with_connection(|db, _| {
+            let text: String = db
+                .query_row(
+                    "SELECT translated_text FROM manga_regions LIMIT 1",
+                    [],
+                    |r| r.get(0),
+                )
+                .unwrap();
+            assert_eq!(text, "Авторская правка");
+            Ok(())
+        })
+        .unwrap();
+}
+#[tokio::test]
+async fn late_source_edit_rejects_dialogue_and_success_checkpoint() {
+    let f = recognized_fixture(1).await;
+    create_dialogue(&f, "dialogue", 1);
+    let manager = f.manager.clone();
+    let project = f.id.clone();
+    let mut fake = DialogueFake::new(0);
+    fake.hook = Some(Box::new(move || {
+        manager
+            .lease(&project)
+            .unwrap()
+            .with_connection(|db, _| {
+                let (id, rev): (String, i64) = db
+                    .query_row("SELECT id,revision FROM manga_regions LIMIT 1", [], |r| {
+                        Ok((r.get(0)?, r.get(1)?))
+                    })
+                    .unwrap();
+                edits::update_region(
+                    db,
+                    &id,
+                    &Revision(rev.to_string()),
+                    &RegionPatch::SourceText {
+                        text: "corrected".into(),
+                    },
+                )?;
+                Ok(())
+            })
+            .unwrap();
+    }));
+    let error = durable::execute(
+        &f.manager,
+        &f.id,
+        "dialogue",
+        &super::translation_pipeline::TranslationPipeline {
+            provider: Arc::new(fake),
+        },
+        Arc::new(AtomicBool::new(false)),
+        |_| {},
+    )
+    .await
+    .unwrap_err();
+    assert_eq!(error.code, ErrorCode::RevisionConflict);
+    f.manager
+        .lease(&f.id)
+        .unwrap()
+        .with_connection(|db, _| {
+            assert_eq!(
+                db.query_row(
+                    "SELECT COUNT(*) FROM manga_results WHERE stage='translation'",
+                    [],
+                    |r| r.get::<_, i64>(0)
+                )
+                .unwrap(),
+                0
+            );
+            assert_eq!(
+                db.query_row(
+                    "SELECT COUNT(*) FROM manga_regions WHERE translated_text IS NOT NULL",
+                    [],
+                    |r| r.get::<_, i64>(0)
+                )
+                .unwrap(),
+                0
+            );
+            Ok(())
+        })
+        .unwrap();
+}
+#[tokio::test]
+async fn dialogue_prompt_uses_only_matching_terms_and_locked_text_as_context() {
+    let f = recognized_fixture(1).await;
+    let mut input = f
+        .manager
+        .lease(&f.id)
+        .unwrap()
+        .with_connection(|db, _| regions::read(db, &f.run().snapshot.selected_ids[0]))
+        .unwrap();
+    input[0].source_text = "王林 пришёл".into();
+    let mut locked = input[0].clone();
+    locked.id = "locked".into();
+    locked.reading_order = 1;
+    locked.translation_manual = true;
+    locked.translated_text = Some("Сохранить точно".into());
+    input.push(locked);
+    let fake = DialogueFake::new(0);
+    let terms = vec![
+        crate::application::book_terms::term("王林", "Ван Линь"),
+        crate::application::book_terms::term("韩立", "Хань Ли"),
+    ];
+    let translated = super::translation::translate(&fake, &input, "zh", "ru", &terms)
+        .await
+        .unwrap();
+    assert_eq!(translated.len(), 1);
+    assert_eq!(translated[0].id, input[0].id);
+    let requests = fake.requests.lock().unwrap();
+    let p = &requests[0];
+    assert_eq!(p["glossary"].as_array().unwrap().len(), 1);
+    assert_eq!(p["glossary"][0]["source"], "王林");
+    assert_eq!(p["regions"][1]["lockedTranslation"], "Сохранить точно");
+    assert_eq!(p["translateIds"].as_array().unwrap().len(), 1);
+}
