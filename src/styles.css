@@ -80,7 +80,7 @@ input[type="checkbox"] {
 label {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 6px;
 }
 h1,
 h2,
@@ -113,12 +113,12 @@ button + button {
   overflow: hidden;
 }
 .bc-topbar {
-  height: 52px;
+  height: 38px;
   flex-shrink: 0;
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 0 16px;
+  padding: 0 10px;
   border-bottom: 1px solid var(--line);
   background: #202023;
 }
@@ -132,7 +132,7 @@ button + button {
   gap: 9px;
   letter-spacing: -0.2px;
   font-size: 12px;
-  margin-right: 24px;
+  margin-right: 10px;
   color: #e7e7ec;
   flex-shrink: 0;
 }
@@ -152,7 +152,7 @@ button + button {
 .bc-library {
   overflow: auto;
   flex: 1;
-  padding: 64px max(32px, calc((100vw - 1140px) / 2));
+  padding: 32px max(24px, calc((100vw - 1140px) / 2));
 }
 .bc-library > p {
   max-width: 620px;
@@ -160,7 +160,9 @@ button + button {
 .bc-actions {
   display: flex;
   gap: 8px;
-  margin: 28px 0 44px;
+  margin: 12px 0 16px;
+  flex-wrap: wrap;
+  align-items: center;
 }
 .bc-project-grid {
   display: grid;
@@ -197,7 +199,7 @@ button + button {
   border-right: 1px solid var(--line);
   display: flex;
   flex-direction: column;
-  padding-top: 24px;
+  padding-top: 16px;
 }
 .bc-sidebar > h2,
 .bc-sidebar > p,
@@ -212,11 +214,11 @@ button + button {
   font-size: 12px;
 }
 .bc-chapter-search {
-  margin: 18px 0 12px;
+  margin: 8px 0 10px;
   color: var(--muted);
   font-size: 11px;
-  text-transform: uppercase;
-  letter-spacing: 1px;
+  text-transform: none;
+  letter-spacing: 0;
 }
 .bc-chapter-search input {
   text-transform: none;
@@ -266,7 +268,7 @@ button + button {
 .bc-tabs button {
   border: 0;
   border-radius: 0;
-  padding: 14px 12px;
+  padding: 7px 9px;
   background: transparent;
   color: var(--muted);
   margin: 0;
@@ -281,7 +283,7 @@ button + button {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 12px 20px;
+  padding: 5px 12px;
   border-bottom: 1px solid var(--line);
   flex-wrap: wrap;
 }
@@ -311,29 +313,24 @@ button + button {
   grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
 }
 .bc-reader-titles > div {
-  padding: 32px 36px 24px;
+  padding: 6px 22px;
   border-bottom: 1px solid var(--line);
   position: relative;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
 }
 .bc-reader-titles > div + div,
 .bc-target-block {
   border-left: 1px solid var(--line);
 }
-.bc-reader-titles span {
-  display: block;
-  color: var(--muted);
-  font-size: 11px;
-  text-transform: uppercase;
-  letter-spacing: 1.4px;
-  margin-bottom: 16px;
-}
 .bc-reader-titles h2 {
   font-family: Georgia, "Times New Roman", serif;
-  font-size: 24px;
-  line-height: 1.4;
-}
-.bc-reader-titles small {
-  color: var(--muted);
+  font-size: 18px;
+  line-height: 1.35;
+  margin: 0;
+  overflow-wrap: anywhere;
 }
 .bc-block-pair > div {
   padding: 20px 36px;
@@ -385,7 +382,7 @@ button + button {
   margin: auto;
 }
 .bc-tool {
-  padding: 36px;
+  padding: 24px;
   max-width: 1100px;
   margin: 0 auto;
 }
@@ -396,7 +393,7 @@ button + button {
   margin-top: 12px;
 }
 .bc-tool h2 {
-  margin-bottom: 28px;
+  margin-bottom: 16px;
 }
 .bc-summary {
   white-space: pre-wrap;
@@ -404,8 +401,8 @@ button + button {
 .bc-fields {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-  gap: 20px;
-  margin: 20px 0;
+  gap: 16px;
+  margin: 16px 0;
 }
 .bc-change-list {
   max-height: 45vh;
@@ -436,7 +433,7 @@ button + button {
   align-items: center;
   justify-content: space-between;
   gap: 16px;
-  margin-bottom: 28px;
+  margin-bottom: 16px;
   flex-wrap: wrap;
 }
 .bc-section-heading h2 {
@@ -496,21 +493,34 @@ button + button {
   overflow: auto;
   border-top: 1px solid #484850;
   background: #1e1e20;
-  padding: 14px 20px;
+  padding: 4px 12px;
   flex-shrink: 0;
 }
 .bc-jobs > header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: 12px;
+  min-height: 24px;
+  margin: 0;
 }
 .bc-job {
   display: flex;
-  gap: 16px;
+  gap: 4px 12px;
   align-items: center;
-  padding: 8px 0;
+  min-height: 28px;
+  padding: 3px 0;
   flex-wrap: wrap;
+  font-size: 12px;
+}
+.bc-job button {
+  padding: 3px 8px;
+  font-size: 12px;
+}
+.bc-job .bc-error {
+  padding: 3px 8px;
+}
+.bc-jobs > .bc-hint {
+  margin: 4px 0;
   font-size: 12px;
 }
 .bc-job > span:first-child {
@@ -549,7 +559,7 @@ button + button {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 18px 24px;
+  padding: 12px 20px;
   border-bottom: 1px solid var(--line);
   gap: 10px;
 }
@@ -563,10 +573,10 @@ button + button {
   border-bottom: 0;
 }
 .bc-dialog-body {
-  padding: 24px;
+  padding: 20px;
   display: flex;
   flex-direction: column;
-  gap: 20px;
+  gap: 16px;
 }
 .bc-dialog-body p {
   margin: 0;
@@ -611,7 +621,7 @@ button + button {
 }
 .bc-manga aside button {
   width: 100%;
-  margin: 0 0 12px;
+  margin: 0;
   display: flex;
   flex-direction: column;
   gap: 8px;
@@ -912,7 +922,7 @@ button + button {
 .bc-title-editor {
   width: 100%;
   font:
-    24px/1.4 Georgia,
+    18px/1.35 Georgia,
     "Times New Roman",
     serif;
   color: var(--text);
@@ -921,7 +931,7 @@ button + button {
   border-bottom: 1px solid var(--line);
   border-radius: 0;
   padding: 4px 0;
-  margin: 0 0 12px;
+  margin: 0;
 }
 
 .bc-chapters button strong {
@@ -944,4 +954,243 @@ button + button {
 .bc-chapter-search select {
   width: 100%;
   margin: 6px 0;
+}
+
+.bc-assistant-panel {
+  flex: 0 0 360px;
+  width: 360px;
+  min-width: 280px;
+  max-width: 45vw;
+  overflow: auto;
+  border-left: 1px solid var(--line);
+}
+.bc-assistant-panel[hidden] {
+  display: none;
+}
+.bc-assistant-panel .bc-tool {
+  padding: 16px;
+}
+
+.bc-reader > p[role="status"] {
+  margin: 0;
+  padding: 6px 24px;
+  color: var(--muted);
+  font-size: 12px;
+}
+.bc-book-progress {
+  padding-bottom: 24px;
+  margin-bottom: 24px;
+  border-bottom: 1px solid var(--line);
+}
+.bc-book-progress h3 {
+  margin: 0 0 12px;
+}
+.bc-book-progress progress {
+  width: 100%;
+  height: 6px;
+  accent-color: var(--accent);
+}
+.bc-book-progress .bc-toolbar {
+  padding: 8px 0 0;
+  border: 0;
+  gap: 12px;
+}
+.bc-book-progress .bc-check {
+  margin-left: 0;
+}
+.bc-book-progress .bc-hint {
+  flex-basis: 100%;
+  margin: 0;
+}
+.bc-assistant-panel {
+  background: #1e1e20;
+}
+.bc-assistant-panel .bc-tool h2 {
+  margin: 0 0 12px;
+  font-size: 16px;
+}
+.bc-assistant-panel .bc-proposal-diff {
+  grid-template-columns: 1fr;
+}
+.bc-assistant-panel pre,
+.bc-assistant-panel p {
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 1200px) {
+  .bc-assistant-panel {
+    flex-basis: 300px;
+    width: 300px;
+  }
+  .bc-reader-titles > div,
+  .bc-block-pair > div {
+    padding-left: 22px;
+    padding-right: 16px;
+  }
+}
+@media (max-width: 1000px) {
+  .bc-workspace {
+    position: relative;
+  }
+  .bc-assistant-panel {
+    position: absolute;
+    z-index: 10;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    width: min(380px, 100%);
+    max-width: 100%;
+    box-shadow: -8px 0 24px #0005;
+  }
+}
+
+.bc-assistant-panel .bc-assistant {
+  display: flex;
+  flex-direction: column;
+  height: calc(100% - 8px);
+  min-height: 400px;
+}
+.bc-assistant-history {
+  flex: 1;
+  min-height: 80px;
+  overflow: auto;
+}
+.bc-assistant-panel form {
+  padding-top: 12px;
+  border-top: 1px solid var(--line);
+}
+
+.bc-assistant-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--line);
+}
+.bc-assistant-panel .bc-assistant-header h2 {
+  margin: 0;
+}
+.bc-assistant-header button {
+  background: transparent;
+  border: 0;
+  font-size: 22px;
+  padding: 0 6px;
+  color: var(--muted);
+}
+.bc-assistant-header button:hover {
+  color: #fff;
+}
+
+.bc-icon-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  background: transparent;
+  border-color: transparent;
+  font-size: 21px;
+  color: var(--muted);
+}
+.bc-library-heading {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 24px;
+}
+.bc-library-heading h1,
+.bc-library-heading .bc-actions {
+  margin: 0;
+}
+.bc-library-heading h1 {
+  font-size: 24px;
+  letter-spacing: -0.4px;
+}
+.bc-topbar {
+  overflow-x: auto;
+}
+.bc-tabs {
+  scrollbar-width: thin;
+}
+
+.bc-chapter-filters {
+  margin: 0 0 8px;
+}
+.bc-chapter-filters summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 18px;
+  cursor: pointer;
+  color: var(--muted);
+  list-style: none;
+}
+.bc-chapter-filters summary::-webkit-details-marker {
+  display: none;
+}
+.bc-chapter-filters summary:hover,
+.bc-chapter-filters[open] summary {
+  color: #d8d8dc;
+  background: #27272b;
+}
+.bc-sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.bc-translation-options {
+  font-size: 12px;
+  color: var(--muted);
+}
+.bc-translation-options summary {
+  cursor: pointer;
+  padding: 6px;
+}
+.bc-translation-options .bc-check {
+  margin: 8px 6px;
+}
+
+.bc-reader-titles .bc-icon-button {
+  flex-shrink: 0;
+}
+.bc-title-editor {
+  min-width: 0;
+}
+
+.bc-topbar {
+  gap: 4px;
+}
+.bc-topbar button {
+  padding-top: 4px;
+  padding-bottom: 4px;
+}
+.bc-topbar .bc-icon-button {
+  width: 28px;
+  height: 28px;
+  padding: 0;
+}
+.bc-topbar button[aria-pressed="true"] {
+  background: #27354d;
+}
+.bc-jobs-toggle {
+  position: relative;
+}
+.bc-activity-dot {
+  position: absolute;
+  top: 3px;
+  right: 3px;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--accent);
 }

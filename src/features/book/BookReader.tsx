@@ -66,34 +66,40 @@ export function BookReader({
     <div className="bc-reader">
       <div className="bc-reader-titles">
         <div>
-          <span>{t("original")}</span>
           <h2>{view.chapter.title}</h2>
         </div>
         <div>
-          <span>
-            {t("translation")}
-            {view.translation
-              ? ` · ${t(view.translation.origin === "reference" ? "originReference" : view.translation.origin === "manual" ? "originManual" : "originModel")}`
-              : ""}
-          </span>
           {view.translation ? (
             <>
-              <input className="bc-title-editor" aria-label={t("translatedChapterTitle")}
+              <input
+                className="bc-title-editor"
+                aria-label={t("translatedChapterTitle")}
                 value={state.drafts.get(TITLE_DRAFT) ?? view.translation.title}
-                onChange={(e) => session.editTitle(e.target.value)} />
-              <button disabled={busy || state.saving} onClick={onTranslateTitle}>{t("translateTitle")}</button>
+                onChange={(e) => session.editTitle(e.target.value)}
+              />
+              <button
+                className="bc-icon-button"
+                aria-label={t("translateTitle")}
+                title={t("translateTitle")}
+                disabled={busy || state.saving}
+                onClick={onTranslateTitle}
+              >
+                <svg
+                  aria-hidden="true"
+                  width="17"
+                  height="17"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1.7"
+                >
+                  <path d="M4 7h14m-4-4 4 4-4 4M20 17H6m4-4-4 4 4 4" />
+                </svg>
+              </button>
             </>
-          ) : <h2>—</h2>}
-          <small role="status">
-            {state.saving
-              ? t("saving")
-              : state.drafts.size
-                ? t("unsaved")
-                : t("saved")}
-            {view.translation && view.translation.status !== "ready"
-              ? ` · ${t("review")}`
-              : ""}
-          </small>
+          ) : (
+            <h2>—</h2>
+          )}
         </div>
       </div>
       <p role="status">
@@ -108,6 +114,12 @@ export function BookReader({
                   ? "chapterSkipped"
                   : "chapterPending",
         )}
+        {view.translation &&
+          ` · ${t(view.translation.origin === "reference" ? "originReference" : view.translation.origin === "manual" ? "originManual" : "originModel")}`}
+        {view.translation && view.translation.status !== "ready"
+          ? ` · ${t("review")}`
+          : ""}
+        {` · ${state.saving ? t("saving") : state.drafts.size ? t("unsaved") : t("saved")}`}
       </p>
       {view.translationError && (
         <p role="alert">{errorText(view.translationError, t)}</p>

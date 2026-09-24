@@ -10,7 +10,11 @@ export function Assistant({
   onJob,
   refresh,
   registerFlush,
+  beforeWork,
+  onClose,
 }: {
+  onClose: () => void;
+  beforeWork: () => Promise<void>;
   projectId: string;
   chapterId: string | null;
   t: T;
@@ -64,6 +68,7 @@ export function Assistant({
     setBusy(true);
     setError(null);
     try {
+      await beforeWork();
       await work();
     } catch (e) {
       if (active.current) setError(e);
@@ -82,74 +87,86 @@ export function Assistant({
   }
   return (
     <section className="bc-tool bc-assistant">
-      <h2>{t("assistant")}</h2>
-      <p className="bc-hint">{t("assistantHint")}</p>
-      {view.messages.map((m) => (
-        <article className={`bc-chat-message bc-chat-${m.role}`} key={m.id}>
-          <strong>
-            {m.role === "user"
-              ? t("you")
-              : m.role === "tool"
-                ? t("actionResult")
-                : t("assistant")}
-          </strong>
-          <p style={{ whiteSpace: "pre-wrap" }}>{m.text}</p>
-        </article>
-      ))}
-      {view.proposals.map((p) => (
-        <article className="bc-proposal" key={p.id}>
-          <strong>
-            {t(
-              p.kind === "book_prompt"
-                ? "bookPrompt"
-                : p.kind === "glossary_term"
-                  ? "glossary"
-                  : p.kind === "translate_batch"
-                    ? "translateBatch"
-                    : "replace",
+      <header className="bc-assistant-header">
+        <h2>{t("assistant")}</h2>
+        <button
+          type="button"
+          aria-label={t("close")}
+          title={t("close")}
+          onClick={onClose}
+        >
+          ×
+        </button>
+      </header>
+      <div className="bc-assistant-history">
+        {view.messages.map((m) => (
+          <article className={`bc-chat-message bc-chat-${m.role}`} key={m.id}>
+            <strong>
+              {m.role === "user"
+                ? t("you")
+                : m.role === "tool"
+                  ? t("actionResult")
+                  : t("assistant")}
+            </strong>
+            <p style={{ whiteSpace: "pre-wrap" }}>{m.text}</p>
+          </article>
+        ))}
+        {view.proposals.map((p) => (
+          <article className="bc-proposal" key={p.id}>
+            <strong>
+              {t(
+                p.kind === "book_prompt"
+                  ? "bookPrompt"
+                  : p.kind === "glossary_term"
+                    ? "glossary"
+                    : p.kind === "translate_batch"
+                      ? "translateBatch"
+                      : "replace",
+              )}
+            </strong>
+            {p.kind === "translate_batch" ? (
+              <p>
+                {t("batchCount")}: {p.after}
+              </p>
+            ) : (
+              <div className="bc-proposal-diff">
+                <div>
+                  <small>{t("before")}</small>
+                  <pre>{p.before || "—"}</pre>
+                </div>
+                <div>
+                  <small>{t("after")}</small>
+                  <pre>{p.after || "—"}</pre>
+                </div>
+              </div>
             )}
-          </strong>
-          {p.kind === "translate_batch" ? (
-            <p>
-              {t("batchCount")}: {p.after}
-            </p>
-          ) : (
-            <div className="bc-proposal-diff">
-              <div>
-                <small>{t("before")}</small>
-                <pre>{p.before || "—"}</pre>
-              </div>
-              <div>
-                <small>{t("after")}</small>
-                <pre>{p.after || "—"}</pre>
-              </div>
+            <div className="bc-actions">
+              <button
+                className="primary"
+                disabled={busy}
+                onClick={() => void act(() => confirm(p.id, true))}
+              >
+                {t("apply")}
+              </button>
+              <button
+                disabled={busy}
+                onClick={() => void act(() => confirm(p.id, false))}
+              >
+                {t("decline")}
+              </button>
             </div>
-          )}
-          <div className="bc-actions">
-            <button
-              className="primary"
-              disabled={busy}
-              onClick={() => void act(() => confirm(p.id, true))}
-            >
-              {t("apply")}
-            </button>
-            <button
-              disabled={busy}
-              onClick={() => void act(() => confirm(p.id, false))}
-            >
-              {t("decline")}
-            </button>
-          </div>
-        </article>
-      ))}
-      {error != null && (
-        <p className="bc-error" role="alert">
-          {errorText(error, t)}
-        </p>
-      )}
+          </article>
+        ))}
+        {error != null && (
+          <p className="bc-error" role="alert">
+            {errorText(error, t)}
+          </p>
+        )}
+      </div>
       <form
         onSubmit={(e) => {
           e.preventDefault();
+          if (busy || !draft.trim()) return;
           void act(async () => {
             const existing = new Set(view.proposals.map((p) => p.id));
             const result = await projectApi.assistantSend({
@@ -174,6 +191,17 @@ export function Assistant({
             disabled={busy}
             value={draft}
             onChange={(e) => setDraft(e.target.value)}
+            onKeyDown={(e) => {
+              if (
+                e.key === "Enter" &&
+                !e.shiftKey &&
+                !e.nativeEvent.isComposing
+              ) {
+                e.preventDefault();
+                if (!busy && draft.trim())
+                  e.currentTarget.form?.requestSubmit();
+              }
+            }}
             placeholder={t("assistantExample")}
           />
         </label>
@@ -187,9 +215,9 @@ export function Assistant({
           {t("assistantAutoRun")}
         </label>
         <div className="bc-actions">
-          <button className="primary" disabled={busy || !draft.trim()}>
-            {busy ? t("processing") : t("send")}
-          </button>
+          <small className="bc-hint">
+            {busy ? t("processing") : t("assistantSendHint")}
+          </small>
           {busy && (
             <button
               type="button"

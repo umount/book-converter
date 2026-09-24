@@ -17,7 +17,11 @@ export function Modal({
   useEffect(() => {
     const element = ref.current!;
     element.showModal();
-    element.querySelector<HTMLElement>("input:not([disabled]), textarea:not([disabled]), select:not([disabled])")?.focus();
+    element
+      .querySelector<HTMLElement>(
+        "input:not([disabled]), textarea:not([disabled]), select:not([disabled])",
+      )
+      ?.focus();
     return () => element.close();
   }, []);
   return (
@@ -32,7 +36,13 @@ export function Modal({
     >
       <header>
         <h2>{title}</h2>
-        <button aria-label={closeLabel} disabled={busy} onClick={onClose}>
+        <button
+          className="bc-icon-button"
+          title={closeLabel}
+          aria-label={closeLabel}
+          disabled={busy}
+          onClick={onClose}
+        >
           ×
         </button>
       </header>

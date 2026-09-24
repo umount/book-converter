@@ -694,3 +694,27 @@ fallback. Keep commits scoped; push only on user request.
 - Full Rust suite: 334 passed. Strict all-target Clippy, frontend tests/build and
   generated-contract check passed. Added coverage for unknown samples, stage
   weighting, current-run preference, superseded attempts and changed settings.
+
+### P06 compact book workspace and assistant side panel
+
+- Bounded batch controls now live in the book overview with translated/total and
+  percentage progress, plus review/error counts. The reader retains single-chapter
+  translation with secondary options collapsed. Chapter metadata refreshes on job
+  revisions so progress advances within a batch, not only at its end.
+- Assistant is a persistent right panel, toggled from the top bar or its accessible
+  close icon. Enter sends, Shift+Enter inserts a line; IME composition is respected.
+  Message history scrolls independently above the composer. Hiding the panel keeps
+  its draft/history. Editor and overview drafts flush before assistant operations;
+  applied changes reload tool data. Assistant busy guards have a separate registry.
+- Chapter search/status filters are collapsed by default, with filtered counts and
+  an active marker retained in the compact header. Reduced title/action/form spacing,
+  unified close icons and compact library heading remove persistent visual clutter.
+- Used frontend-design guidance while preserving the existing dark workspace.
+  Browser fixture checks covered 1440px desktop and 900px overlay layouts, title
+  density, overview progress, batch launch, assistant Enter/Shift+Enter, close/reopen,
+  settings and chapter-filter expansion/search. These are browser fixture checks,
+  not real-provider or native Tauri acceptance.
+- Final density pass: one-line chapter titles without redundant source/translation
+  labels, icon title translation action, 38px application bar, reduced tab padding,
+  collapsed reader options, and compact job rows. Shared toolbar icons include
+  accessible names and tooltips. Frontend tests/build and whitespace check passed.

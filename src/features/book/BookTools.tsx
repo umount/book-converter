@@ -36,6 +36,7 @@ function Tools({
   refresh,
   registerFlush,
 }: {
+  translationControls: import("react").ReactNode;
   tool: BookTool;
   project: ProjectDescriptor;
   chapters: ChapterSummary[];

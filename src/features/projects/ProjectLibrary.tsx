@@ -19,17 +19,23 @@ export function ProjectLibrary({
 }) {
   return (
     <main className="bc-library">
-      <p className="bc-eyebrow">BOOK / MANGA</p>
-      <h1>{t("welcome")}</h1>
-      <p className="bc-hint">{t("welcomeHint")}</p>
-      <div className="bc-actions">
-        <button className="primary" onClick={create}>
-          {t("newProject")}
-        </button>
-        <button disabled={busy} onClick={importArchive}>
-          {t("importArchive")}
-        </button>
-      </div>
+      {!catalog.length && (
+        <>
+          <h1>{t("welcome")}</h1>
+          <p className="bc-hint">{t("welcomeHint")}</p>
+        </>
+      )}
+      <header className="bc-library-heading">
+        {catalog.length > 0 && <h1>{t("library")}</h1>}
+        <div className="bc-actions">
+          <button className="primary" onClick={create}>
+            {t("newProject")}
+          </button>
+          <button disabled={busy} onClick={importArchive}>
+            {t("importArchive")}
+          </button>
+        </div>
+      </header>
       <div className="bc-project-grid">
         {catalog.map(({ descriptor: project, progress }) => (
           <article key={project.id}>

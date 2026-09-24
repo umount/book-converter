@@ -14,7 +14,9 @@ export function BookOverview({
   t,
   run,
   registerFlush,
+  translationControls,
 }: {
+  translationControls: import("react").ReactNode;
   project: ProjectDescriptor;
   t: T;
   run: (kind: "metadata" | "glossary") => Promise<void>;
@@ -107,6 +109,7 @@ export function BookOverview({
   }
   return (
     <section className="bc-tool">
+      {translationControls}
       <h2>{t("metadata")}</h2>
       <p className="bc-hint">{project.source.displayName}</p>
       {error != null && (
