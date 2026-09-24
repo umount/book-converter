@@ -25,6 +25,21 @@ documentation in English. Keep user-facing UI strings localized in English, Russ
 and Chinese. Conversation with the user may remain in Russian. Apply this rule to
 status reports stored in the repository and to future handoff documents too.
 
+### Execution priority update (2026-09-24)
+
+The user explicitly reordered the remaining work. This order overrides the original
+phase numbering; phase IDs and acceptance criteria remain useful tracking references.
+
+1. Finish books: complete the remaining book workflow, format fidelity, assistant
+   capabilities and book-specific verification in P03–P07.
+2. Remove obsolete backend/frontend code and IPC after replacing any still-needed
+   book behavior. Run regression checks and update architecture documentation.
+3. Resume automatic manga processing and the remaining manga acceptance work.
+
+Do not expand manga functionality during the first two stages. Preserve the existing
+manga workspace while changing shared infrastructure. Book completion and legacy
+removal must not depend on finishing the automatic manga pipeline.
+
 ### Authorized scope
 
 - This is a test application with no external users.

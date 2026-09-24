@@ -47,12 +47,18 @@ P09–P13: pending.
 
 ## Next executable step
 
-Run the P06 Linux Tauri import → metadata → translation → edit → search → export
-acceptance flow, including structural illustrations and native close/save handling.
-Then continue provider-role UI/streaming acceptance and P07 application-service tools.
-Languages are immutable after project creation; do not implement language retarget.
-Close remaining P04/P05 acceptance items before declaring their phases complete.
-Plan snapshot committed as a45d990. Baseline formatting drift is recorded, not hidden.
+User priority update (2026-09-24): **books → legacy removal → manga**.
+
+1. Close the remaining book workflow and fidelity gaps, including FB2 inline
+   illustrations, assistant scope and book-specific acceptance. Verify import →
+   metadata → bounded translation → edit → search → export and native save/close
+   behavior where the host permits it. Keep language pairs immutable.
+2. Delete superseded code and IPC, preserving still-needed book behavior through
+   the new services. Verify regressions and replace outdated architecture docs.
+3. Only then resume automatic manga recognition, cleanup, lettering and acceptance.
+
+Original phase numbering does not override this priority. Existing manga functionality
+must remain usable through shared changes, but new manga features are deferred.
 
 ## Evidence rules
 
