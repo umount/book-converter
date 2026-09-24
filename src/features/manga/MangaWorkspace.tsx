@@ -1,10 +1,20 @@
 import { VirtualList } from "../../shared/ui/VirtualList";
 import { useEffect, useRef, useState } from "react";
 import { projectApi } from "../../shared/api/projects";
-import type { PageSummary } from "../../shared/contracts/generated";
+import type {
+  MangaVolumeSummary,
+  PageSummary,
+} from "../../shared/contracts/generated";
 import { assetUrl } from "../../shared/api/assets";
 import { errorText, type T } from "../../app/strings";
 export function MangaWorkspace({ projectId, t }: { projectId: string; t: T }) {
+  return <MangaProjectWorkspace key={projectId} projectId={projectId} t={t} />;
+}
+
+function MangaProjectWorkspace({ projectId, t }: { projectId: string; t: T }) {
+  const [volumes, setVolumes] = useState<MangaVolumeSummary[]>([]);
+  const [volumeId, setVolumeId] = useState("");
+  const [loading, setLoading] = useState(true);
   const [pages, setPages] = useState<PageSummary[]>([]),
     [selected, setSelected] = useState(0),
     [error, setError] = useState<unknown>(null);
@@ -24,13 +34,31 @@ export function MangaWorkspace({ projectId, t }: { projectId: string; t: T }) {
   }, [selected]);
   useEffect(() => {
     let alive = true;
+    projectApi
+      .mangaVolumes({ projectId })
+      .then((items) => {
+        if (alive) setVolumes(items);
+      })
+      .catch((e) => {
+        if (alive) setError(e);
+      });
+    return () => {
+      alive = false;
+    };
+  }, [projectId]);
+  useEffect(() => {
+    let alive = true;
+    setPages([]);
+    setSelected(0);
+    setError(null);
+    setLoading(true);
     void (async () => {
       let cursor: string | null = null;
       const all: PageSummary[] = [];
       do {
         const result = await projectApi.mangaPages({
           projectId,
-          volumeId: null,
+          volumeId: volumeId || null,
           cursor,
           limit: 200,
         });
@@ -39,18 +67,33 @@ export function MangaWorkspace({ projectId, t }: { projectId: string; t: T }) {
         cursor = result.nextCursor;
         setPages([...all]);
       } while (cursor);
+      if (alive) setLoading(false);
     })().catch((e) => {
-      if (alive) setError(e);
+      if (alive) {
+        setError(e);
+        setLoading(false);
+      }
     });
     return () => {
       alive = false;
     };
-  }, [projectId]);
+  }, [projectId, volumeId]);
   const page = pages[selected];
   return (
     <div className="bc-manga">
       <aside>
-        <h2>{t("pages")}</h2>
+        <select
+          aria-label={t("volumes")}
+          value={volumeId}
+          onChange={(e) => setVolumeId(e.target.value)}
+        >
+          <option value="">{t("allVolumes")}</option>
+          {volumes.map((v) => (
+            <option key={v.id} value={v.id}>
+              {v.title} ({v.pageCount})
+            </option>
+          ))}
+        </select>
         <VirtualList
           items={pages}
           activeIndex={selected}
@@ -66,11 +109,19 @@ export function MangaWorkspace({ projectId, t }: { projectId: string; t: T }) {
             >
               <img
                 loading="lazy"
-                src={assetUrl(projectId, p.thumbnailAssetId ?? p.originalAssetId)}
+                src={assetUrl(
+                  projectId,
+                  p.thumbnailAssetId ?? p.originalAssetId,
+                )}
                 alt=""
               />
               <span>
-                {t("page")} {i + 1}
+                {t("page")} {p.position + 1}
+                {!volumeId && volumes.length > 1 && (
+                  <small>
+                    {volumes.find((v) => v.id === p.volumeId)?.title}
+                  </small>
+                )}
               </span>
             </button>
           )}
@@ -85,7 +136,7 @@ export function MangaWorkspace({ projectId, t }: { projectId: string; t: T }) {
         )}
         <div className="bc-toolbar">
           <button
-            disabled={selected === 0}
+            disabled={selected === 0 || !page}
             onClick={() => setSelected((i) => Math.max(0, i - 1))}
             aria-label={t("previousPage")}
           >
@@ -154,6 +205,9 @@ export function MangaWorkspace({ projectId, t }: { projectId: string; t: T }) {
           onPointerUp={() => {
             drag.current = null;
           }}
+          onLostPointerCapture={() => {
+            drag.current = null;
+          }}
           onPointerCancel={() => {
             drag.current = null;
           }}
@@ -171,7 +225,7 @@ export function MangaWorkspace({ projectId, t }: { projectId: string; t: T }) {
               }}
             />
           ) : (
-            <p>{t("noPages")}</p>
+            <p>{t(loading ? "loading" : "noPages")}</p>
           )}
         </div>
       </div>

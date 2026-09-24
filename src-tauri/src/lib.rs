@@ -112,6 +112,7 @@ pub fn run() {
             commands::book_retarget_preview,
 
             commands::manga_list_pages,
+            commands::manga_list_volumes,
             commands::project_list,
             commands::project_inspect_source,
             commands::project_create,

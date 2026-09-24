@@ -146,6 +146,8 @@ const en = {
   outputTokens: "Maximum output tokens",
 
   zoom: "Zoom",
+  volumes: "Volumes",
+  allVolumes: "All volumes",
   fitPage: "Fit width",
   previousPage: "Previous page",
   nextPage: "Next page",
@@ -403,6 +405,8 @@ const ru: Record<Key, string> = {
   outputTokens: "Максимум токенов ответа",
 
   zoom: "Масштаб",
+  volumes: "Тома",
+  allVolumes: "Все тома",
   fitPage: "По ширине",
   previousPage: "Предыдущая страница",
   nextPage: "Следующая страница",
@@ -649,6 +653,8 @@ const zh: Record<Key, string> = {
   outputTokens: "最大输出令牌数",
 
   zoom: "缩放",
+  volumes: "卷",
+  allVolumes: "所有卷",
   fitPage: "适合宽度",
   previousPage: "上一页",
   nextPage: "下一页",

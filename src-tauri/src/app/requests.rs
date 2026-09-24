@@ -207,6 +207,15 @@ pub struct ListMangaPagesArgs {
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct MangaVolumeSummary {
+    pub id: VolumeId,
+    pub title: String,
+    pub reading_direction: String,
+    pub page_count: u32,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct GetMangaPageArgs {
     pub project_id: ProjectId,
     pub page_id: PageId,
@@ -666,6 +675,7 @@ pub fn typescript() -> String {
         ChapterSummary::decl(&config),
         ChapterPage::decl(&config),
         BookChapterView::decl(&config),
+        MangaVolumeSummary::decl(&config),
         PageSummary::decl(&config),
         PageSummaryPage::decl(&config),
         MangaRegionView::decl(&config),

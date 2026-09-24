@@ -848,3 +848,17 @@ fallback. Keep commits scoped; push only on user request.
   check, frontend tests and production build passed. Synthetic browser preview
   verified that zero disables submission and a one-chapter batch shows 1 / 1.
   No native acceptance or paid provider request was performed.
+
+## P08 volume navigation (2026-09-24)
+
+- Added typed manga volume listing with titles, reading direction and page counts,
+  ordered by stored volume position. Book projects are rejected at the backend.
+- Added a compact volume selector over the existing paginated page list and
+  virtualized thumbnails. Page numbers preserve their position within each volume.
+- Project changes remount workspace state; late page/volume replies are ignored.
+- Browser preview verified 1,000 pages across ten volumes and a filtered 100-page
+  second volume. This is synthetic browser evidence, not native asset acceptance.
+- Next: finish canvas navigation/fit behavior, then recognition contracts and adapter.
+
+Checks for this slice: manga pagination/volume backend test, frontend test suite,
+production build, generated contracts check and strict all-target Clippy passed.

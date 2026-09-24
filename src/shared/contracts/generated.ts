@@ -57,6 +57,7 @@ export type InspectManifestArgs = { path: string, };
 export type ChapterSummary = { status: string, origin: string | null, needsReview: boolean, id: ChapterId, position: number, title: string, revision: Revision, };
 export type ChapterPage = { items: Array<ChapterSummary>, nextCursor: string | null, };
 export type BookChapterView = { status: string, langIssues: Array<string>, translationError: AppError | null, instructions: string, chapter: ChapterSummary, blocks: Array<BookBlockView>, translation: TranslationSummary | null, };
+export type MangaVolumeSummary = { id: VolumeId, title: string, readingDirection: string, pageCount: number, };
 export type PageSummary = { id: PageId, volumeId: VolumeId, position: number, originalAssetId: AssetId, thumbnailAssetId: AssetId | null, width: number, height: number, revision: Revision, };
 export type PageSummaryPage = { items: Array<PageSummary>, nextCursor: string | null, };
 export type MangaRegionView = { id: RegionId, pageId: PageId, readingOrder: number, bounds: PixelBounds, sourceText: string, translatedText: string | null, revision: Revision, };

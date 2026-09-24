@@ -203,12 +203,23 @@ export async function invokePreview<T>(
         revision: "1",
       };
       break;
+    case "manga_list_volumes":
+      result = Array.from({ length: 10 }, (_, i) => ({
+        id: `volume-${i}`,
+        title: `Volume ${i + 1}`,
+        readingDirection: "rtl",
+        pageCount: 100,
+      }));
+      break;
     case "manga_list_pages": {
+      const filtered = mangaPages.filter(
+        (p) => !args.volumeId || p.volumeId === args.volumeId,
+      );
       const start = args.cursor ? Number(args.cursor) : 0;
       result = {
-        items: mangaPages.slice(start, start + args.limit),
+        items: filtered.slice(start, start + args.limit),
         nextCursor:
-          start + args.limit < mangaPages.length
+          start + args.limit < filtered.length
             ? String(start + args.limit)
             : null,
       };
@@ -448,12 +459,12 @@ export async function invokePreview<T>(
         state: "succeeded",
         revision: "1",
         totalSteps:
-          (command === "book_start_retarget" || command === "book_start_glossary")
+          command === "book_start_retarget" || command === "book_start_glossary"
             ? Math.min(views.length, args.maxChapters)
             : 3,
         remainingSeconds: null,
         completedSteps:
-          (command === "book_start_retarget" || command === "book_start_glossary")
+          command === "book_start_retarget" || command === "book_start_glossary"
             ? Math.min(views.length, args.maxChapters)
             : 3,
         error: null,

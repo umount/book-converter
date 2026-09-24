@@ -616,7 +616,8 @@ button + button {
   min-height: 0;
   width: 160px;
   flex-shrink: 0;
-  padding: 20px;
+  padding: 8px;
+  gap: 8px;
   background: #1e1e20;
 }
 .bc-manga aside button {
@@ -635,7 +636,7 @@ button + button {
   display: flex;
   flex-direction: column;
   flex: 1;
-  padding: 24px;
+  padding: 8px;
   min-width: 0;
   text-align: center;
 }
@@ -1266,3 +1267,9 @@ button + button {
   -webkit-box-orient: vertical;
   overflow: hidden;
 }
+
+.bc-manga aside select { width: 100%; min-width: 0; }
+.bc-manga aside small { display: block; color: var(--muted); font-size: 11px; }
+
+.bc-manga-page .bc-toolbar label { display: flex; flex-direction: row; align-items: center; gap: 6px; }
+.bc-manga-page .bc-toolbar { padding: 4px 0; }

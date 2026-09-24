@@ -2,12 +2,47 @@
 use crate::{
     app::{
         contracts::{AppError, AssetId, PageId, ProjectKind, Revision, VolumeId},
-        requests::{ListMangaPagesArgs, PageSummary, PageSummaryPage},
+        requests::{
+            ListMangaPagesArgs, MangaVolumeSummary, PageSummary, PageSummaryPage, ProjectArgs,
+        },
         services::AppContext,
     },
     storage::repository::{storage_error, ProjectRepository},
 };
 use rusqlite::{Connection, OptionalExtension};
+
+#[tauri::command]
+pub async fn manga_list_volumes(
+    context: tauri::State<'_, AppContext>,
+    args: ProjectArgs,
+) -> Result<Vec<MangaVolumeSummary>, AppError> {
+    let manager = context.manager.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        manager
+            .lease(&args.project_id)?
+            .with_connection(|db, _| list_volumes(db))
+    })
+    .await
+    .map_err(|_| AppError::invalid("task"))?
+}
+
+fn list_volumes(db: &mut Connection) -> Result<Vec<MangaVolumeSummary>, AppError> {
+    ProjectRepository::new(db, ProjectKind::Manga)?;
+    let mut query = db.prepare("SELECT v.id,v.title,v.reading_direction,COUNT(p.id) FROM manga_volumes v LEFT JOIN manga_pages p ON p.volume_id=v.id GROUP BY v.id ORDER BY v.position").map_err(storage_error)?;
+    let rows = query
+        .query_map([], |r| {
+            Ok(MangaVolumeSummary {
+                id: VolumeId(r.get(0)?),
+                title: r.get(1)?,
+                reading_direction: r.get(2)?,
+                page_count: r.get(3)?,
+            })
+        })
+        .map_err(storage_error)?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(storage_error)?;
+    Ok(rows)
+}
 
 #[tauri::command]
 pub async fn manga_list_pages(
@@ -102,6 +137,14 @@ mod tests {
                 .unwrap();
             }
         }
+        let volumes = list_volumes(&mut db).unwrap();
+        assert_eq!(
+            volumes
+                .iter()
+                .map(|v| (v.id.0.as_str(), v.page_count, v.reading_direction.as_str()))
+                .collect::<Vec<_>>(),
+            vec![("v1", 2, "rtl"), ("v2", 2, "rtl")]
+        );
         let mut args = ListMangaPagesArgs {
             project_id: ProjectId::new(),
             volume_id: None,
@@ -134,5 +177,6 @@ mod tests {
             .unwrap();
         book_db.execute("INSERT INTO project_settings(singleton,kind,target_language) VALUES(1,'book','ru')", []).unwrap();
         assert!(list_pages(&mut book_db, &args).is_err());
+        assert!(list_volumes(&mut book_db).is_err());
     }
 }
