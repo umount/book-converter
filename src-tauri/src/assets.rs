@@ -10,6 +10,8 @@
 //! same project-id validation the commands use, and nothing outside a project's
 //! `assets/` directory is reachable.
 
+pub mod store;
+
 use std::path::PathBuf;
 
 use tauri::http::{header, Request, Response, StatusCode};
@@ -62,7 +64,7 @@ fn resolve(path: &str) -> Option<PathBuf> {
         return None;
     }
     let dir = project_dir(project_id).ok()?;
-    Some(dir.join(crate::commands::ASSETS_DIR).join(name))
+    Some(dir.join(store::DIRECTORY).join(name))
 }
 
 /// Asset file names are `<content hash>.<ext>` and nothing else — no separators,

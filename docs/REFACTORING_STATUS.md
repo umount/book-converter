@@ -4,7 +4,8 @@
 
 P00: completed. Baseline and deterministic fixtures.
 P01: in_progress. Typed contracts and composition boundary.
-P02–P13: pending. No production behavior has been replaced yet.
+P02: foundation prototyped; depends on finishing P01 contracts.
+P03–P13: pending. No production behavior has been replaced yet.
 
 ## Baseline (2026-09-23)
 
@@ -48,3 +49,28 @@ Plan snapshot committed as a45d990. Baseline formatting drift is recorded, not h
 No OCR/model benchmarks or native GUI smoke tests have run. No phase is complete
 without its acceptance evidence. Automatic manga processing has no manual/model-free
 fallback. Keep commits scoped; push only on user request.
+
+## P01 progress
+
+- Added canonical Rust project, error, selection, event, block and manga capability
+  types; ts-rs =12.0.1 generates TypeScript, UUID v4 supplies project identity.
+- Added versioned manifest parsing and read-only project_inspect_manifest IPC.
+  Missing/unknown format versions and missing kinds are rejected explicitly.
+- Revisions serialize as decimal strings to avoid JavaScript precision loss.
+- All six manga stages must be available; no manual fallback satisfies preflight.
+- New app contract tests: 5 passed; manifest tests: 2 passed. Full isolated library
+  regression: 252 passed, 0 failed. Strict all-target Clippy: exit 0.
+- `npm run build`: passed with generated contracts.
+- Remaining P01: domain command argument schemas, composition service context and
+  frontend unit harness. Do not mark the entire phase complete yet.
+
+## P02 prototype
+
+- Version-1 SQL schema and transactional text compare-and-swap added for exercising
+  contracts. Four storage tests passed: domain isolation, stale writes, broken asset
+  references and duplicate image page identity.
+- Content-addressed AssetStore publication/deduplication test passed. Image MIME
+  and dimensions are validated; publication never replaces existing content.
+  Assets no longer import a constant from commands. No UI/persistence cutover yet.
+- This is deliberately not a completed P02; repositories and protocol integration
+  need further work before project lifecycle replacement.

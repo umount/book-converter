@@ -13,7 +13,7 @@ use crate::session::{project_dir, read_manifest};
 use crate::state::{AssetRow, Store};
 
 /// Project sub-directory holding extracted images.
-pub(crate) const ASSETS_DIR: &str = "assets";
+pub(crate) use crate::assets::store::DIRECTORY as ASSETS_DIR;
 
 /// Copy `book`'s images into the project and record its typed chapters.
 ///

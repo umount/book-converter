@@ -5,7 +5,6 @@ mod blocks;
 mod catalog;
 
 pub use archive::*;
-pub(crate) use blocks::ASSETS_DIR;
 pub use catalog::*;
 
 use std::path::Path;

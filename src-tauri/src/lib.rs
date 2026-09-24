@@ -9,7 +9,7 @@
 
 pub mod app;
 pub mod project;
-mod assets;
+pub mod assets;
 mod assistant;
 mod book;
 mod commands;
@@ -27,6 +27,7 @@ mod retarget;
 mod session;
 mod settings;
 mod state;
+pub mod storage;
 mod textutil;
 mod translator;
 
