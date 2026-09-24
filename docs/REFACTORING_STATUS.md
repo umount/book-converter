@@ -526,3 +526,15 @@ fallback. Keep commits scoped; push only on user request.
   remains atomic. Added regressions for review retention and stale-write rejection.
 - Strict all-target Clippy passed; full library test results recorded below.
 - Full library suite passed: 315 tests.
+
+### P05 reference-aware glossary extraction
+
+- Glossary extraction now includes the mapped reference excerpt, shared book
+  instructions and relevant existing terms (pinned first). Reference text is limited
+  to 16,000 characters and existing-term context to 16 KiB / 100 terms; source-term
+  validation still checks only the original source chunk.
+- Existing glossary targets remain authoritative during publication. A new extraction
+  fingerprint version avoids reusing outputs from the earlier source-only prompt.
+- Six book application tests passed, including a fake-provider batch/resume test that
+  verifies reference/instruction context, truncation and preservation of a pinned target.
+  Strict Clippy passed. Real-provider translation quality remains unmeasured.

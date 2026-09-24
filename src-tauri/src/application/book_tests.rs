@@ -124,6 +124,14 @@ impl Provider for Echo {
                 panic!("structured request expected")
             };
             let text = if system.starts_with("Extract at most") {
+                let payload: serde_json::Value = serde_json::from_str(&user).unwrap();
+                assert_eq!(payload["bookInstructions"], "Keep the established names.");
+                assert!(payload["referenceExcerpt"].as_str().unwrap().starts_with("Mapped reference"));
+                assert!(payload["referenceExcerpt"].as_str().unwrap().chars().count() <= 16000);
+                if payload["source"].as_str().unwrap().contains("Original") {
+                    assert_eq!(payload["existingTerms"][0]["target"], "Canonical");
+                    assert_eq!(payload["existingTerms"][0]["pinned"], true);
+                }
                 self.glossary_calls
                     .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
                 let source = if user.contains("Original") {
@@ -194,6 +202,12 @@ async fn pipeline_populates_batch_glossary_and_resumes_without_repeating_complet
     let profile = Fake::new(vec![]).profile;
     manager.lease(&project.id).unwrap().with_connection(|db,_|{
         let selected_ids={let mut query=db.prepare("SELECT id FROM book_chapters WHERE EXISTS(SELECT 1 FROM book_source_blocks WHERE chapter_id=book_chapters.id AND kind IN ('text','caption')) ORDER BY position").unwrap();let rows=query.query_map([],|r|r.get::<_,String>(0)).unwrap();rows.collect::<Result<Vec<_>,_>>().unwrap()};
+        db.execute("INSERT INTO book_presentation(singleton,instructions) VALUES(1,'Keep the established names.')",[]).unwrap();
+        db.execute("INSERT INTO glossary_terms(id,source,target,kind,pinned) VALUES('pinned','Original','Canonical','term',1)",[]).unwrap();
+        db.execute("INSERT INTO book_reference_chapters(id,position,title,text) VALUES('mapped',0,'Reference',?1)",[format!("Mapped reference{}", "文".repeat(20000))]).unwrap();
+        for chapter in &selected_ids {
+            db.execute("INSERT INTO book_reference_mappings(chapter_id,reference_id) VALUES(?1,'mapped')",[chapter]).unwrap();
+        }
         let settings=shared::settings(db)?;
         runs::create_run(db,"run","book_translation",&runs::RunSnapshot{settings:settings.choices,settings_revision:settings.revision,glossary_revision:shared::glossary_revision(db)?,selected_ids,prompt_version:"book-v1".into(),stages:vec!["glossary".into(),"translation".into(),"context".into()],provider:Some(profile.clone()),instructions:None},"now")
     }).unwrap();
@@ -240,6 +254,7 @@ async fn pipeline_populates_batch_glossary_and_resumes_without_repeating_complet
     );
     manager.lease(&project.id).unwrap().with_connection(|db,_|{
         assert_eq!(shared::glossary(db)?.len(),2);
+        assert_eq!(db.query_row("SELECT target FROM glossary_terms WHERE id='pinned'",[],|r|r.get::<_,String>(0)).unwrap(),"Canonical");
         assert_eq!(runs::get_run(db,"run")?.snapshot.glossary_revision,shared::glossary_revision(db)?);
         assert_eq!(db.query_row("SELECT COUNT(*) FROM book_translations",[],|r|r.get::<_,i64>(0)).unwrap(),2);
         assert_eq!(db.query_row("SELECT COUNT(*) FROM book_contexts",[],|r|r.get::<_,i64>(0)).unwrap(),2);
