@@ -1,3 +1,4 @@
+import { ResizablePanel } from "../shared/ui/ResizablePanel";
 import { ToolbarIcon } from "../shared/ui/ToolbarIcon";
 import { BookSearch } from "../features/book/BookSearch";
 import { Assistant } from "../features/assistant/Assistant";
@@ -553,7 +554,11 @@ function Shell({
       ) : (
         <div className="bc-workspace">
           {project?.kind === "book" && (
-            <aside className="bc-sidebar">
+            <ResizablePanel
+              className="bc-sidebar"
+              label={t("chapters")}
+              edge="right"
+            >
               <div className="bc-sidebar-heading">
                 <h2>{project.name}</h2>
                 <button
@@ -646,7 +651,7 @@ function Shell({
                 <VirtualList
                   key={`${project.id}/${filter}/${chapterState}`}
                   items={visibleChapters}
-                  rowHeight={62}
+                  rowHeight={42}
                   className="bc-chapters"
                   renderRow={(c) => (
                     <button
@@ -684,7 +689,7 @@ function Shell({
                   )}
                 />
               </div>
-            </aside>
+            </ResizablePanel>
           )}
           <main className="bc-main">
             <nav className="bc-tabs">
@@ -901,10 +906,12 @@ function Shell({
             </div>
           </main>
           {project?.kind === "book" && (
-            <aside
+            <ResizablePanel
+              edge="left"
+              minWidth={240}
               className="bc-assistant-panel"
               hidden={!showAssistant}
-              aria-label={t("assistant")}
+              label={t("assistant")}
             >
               <Assistant
                 key={project.id}
@@ -928,7 +935,7 @@ function Shell({
                   setShowJobs(true);
                 }}
               />
-            </aside>
+            </ResizablePanel>
           )}
         </div>
       )}

@@ -229,7 +229,12 @@ button + button {
   min-height: 0;
 }
 .bc-chapters button {
-  height: 62px;
+  height: 42px;
+  display: grid;
+  grid-template-columns: 6ch minmax(0, 1fr);
+  grid-template-rows: 18px 15px;
+  column-gap: 8px;
+  align-content: center;
   width: 100%;
   text-align: left;
   overflow: hidden;
@@ -238,11 +243,12 @@ button + button {
   border-radius: 0;
   background: transparent;
   margin: 0;
-  padding: 0 18px;
+  padding: 0 12px;
 }
 .bc-chapters button span {
-  display: inline-block;
-  width: 26px;
+  grid-row: 1 / 3;
+  align-self: center;
+  text-align: right;
   color: var(--muted);
   font-variant-numeric: tabular-nums;
 }
@@ -363,8 +369,8 @@ button + button {
   padding: 0 8px;
   margin-left: -9px;
   width: calc(100% + 18px);
-  resize: none;
-  overflow: hidden;
+  resize: vertical;
+  overflow: auto;
   border-radius: 3px;
 }
 .bc-prose-editor:hover {
@@ -936,8 +942,8 @@ button + button {
 }
 
 .bc-chapters button strong {
-  display: inline-block;
-  max-width: calc(100% - 26px);
+  display: block;
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -946,7 +952,9 @@ button + button {
 }
 .bc-chapters button small {
   display: block;
-  margin: 4px 0 0 26px;
+  grid-column: 2;
+  margin: 0;
+  line-height: 15px;
   color: var(--muted);
   overflow: hidden;
   text-overflow: ellipsis;
@@ -960,7 +968,7 @@ button + button {
 .bc-assistant-panel {
   flex: 0 0 360px;
   width: 360px;
-  min-width: 280px;
+  min-width: 240px;
   max-width: 45vw;
   overflow: auto;
   border-left: 1px solid var(--line);
@@ -1459,15 +1467,24 @@ button + button {
 .bc-book-search .bc-change-list article {
   overflow-wrap: anywhere;
 }
+.bc-about {
+  padding: 24px;
+  text-align: center;
+}
 .bc-about-brand {
   display: flex;
   align-items: center;
   gap: 10px;
+  justify-content: center;
   margin-bottom: 16px;
 }
 .bc-about-details {
   display: grid;
-  grid-template-columns: auto 1fr;
+  grid-template-columns: auto minmax(0, 1fr);
+  width: fit-content;
+  max-width: 100%;
+  margin: 20px auto 0;
+  text-align: left;
   gap: 8px 20px;
 }
 .bc-about-details dt {
@@ -1476,4 +1493,37 @@ button + button {
 .bc-about-details dd {
   margin: 0;
   overflow-wrap: anywhere;
+}
+
+.bc-resizable-panel {
+  position: relative;
+  max-width: 45vw;
+}
+.bc-assistant-panel.bc-resizable-panel {
+  overflow: visible;
+}
+.bc-assistant-panel.bc-resizable-panel > .bc-tool {
+  height: 100%;
+  overflow: auto;
+}
+.bc-panel-resizer {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 7px;
+  z-index: 5;
+  cursor: col-resize;
+  touch-action: none;
+  user-select: none;
+}
+.bc-panel-resizer-left {
+  left: -4px;
+}
+.bc-panel-resizer-right {
+  right: -4px;
+}
+.bc-panel-resizer:hover,
+.bc-panel-resizer:focus-visible {
+  background: #4c8bf555;
+  outline: none;
 }
