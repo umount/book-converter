@@ -461,3 +461,67 @@ fn replacement_preview_is_literal_project_scoped_and_atomic() {
         Some("$1 literal")
     );
 }
+
+#[test]
+fn reference_mapping_rejects_stale_views_and_invalidates_inflight_translation() {
+    use crate::{
+        app::{
+            contracts::{ChapterId, ProjectId},
+            requests::{BookReferenceMapArgs, ReferenceMapping},
+        },
+        application::book_reference,
+    };
+    let mut db = book();
+    edits::replace_reference(
+        &mut db,
+        &[edits::ReferenceChapter {
+            id: "ref".into(),
+            position: 0,
+            title: "Reference".into(),
+            text: "Reference text".into(),
+        }],
+        &[],
+    )
+    .unwrap();
+    results::save_translation(&mut db, &translation()).unwrap();
+    let before = book_reference::read(&db).unwrap();
+    let mut args = BookReferenceMapArgs {
+        project_id: ProjectId::new(),
+        expected_fingerprint: before.fingerprint.clone(),
+        mappings: vec![ReferenceMapping {
+            chapter_id: ChapterId("chapter".into()),
+            reference_id: "ref".into(),
+        }],
+    };
+    let after = book_reference::map(&mut db, &args).unwrap();
+    assert_ne!(before.fingerprint, after.fingerprint);
+    assert_eq!(
+        db.query_row("SELECT revision FROM book_chapters", [], |r| r
+            .get::<_, i64>(0))
+            .unwrap(),
+        1
+    );
+    assert_eq!(
+        book_reference::map(&mut db, &args).unwrap_err().code,
+        ErrorCode::RevisionConflict
+    );
+    let mut late = translation();
+    late.id = "late".into();
+    late.expected_translation = Some(rev(0));
+    assert_eq!(
+        results::save_translation(&mut db, &late).unwrap_err().code,
+        ErrorCode::RevisionConflict
+    );
+    args.expected_fingerprint = after.fingerprint.clone();
+    // Reapplying identical correspondence is a no-op for chapter revisions.
+    book_reference::map(&mut db, &args).unwrap();
+    assert_eq!(
+        db.query_row("SELECT revision FROM book_chapters", [], |r| r
+            .get::<_, i64>(0))
+            .unwrap(),
+        1
+    );
+    args.mappings[0].reference_id = "missing".into();
+    assert!(book_reference::map(&mut db, &args).is_err());
+    assert_eq!(book_reference::read(&db).unwrap(), after);
+}
