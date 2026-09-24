@@ -6,7 +6,7 @@ use std::path::Path;
 use anyhow::{Context, Result};
 use epub_builder::{EpubBuilder, EpubContent, ReferenceType, ZipLibrary};
 
-use super::{pieces, OutputMeta, Piece, TranslatedChapter};
+use super::{OutputMeta, Piece, TranslatedChapter};
 
 /// Where embedded pictures live inside the `.epub`, relative to the content
 /// documents (which sit in the same directory).
@@ -72,7 +72,7 @@ fn embed_images(
         return names;
     }
     for ch in chapters {
-        for piece in pieces(&ch.body) {
+        for piece in ch.body.pieces() {
             let Piece::Image(id) = piece else { continue };
             if names.contains_key(id) {
                 continue;
@@ -103,7 +103,7 @@ fn chapter_xhtml(ch: &TranslatedChapter, images: &HashMap<String, String>) -> St
     if !title.is_empty() {
         body.push_str(&format!("<h1>{}</h1>\n", esc(title)));
     }
-    for piece in pieces(&ch.body) {
+    for piece in ch.body.pieces() {
         match piece {
             Piece::Para(text) => body.push_str(&format!("<p>{}</p>\n", esc(text))),
             Piece::Image(id) => {

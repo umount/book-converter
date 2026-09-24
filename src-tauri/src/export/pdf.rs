@@ -15,7 +15,7 @@ use std::path::Path;
 use anyhow::{anyhow, Result};
 use genpdf::{elements, fonts, style, Alignment, Document, Element as _, Margins};
 
-use super::{pieces, ExportImage, OutputMeta, Piece, TranslatedChapter};
+use super::{ExportImage, OutputMeta, Piece, TranslatedChapter};
 
 /// Assemble the book into a `.pdf`.
 pub fn export(chapters: &[TranslatedChapter], meta: &OutputMeta, out_path: &Path) -> Result<()> {
@@ -159,7 +159,7 @@ fn push_chapter(doc: &mut Document, ch: &TranslatedChapter, meta: &OutputMeta) {
                 .padded(Margins::trbl(0.0, 0.0, 4.0, 0.0)),
         );
     }
-    let body = pieces(&ch.body);
+    let body = ch.body.pieces();
     for (i, piece) in body.iter().enumerate() {
         match piece {
             Piece::Para(text) => {

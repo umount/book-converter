@@ -342,6 +342,14 @@ impl ProjectManager {
         });
         Ok(result)
     }
+    /// Public exports belong outside application storage, including other projects.
+    pub fn validate_export_directory(&self, directory: &Path) -> Result<(), AppError> {
+        let directory = directory.canonicalize().map_err(storage_error)?;
+        let root = self.root.canonicalize().map_err(storage_error)?;
+        if directory.starts_with(root) { return Err(AppError::invalid("destination")); }
+        Ok(())
+    }
+
     pub fn delete(&self, id: &ProjectId) -> Result<(), AppError> {
         id.validate()?;
         let gate = self.gate(id.as_str());

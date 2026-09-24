@@ -16,7 +16,7 @@ pub fn render(chapters: &[TranslatedChapter]) -> String {
             out.push_str("\n\n");
         }
         // Plain text cannot hold a picture, so the markers pointing at them go.
-        out.push_str(crate::book::strip_markers(&ch.body).trim());
+        out.push_str(ch.body.plain_text().trim());
         out.push_str("\n\n\n");
     }
     out

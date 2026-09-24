@@ -123,7 +123,7 @@ pub fn render(chapters: &[TranslatedChapter], meta: &OutputMeta) -> String {
         if !title.is_empty() {
             let _ = writeln!(out, "<title><p>{}</p></title>", esc(title));
         }
-        for piece in super::pieces(&ch.body) {
+        for piece in ch.body.pieces() {
             match piece {
                 super::Piece::Para(text) => {
                     let _ = writeln!(out, "<p>{}</p>", esc(text));

@@ -83,7 +83,7 @@ fn write_export(store: &Store, project_id: &str, out_path: &str) -> Result<Strin
             index: idx,
             number: num_by_idx.get(&idx).copied().flatten(),
             title,
-            body,
+            body: body.into(),
         })
         .collect();
 

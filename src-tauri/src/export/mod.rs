@@ -52,7 +52,57 @@ pub struct TranslatedChapter {
     /// Chapter number, used to order/merge across sources (e.g. continuation).
     pub number: Option<usize>,
     pub title: String,
-    pub body: String,
+    pub body: ChapterBody,
+}
+
+/// The versioned pipeline supplies explicit blocks. Legacy strings are isolated here
+/// until old callers are removed; structural text is never parsed as image markup.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ChapterBody {
+    Legacy(String),
+    Blocks(Vec<ExportBlock>),
+}
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ExportBlock {
+    Text(String),
+    Image(String),
+}
+impl From<String> for ChapterBody {
+    fn from(value: String) -> Self {
+        Self::Legacy(value)
+    }
+}
+impl From<&str> for ChapterBody {
+    fn from(value: &str) -> Self {
+        Self::Legacy(value.into())
+    }
+}
+impl ChapterBody {
+    pub fn pieces(&self) -> Vec<Piece<'_>> {
+        match self {
+            Self::Legacy(text) => pieces(text),
+            Self::Blocks(blocks) => blocks
+                .iter()
+                .flat_map(|block| match block {
+                    ExportBlock::Text(text) => text.lines().map(Piece::Para).collect(),
+                    ExportBlock::Image(id) => vec![Piece::Image(id)],
+                })
+                .collect(),
+        }
+    }
+    pub fn plain_text(&self) -> String {
+        match self {
+            Self::Legacy(text) => crate::book::strip_markers(text),
+            Self::Blocks(blocks) => blocks
+                .iter()
+                .filter_map(|block| match block {
+                    ExportBlock::Text(text) => Some(text.as_str()),
+                    ExportBlock::Image(_) => None,
+                })
+                .collect::<Vec<_>>()
+                .join("\n\n"),
+        }
+    }
 }
 
 /// Normalize numbered chapter titles to a uniform "`<label> <n>. <name>`" form.
