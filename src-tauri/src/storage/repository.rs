@@ -107,10 +107,11 @@ impl<'a> ProjectRepository<'a> {
         let tx = self.connection.transaction().map_err(storage_error)?;
         let chapter = tx
             .query_row(
-                "SELECT id,position,source_title,revision FROM book_chapters WHERE id=?1",
+                "SELECT id,position,source_title,revision,status,origin,needs_review FROM book_chapter_states WHERE id=?1",
                 [id],
                 |r| {
                     Ok(ChapterSummary {
+                        status:r.get(4)?,origin:r.get(5)?,needs_review:r.get(6)?,
                         id: crate::app::contracts::ChapterId(r.get(0)?),
                         position: r.get(1)?,
                         title: r.get(2)?,
@@ -170,15 +171,9 @@ impl<'a> ProjectRepository<'a> {
         let source = blocks.iter().filter_map(|b| match &b.content {BookBlockContent::Text{text}|BookBlockContent::Caption{text}=>Some(text.as_str()), _=>None}).collect::<Vec<_>>().join("\n\n");
         let body = blocks.iter().filter_map(|b|b.translated_text.as_deref()).collect::<Vec<_>>().join("\n\n");
         let lang_issues = translation.as_ref().map(|t|crate::textutil::leftover_foreign(&target,&t.title,&body,&source)).unwrap_or_default();
-        let step: Option<(String,Option<String>)> = tx.query_row("SELECT state,error FROM job_steps WHERE entity_kind='chapter' AND entity_id=?1 AND stage IN ('translation','glossary','context') ORDER BY rowid DESC LIMIT 1",[id],|r|Ok((r.get(0)?,r.get(1)?))).optional().map_err(storage_error)?;
-        let translation_error = step.as_ref().and_then(|(_,error)|error.as_ref()).map(|error|serde_json::from_str::<AppError>(error).map_err(|_|AppError::invalid("jobError"))).transpose()?;
-        let status = match step.as_ref().map(|s|s.0.as_str()) {
-            Some("running"|"cancelling") => "in_progress",
-            Some("failed") => "failed",
-            _ if translation.is_some() => "done",
-            _ if source.trim().is_empty() => "skipped",
-            _ => "pending",
-        }.to_owned();
+        let error:Option<String>=tx.query_row("SELECT translation_error FROM book_chapter_states WHERE id=?1",[id],|r|r.get(0)).map_err(storage_error)?;
+        let translation_error=error.map(|error|serde_json::from_str::<AppError>(&error).map_err(|_|AppError::invalid("jobError"))).transpose()?;
+        let status=chapter.status.clone();
         tx.commit().map_err(storage_error)?;
         Ok(BookChapterView {
             status, lang_issues, translation_error,
@@ -343,6 +338,7 @@ mod tests {
         let mut db = fixture(ProjectKind::Book);
         let mut repo = ProjectRepository::new(&mut db, ProjectKind::Book).unwrap();
         let chapter = ChapterSummary {
+            status:"pending".into(),origin:None,needs_review:false,
             id: ChapterId("chapter".into()),
             position: 0,
             title: "Example".into(),

@@ -37,8 +37,8 @@ pub async fn book_list_chapters(
     tauri::async_runtime::spawn_blocking(move||manager.lease(&args.project_id)?.with_connection(|db,_|{
         crate::storage::repository::ProjectRepository::new(db,crate::app::contracts::ProjectKind::Book)?;
         let after=if let Some(cursor)=args.cursor{db.query_row("SELECT position FROM book_chapters WHERE id=?1",[cursor],|r|r.get::<_,i64>(0)).map_err(storage_error)?}else{-1};
-        let mut query=db.prepare("SELECT id,position,source_title,revision FROM book_chapters WHERE position>?1 ORDER BY position LIMIT ?2").map_err(storage_error)?;
-        let rows=query.query_map(rusqlite::params![after,args.limit+1],|r|Ok(ChapterSummary{id:crate::app::contracts::ChapterId(r.get(0)?),position:r.get(1)?,title:r.get(2)?,revision:crate::app::contracts::Revision(r.get::<_,i64>(3)?.to_string())})).map_err(storage_error)?;
+        let mut query=db.prepare("SELECT id,position,source_title,revision,status,origin,needs_review FROM book_chapter_states WHERE position>?1 ORDER BY position LIMIT ?2").map_err(storage_error)?;
+        let rows=query.query_map(rusqlite::params![after,args.limit+1],|r|Ok(ChapterSummary{status:r.get(4)?,origin:r.get(5)?,needs_review:r.get(6)?,id:crate::app::contracts::ChapterId(r.get(0)?),position:r.get(1)?,title:r.get(2)?,revision:crate::app::contracts::Revision(r.get::<_,i64>(3)?.to_string())})).map_err(storage_error)?;
         let mut items=rows.collect::<Result<Vec<_>,_>>().map_err(storage_error)?;
         let next_cursor=if items.len()>args.limit as usize{items.pop();items.last().map(|c|c.id.0.clone())}else{None};Ok(ChapterPage{items,next_cursor})
     })).await.map_err(|_|AppError::invalid("task"))?

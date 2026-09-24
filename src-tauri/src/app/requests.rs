@@ -484,6 +484,9 @@ pub struct InspectManifestArgs {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ChapterSummary {
+    pub status: String,
+    pub origin: Option<String>,
+    pub needs_review: bool,
     pub id: ChapterId,
     pub position: u32,
     pub title: String,

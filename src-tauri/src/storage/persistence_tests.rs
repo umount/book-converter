@@ -841,3 +841,18 @@ fn title_revision_preserves_reference_body_origin_and_context() {
     results::edit_translation_title(&mut db,&title.id,&rev(1),"Next title").unwrap();
     let view=super::repository::ProjectRepository::new(&mut db,ProjectKind::Book).unwrap().chapter("chapter").unwrap();assert_eq!(view.translation.unwrap().status,"needs_review");
 }
+
+#[test]
+fn chapter_list_states_match_reader_without_loading_chapter_bodies() {
+    let mut db=book();
+    let flags=|db:&rusqlite::Connection| db.query_row("SELECT status,origin,needs_review FROM book_chapter_states WHERE id='chapter'",[],|r|Ok((r.get::<_,String>(0)?,r.get::<_,Option<String>>(1)?,r.get::<_,bool>(2)?))).unwrap();
+    assert_eq!(flags(&db),("pending".into(),None,false));
+    let mut value=translation();value.provenance="reference".into();results::save_translation(&mut db,&value).unwrap();
+    assert_eq!(flags(&db),("done".into(),Some("reference".into()),false));
+    db.execute("UPDATE book_translations SET status='needs_review'",[]).unwrap();
+    assert_eq!(flags(&db),("done".into(),Some("reference".into()),true));
+    let view=super::repository::ProjectRepository::new(&mut db,ProjectKind::Book).unwrap().chapter("chapter").unwrap();
+    assert_eq!(view.chapter.status,view.status);assert_eq!(view.chapter.origin.as_deref(),Some("reference"));assert!(view.chapter.needs_review);
+    db.execute("INSERT INTO book_chapters(id,position,source_title) VALUES('empty',1,'No text')",[]).unwrap();
+    assert_eq!(db.query_row("SELECT status FROM book_chapter_states WHERE id='empty'",[],|r|r.get::<_,String>(0)).unwrap(),"skipped");
+}

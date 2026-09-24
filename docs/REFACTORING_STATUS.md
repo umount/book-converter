@@ -663,3 +663,21 @@ fallback. Keep commits scoped; push only on user request.
   retains that behavior. Matching remains case-sensitive/literal, as in the old pipeline.
 - Full library suite passed 332 tests; strict all-target Clippy passed. Added actual
   request assertions for title-only exclusions, repair filtering and partial retries.
+
+### P06 chapter-list status and origin filters
+
+- Chapter summaries now expose the legacy chapter status, translation origin and
+  review marker without loading source/translation bodies. A derived SQL view and
+  indexed step lookup keep the list and reader on the same status calculation;
+  there is no separately persisted mutable chapter-status copy.
+- The virtualized chapter list displays status/origin/review and supports filters
+  for pending, failed, done, review and reference chapters, combined with title search.
+  It displays matching/total counts and retains bounded rendered rows.
+- Job-state transitions refresh paginated metadata with a debounce. Reader saves
+  update the current row immediately. List refreshes preserve the open editor and
+  reject stale responses after local changes or project switches.
+- Full library suite passed 333 tests; strict all-target Clippy passed. Frontend
+  state tests cover refresh races and preservation of the active chapter object.
+  Language-fragment details remain in the reader; this slice does not add a
+  book-wide language-issue index/filter or claim native desktop acceptance.
+- Frontend tests/build, generated-contract check and diff whitespace checks passed.

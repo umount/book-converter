@@ -45,6 +45,9 @@ const chapters = [
   "Letters from the coast",
 ].map((title, position) => ({
   id: `chapter-${position}`,
+  status: "done",
+  origin: "model",
+  needsReview: false,
   position,
   title,
   revision: "0",
@@ -212,7 +215,7 @@ export async function invokePreview<T>(
       break;
     }
     case "book_list_chapters":
-      result = { items: chapters, nextCursor: null };
+      result = { items: views.map((v) => v.chapter), nextCursor: null };
       break;
     case "book_search": {
       const normalize = (s: string) =>
@@ -247,11 +250,21 @@ export async function invokePreview<T>(
       result = views.find((v) => v.chapter.id === args.chapterId);
       break;
     case "book_update_translation_title": {
-      const view=views.find(v=>v.translation?.id===args.translationId);
-      if (!view?.translation || view.translation.revision!==args.expectedRevision) throw {code:"revision_conflict"};
-      const revision=String(Number(view.translation.revision)+1);
-      view.translation={...view.translation,title:args.title,revision,id:`${view.chapter.id}-translation-${revision}`};
-      result=revision;break;
+      const view = views.find((v) => v.translation?.id === args.translationId);
+      if (
+        !view?.translation ||
+        view.translation.revision !== args.expectedRevision
+      )
+        throw { code: "revision_conflict" };
+      const revision = String(Number(view.translation.revision) + 1);
+      view.translation = {
+        ...view.translation,
+        title: args.title,
+        revision,
+        id: `${view.chapter.id}-translation-${revision}`,
+      };
+      result = revision;
+      break;
     }
     case "book_update_translation_block": {
       const view = views.find((v) => v.translation?.id === args.translationId)!;
@@ -263,6 +276,7 @@ export async function invokePreview<T>(
       const revision = String(Number(view.translation.revision) + 1);
       view.blocks.find((b) => b.id === args.blockId)!.translatedText =
         args.text;
+      view.chapter = { ...view.chapter, origin: "manual" };
       view.translation = {
         ...view.translation,
         origin: "manual",

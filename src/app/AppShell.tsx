@@ -95,6 +95,7 @@ function Shell({
     /^\d+$/.test(batchSize) &&
     Number(batchSize) > 0 &&
     Number(batchSize) <= 4294967295;
+  const [chapterState, setChapterState] = useState("all");
   const [focusBlock, setFocusBlock] = useState<string | null>(null);
   const [busy, setBusy] = useState(false),
     [error, setError] = useState<unknown>(initialError),
@@ -162,14 +163,39 @@ function Shell({
       editor?.dispose();
     };
   }, [editor]);
-  useEffect(
-    () =>
-      jobs.subscribe(() => {
-        redraw((v) => v + 1);
-        void editorRef.current?.refresh().catch(setError);
-      }),
-    [jobs],
-  );
+  useEffect(() => {
+    if (!editor) return;
+    return editor.subscribe(() =>
+      workspace.updateChapter(editor.snapshot().view.chapter),
+    );
+  }, [editor, workspace]);
+  useEffect(() => {
+    const states = new Map<string, string>();
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const stop = jobs.subscribe(() => {
+      redraw((v) => v + 1);
+      void editorRef.current?.refresh().catch(setError);
+      const id = workspace.snapshot().project?.id;
+      let changed = false;
+      for (const job of jobs.list(id ?? "")) {
+        const key = `${job.job.projectId}/${job.job.jobId}`;
+        if (states.get(key) !== job.state && job.job.projectId === id)
+          changed = true;
+        states.set(key, job.state);
+      }
+      if (changed) {
+        clearTimeout(timer);
+        timer = setTimeout(
+          () => void workspace.refreshChapters().catch(setError),
+          200,
+        );
+      }
+    });
+    return () => {
+      stop();
+      clearTimeout(timer);
+    };
+  }, [jobs, workspace]);
   useEffect(() => {
     const handler = (e: BeforeUnloadEvent) => {
       if (editorRef.current?.snapshot().drafts.size) {
@@ -220,6 +246,7 @@ function Shell({
     setLibrary(false);
     setPanel("reader");
     setFilter("");
+    setChapterState("all");
     await jobs.watch(id);
   }
   async function run(kind: "metadata" | "glossary") {
@@ -261,8 +288,15 @@ function Shell({
       job.kind === "book_translation" &&
       ["queued", "running", "cancelling"].includes(job.state),
   );
-  const visibleChapters = state.chapters.filter((c) =>
-    c.title.toLocaleLowerCase().includes(filter.toLocaleLowerCase()),
+  const visibleChapters = state.chapters.filter(
+    (c) =>
+      c.title.toLocaleLowerCase().includes(filter.toLocaleLowerCase()) &&
+      (chapterState === "all" ||
+        (chapterState === "review"
+          ? c.needsReview
+          : chapterState === "reference"
+            ? c.origin === "reference"
+            : c.status === chapterState)),
   );
   const tabs =
     project?.kind === "book"
@@ -409,10 +443,27 @@ function Shell({
                   onChange={(e) => setFilter(e.target.value)}
                 />
               </label>
+              <label className="bc-chapter-search">
+                {t("chapterStatusFilter")}
+                <select
+                  value={chapterState}
+                  onChange={(e) => setChapterState(e.target.value)}
+                >
+                  <option value="all">{t("allChapters")}</option>
+                  <option value="pending">{t("chapterPending")}</option>
+                  <option value="failed">{t("chapterFailed")}</option>
+                  <option value="review">{t("review")}</option>
+                  <option value="done">{t("chapterDone")}</option>
+                  <option value="reference">{t("originReference")}</option>
+                </select>
+                <small>
+                  {visibleChapters.length} / {state.chapters.length}
+                </small>
+              </label>
               <VirtualList
-                key={`${project.id}/${filter}`}
+                key={`${project.id}/${filter}/${chapterState}`}
                 items={visibleChapters}
-                rowHeight={44}
+                rowHeight={62}
                 className="bc-chapters"
                 renderRow={(c) => (
                   <button
@@ -428,7 +479,24 @@ function Shell({
                     }
                   >
                     <span>{c.position + 1}</span>
-                    {c.title}
+                    <strong>{c.title}</strong>
+                    <small>
+                      {t(
+                        c.status === "failed"
+                          ? "chapterFailed"
+                          : c.status === "in_progress"
+                            ? "chapterInProgress"
+                            : c.status === "done"
+                              ? "chapterDone"
+                              : c.status === "skipped"
+                                ? "chapterSkipped"
+                                : "chapterPending",
+                      )}
+                      {c.origin
+                        ? ` · ${t(c.origin === "reference" ? "originReference" : c.origin === "manual" ? "originManual" : "originModel")}`
+                        : ""}
+                      {c.needsReview ? ` · ${t("review")}` : ""}
+                    </small>
                   </button>
                 )}
               />
@@ -569,13 +637,29 @@ function Shell({
                       session={editor}
                       t={t}
                       focusBlock={focusBlock}
-                      busy={busy || jobList.some(j => j.job.projectId === project.id && ["queued","running","cancelling"].includes(j.state))}
-                      onTranslateTitle={() => void act(async () => {
-                        const view=editor.snapshot().view;
-                        if (!view.translation) return;
-                        const job=await api.translateTitle({projectId:project.id,chapterId:view.chapter.id,expectedRevision:view.translation.revision});
-                        await jobs.refresh(job);setShowJobs(true);
-                      })}
+                      busy={
+                        busy ||
+                        jobList.some(
+                          (j) =>
+                            j.job.projectId === project.id &&
+                            ["queued", "running", "cancelling"].includes(
+                              j.state,
+                            ),
+                        )
+                      }
+                      onTranslateTitle={() =>
+                        void act(async () => {
+                          const view = editor.snapshot().view;
+                          if (!view.translation) return;
+                          const job = await api.translateTitle({
+                            projectId: project.id,
+                            chapterId: view.chapter.id,
+                            expectedRevision: view.translation.revision,
+                          });
+                          await jobs.refresh(job);
+                          setShowJobs(true);
+                        })
+                      }
                     />
                   ) : (
                     <p className="bc-empty">{t("noChapter")}</p>

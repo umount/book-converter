@@ -16,6 +16,7 @@ export class WorkspaceStore {
   private state: WorkspaceState = empty();
   private generation = 0;
   private chapterGeneration = 0;
+  private listGeneration = 0;
   private listeners = new Set<() => void>();
   constructor(private api: Api) {}
   snapshot = () => this.state;
@@ -59,6 +60,26 @@ export class WorkspaceStore {
     } catch (error) {
       if (generation === this.generation && chapterGeneration === this.chapterGeneration) this.publish({ ...this.state, chapter: null, loading: false, error });
     }
+  }
+  updateChapter(summary: ChapterSummary) {
+    const index=this.state.chapters.findIndex(c=>c.id===summary.id);
+    if(index<0 || JSON.stringify(this.state.chapters[index])===JSON.stringify(summary)) return;
+    ++this.listGeneration;
+    const chapters=[...this.state.chapters];chapters[index]=summary;
+    this.publish({...this.state,chapters});
+  }
+  async refreshChapters() {
+    const projectId=this.state.project?.id, generation=this.generation, request=++this.listGeneration;
+    if(!projectId || this.state.project?.kind!=="book") return;
+    const chapters:ChapterSummary[]=[];const seen=new Set<string>();let cursor:string|null=null;
+    do {
+      const page=await this.api.chapters({projectId,cursor,limit:500});
+      if(generation!==this.generation || request!==this.listGeneration) return;
+      chapters.push(...page.items);cursor=page.nextCursor;
+      if(cursor!==null && seen.has(cursor)) throw new Error("Repeated chapter cursor");
+      if(cursor!==null) seen.add(cursor);
+    } while(cursor!==null);
+    this.publish({...this.state,chapters});
   }
   clearError() { this.publish({ ...this.state, error: null }); }
   close() { ++this.generation; ++this.chapterGeneration; this.publish(empty()); }

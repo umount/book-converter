@@ -181,6 +181,7 @@ fn book(
             .collect::<Vec<_>>();
         ProjectRepository::new(db, ProjectKind::Book)?.insert_chapter(
             &ChapterSummary {
+                status: "pending".into(), origin: None, needs_review: false,
                 id: ChapterId(chapter_id.clone()),
                 position: position as u32,
                 title: chapter.title.clone(),

@@ -227,7 +227,7 @@ button + button {
   min-height: 0;
 }
 .bc-chapters button {
-  height: 44px;
+  height: 62px;
   width: 100%;
   text-align: left;
   overflow: hidden;
@@ -629,11 +629,28 @@ button + button {
   min-width: 0;
   text-align: center;
 }
-.bc-page-list { flex: 1; min-height: 0; }
-.bc-page-list button[aria-current="page"] { background: #2c3a50; }
-.bc-page-viewport { flex: 1; min-height: 0; overflow: auto; cursor: grab; touch-action: none; text-align: left; }
-.bc-page-viewport:active { cursor: grabbing; }
-.bc-page-viewport img { display: block; user-select: none; }
+.bc-page-list {
+  flex: 1;
+  min-height: 0;
+}
+.bc-page-list button[aria-current="page"] {
+  background: #2c3a50;
+}
+.bc-page-viewport {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  cursor: grab;
+  touch-action: none;
+  text-align: left;
+}
+.bc-page-viewport:active {
+  cursor: grabbing;
+}
+.bc-page-viewport img {
+  display: block;
+  user-select: none;
+}
 .bc-manga-page p {
   text-align: left;
 }
@@ -766,25 +783,78 @@ button + button {
   margin-top: 16px;
 }
 
-.bc-chat-message, .bc-proposal {
+.bc-chat-message,
+.bc-proposal {
   border: 1px solid var(--line);
   border-radius: 6px;
   padding: 16px;
 }
-.bc-chat-user { border-left: 3px solid var(--accent); }
-.bc-proposal-diff { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin: 12px 0; }
-.bc-proposal-diff > div { min-width: 0; }
-.bc-proposal pre { white-space: pre-wrap; overflow-wrap: anywhere; font: inherit; max-height: 280px; overflow: auto; }
-.bc-assistant form { display: grid; gap: 12px; }
-@media (max-width: 800px) { .bc-proposal-diff { grid-template-columns: 1fr; } }
-.bc-provider-profiles { border-top: 1px solid var(--line); padding-top: 16px; }
-.bc-provider-profiles summary { cursor: pointer; font-weight: 600; }
-.bc-provider-profiles fieldset { border: 0; margin: 12px 0 0; padding: 0; display: grid; gap: 12px; }
-.bc-search-form { display: grid; gap: 12px; }
-.bc-search-results { display: grid; gap: 8px; }
-.bc-search-results button { display: grid; gap: 8px; text-align: left; padding: 16px; }
-.bc-search-results span { white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.6; }
-.bc-found-block { outline: 2px solid var(--accent); outline-offset: -2px; }
+.bc-chat-user {
+  border-left: 3px solid var(--accent);
+}
+.bc-proposal-diff {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  margin: 12px 0;
+}
+.bc-proposal-diff > div {
+  min-width: 0;
+}
+.bc-proposal pre {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font: inherit;
+  max-height: 280px;
+  overflow: auto;
+}
+.bc-assistant form {
+  display: grid;
+  gap: 12px;
+}
+@media (max-width: 800px) {
+  .bc-proposal-diff {
+    grid-template-columns: 1fr;
+  }
+}
+.bc-provider-profiles {
+  border-top: 1px solid var(--line);
+  padding-top: 16px;
+}
+.bc-provider-profiles summary {
+  cursor: pointer;
+  font-weight: 600;
+}
+.bc-provider-profiles fieldset {
+  border: 0;
+  margin: 12px 0 0;
+  padding: 0;
+  display: grid;
+  gap: 12px;
+}
+.bc-search-form {
+  display: grid;
+  gap: 12px;
+}
+.bc-search-results {
+  display: grid;
+  gap: 8px;
+}
+.bc-search-results button {
+  display: grid;
+  gap: 8px;
+  text-align: left;
+  padding: 16px;
+}
+.bc-search-results span {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  line-height: 1.6;
+}
+.bc-found-block {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
 
 .bc-reference-columns {
   display: grid;
@@ -841,7 +911,10 @@ button + button {
 
 .bc-title-editor {
   width: 100%;
-  font: 24px/1.4 Georgia, "Times New Roman", serif;
+  font:
+    24px/1.4 Georgia,
+    "Times New Roman",
+    serif;
   color: var(--text);
   background: transparent;
   border: 0;
@@ -849,4 +922,26 @@ button + button {
   border-radius: 0;
   padding: 4px 0;
   margin: 0 0 12px;
+}
+
+.bc-chapters button strong {
+  display: inline-block;
+  max-width: calc(100% - 26px);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 500;
+  vertical-align: middle;
+}
+.bc-chapters button small {
+  display: block;
+  margin: 4px 0 0 26px;
+  color: var(--muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.bc-chapter-search select {
+  width: 100%;
+  margin: 6px 0;
 }

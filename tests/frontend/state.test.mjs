@@ -59,3 +59,21 @@ test("job events survive workspace switches and reject stale large revision snap
   assert.equal(reads.filter(p => p === "a").length, 2);
   store.dispose(); assert.equal(disposed, 2); assert.equal(store.list("a").length, 0);
 });
+
+test("chapter list refresh preserves the open editor and cannot overwrite a newer local summary", async () => {
+  const delayed=deferred();let reads=0;
+  const store=new WorkspaceStore({open:async()=>project("p"),settings:async()=>({}),chapter:async()=>view("a"),chapters:async()=> ++reads===2 ? delayed.promise : {items:[{id:"a",status:"pending"}],nextCursor:null}});
+  await store.open("p");const editorView=store.snapshot().chapter;
+  const refresh=store.refreshChapters();store.updateChapter({id:"a",status:"done",origin:"manual"});
+  delayed.resolve({items:[{id:"a",status:"failed"}],nextCursor:null});await refresh;
+  assert.equal(store.snapshot().chapters[0].status,"done");assert.equal(store.snapshot().chapter,editorView);
+  await store.refreshChapters();assert.equal(store.snapshot().chapter,editorView);
+});
+
+test("chapter list refresh from a closed project is discarded", async () => {
+  const delayed=deferred();let reads=0;
+  const store=new WorkspaceStore({open:async()=>project("p"),settings:async()=>({}),chapter:async()=>view("a"),chapters:async()=> ++reads===2 ? delayed.promise : {items:[{id:"a"}],nextCursor:null}});
+  await store.open("p");const refresh=store.refreshChapters();store.close();
+  delayed.resolve({items:[{id:"a",status:"done"}],nextCursor:null});await refresh;
+  assert.equal(store.snapshot().project,null);assert.deepEqual(store.snapshot().chapters,[]);
+});
