@@ -108,6 +108,7 @@ pub fn run() {
             commands::job_list,
             commands::book_update_translation_block,
 
+            commands::manga_list_pages,
             commands::project_list,
             commands::project_inspect_source,
             commands::project_create,

@@ -8,6 +8,7 @@
 
 mod assistant;
 mod book_v1;
+mod manga_v1;
 mod export_cmd;
 mod glossary;
 pub(crate) mod ops;
@@ -26,6 +27,7 @@ pub use crate::session::AppState;
 // namespace consumed by `generate_handler!`.
 pub use assistant::*;
 pub use book_v1::*;
+pub use manga_v1::*;
 pub use export_cmd::*;
 pub use glossary::*;
 pub use project::*;

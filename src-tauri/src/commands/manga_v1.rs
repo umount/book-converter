@@ -1,0 +1,135 @@
+//! Read-only manga workspace before model processing is configured.
+use crate::{
+    app::{
+        contracts::{AppError, AssetId, PageId, ProjectKind, Revision, VolumeId},
+        requests::{ListMangaPagesArgs, PageSummary, PageSummaryPage},
+        services::AppContext,
+    },
+    storage::repository::{storage_error, ProjectRepository},
+};
+use rusqlite::{Connection, OptionalExtension};
+
+#[tauri::command]
+pub async fn manga_list_pages(
+    context: tauri::State<'_, AppContext>,
+    args: ListMangaPagesArgs,
+) -> Result<PageSummaryPage, AppError> {
+    let manager = context.manager.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        manager
+            .lease(&args.project_id)?
+            .with_connection(|db, _| list_pages(db, &args))
+    })
+    .await
+    .map_err(|_| AppError::invalid("task"))?
+}
+
+fn list_pages(db: &mut Connection, args: &ListMangaPagesArgs) -> Result<PageSummaryPage, AppError> {
+    if args.limit == 0 || args.limit > 500 {
+        return Err(AppError::invalid("limit"));
+    }
+    ProjectRepository::new(db, ProjectKind::Manga)?;
+    let tx = db.transaction().map_err(storage_error)?;
+    let volume = args.volume_id.as_ref().map(|id| id.0.as_str());
+    let after = if let Some(id) = &args.cursor {
+        tx.query_row(
+            "SELECT v.position,p.position FROM manga_pages p JOIN manga_volumes v ON v.id=p.volume_id WHERE p.id=?1 AND (?2 IS NULL OR p.volume_id=?2)",
+            rusqlite::params![id, volume],
+            |r| Ok((r.get::<_, i64>(0)?, r.get::<_, i64>(1)?)),
+        ).optional().map_err(storage_error)?.ok_or_else(|| AppError::invalid("cursor"))?
+    } else {
+        (-1, -1)
+    };
+    let mut query = tx.prepare(
+        "SELECT p.id,p.volume_id,p.position,p.original_asset_id,p.width,p.height,p.revision FROM manga_pages p JOIN manga_volumes v ON v.id=p.volume_id WHERE (?1 IS NULL OR p.volume_id=?1) AND (v.position,p.position)>(?2,?3) ORDER BY v.position,p.position LIMIT ?4",
+    ).map_err(storage_error)?;
+    let mut items = query
+        .query_map(
+            rusqlite::params![volume, after.0, after.1, args.limit + 1],
+            |r| {
+                Ok(PageSummary {
+                    id: PageId(r.get(0)?),
+                    volume_id: VolumeId(r.get(1)?),
+                    position: r.get(2)?,
+                    original_asset_id: AssetId(r.get(3)?),
+                    width: r.get(4)?,
+                    height: r.get(5)?,
+                    revision: Revision(r.get::<_, i64>(6)?.to_string()),
+                })
+            },
+        )
+        .map_err(storage_error)?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(storage_error)?;
+    let next_cursor = if items.len() > args.limit as usize {
+        items.pop();
+        items.last().map(|v| v.id.0.clone())
+    } else {
+        None
+    };
+    Ok(PageSummaryPage { items, next_cursor })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::app::contracts::ProjectId;
+    #[test]
+    fn pagination_crosses_volume_boundaries_without_skipping_or_mixing_domains() {
+        let mut db = Connection::open_in_memory().unwrap();
+        db.execute_batch(include_str!("../storage/schema.sql"))
+            .unwrap();
+        db.execute(
+            "INSERT INTO project_settings(singleton,kind,target_language) VALUES(1,'manga','ru')",
+            [],
+        )
+        .unwrap();
+        db.execute("INSERT INTO assets(id,relative_path,mime,byte_length) VALUES(?1,'assets/test.png','image/png',1)", ["a".repeat(64)]).unwrap();
+        for (id, position) in [("v1", 0), ("v2", 1)] {
+            db.execute(
+                "INSERT INTO manga_volumes VALUES(?1,?2,'Volume','rtl')",
+                rusqlite::params![id, position],
+            )
+            .unwrap();
+            for page in 0..2 {
+                db.execute(
+                    "INSERT INTO manga_pages VALUES(?1,?2,?3,?4,100,200,0)",
+                    rusqlite::params![format!("{id}-{page}"), id, page, "a".repeat(64)],
+                )
+                .unwrap();
+            }
+        }
+        let mut args = ListMangaPagesArgs {
+            project_id: ProjectId::new(),
+            volume_id: None,
+            cursor: None,
+            limit: 3,
+        };
+        let first = list_pages(&mut db, &args).unwrap();
+        assert_eq!(
+            first
+                .items
+                .iter()
+                .map(|v| v.id.0.as_str())
+                .collect::<Vec<_>>(),
+            vec!["v1-0", "v1-1", "v2-0"]
+        );
+        args.cursor = first.next_cursor;
+        let last = list_pages(&mut db, &args).unwrap();
+        assert_eq!(last.items[0].id.0, "v2-1");
+        assert!(last.next_cursor.is_none());
+        args.volume_id = Some(VolumeId("v1".into()));
+        assert!(list_pages(&mut db, &args).is_err());
+        args.cursor = None;
+        assert_eq!(list_pages(&mut db, &args).unwrap().items.len(), 2);
+        args.limit = 0;
+        assert!(list_pages(&mut db, &args).is_err());
+        args.limit = 1;
+        let mut book_db = Connection::open_in_memory().unwrap();
+        book_db
+            .execute_batch(include_str!("../storage/schema.sql"))
+            .unwrap();
+        book_db.execute("INSERT INTO project_settings(singleton,kind,target_language) VALUES(1,'book','ru')", []).unwrap();
+        assert!(list_pages(&mut book_db, &args).is_err());
+    }
+}

@@ -12,7 +12,7 @@
 
 pub mod store;
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use tauri::http::{header, Request, Response, StatusCode};
 use tauri::{Runtime, UriSchemeContext};
@@ -60,10 +60,37 @@ fn resolve(path: &str) -> Option<PathBuf> {
     if parts.next().is_some() {
         return None;
     }
+    let dir = project_dir(project_id).ok()?;
+    resolve_name(&dir, name)
+}
+
+fn resolve_name(dir: &Path, name: &str) -> Option<PathBuf> {
+    if name.len() == 64
+        && name
+            .bytes()
+            .all(|b| b.is_ascii_hexdigit() && !b.is_ascii_uppercase())
+    {
+        let db = rusqlite::Connection::open_with_flags(
+            dir.join("project.db"),
+            rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY,
+        )
+        .ok()?;
+        let relative: String = db
+            .query_row(
+                "SELECT relative_path FROM assets WHERE id=?1",
+                [name],
+                |r| r.get(0),
+            )
+            .ok()?;
+        let filename = relative.strip_prefix("assets/")?;
+        if !filename.starts_with(&format!("{name}.")) || !is_asset_name(filename) {
+            return None;
+        }
+        return Some(dir.join(store::DIRECTORY).join(filename));
+    }
     if !is_asset_name(name) {
         return None;
     }
-    let dir = project_dir(project_id).ok()?;
     Some(dir.join(store::DIRECTORY).join(name))
 }
 
@@ -97,6 +124,37 @@ mod tests {
         assert!(path.ends_with("projects/p-123/assets/ab12cd34.jpg"));
         // An unencoded separator works just as well.
         assert_eq!(resolve("/p-123/ab12cd34.jpg"), Some(path));
+    }
+
+    #[test]
+    fn bare_asset_ids_require_a_registered_safe_filename() {
+        let root = std::env::temp_dir().join(format!("asset-resolve-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&root).unwrap();
+        let db = rusqlite::Connection::open(root.join("project.db")).unwrap();
+        db.execute_batch("CREATE TABLE assets(id TEXT PRIMARY KEY, relative_path TEXT)")
+            .unwrap();
+        let id = "a".repeat(64);
+        assert_eq!(resolve_name(&root, &id), None);
+        db.execute(
+            "INSERT INTO assets VALUES(?1,?2)",
+            [&id, &format!("assets/{id}.png")],
+        )
+        .unwrap();
+        assert_eq!(
+            resolve_name(&root, &id),
+            Some(root.join(format!("assets/{id}.png")))
+        );
+        for unsafe_path in [
+            format!("assets/{id}.png/../../secret"),
+            "../secret.png".into(),
+            format!("assets/{}.png", "b".repeat(64)),
+        ] {
+            db.execute("UPDATE assets SET relative_path=?1", [unsafe_path])
+                .unwrap();
+            assert_eq!(resolve_name(&root, &id), None);
+        }
+        drop(db);
+        std::fs::remove_dir_all(root).unwrap();
     }
 
     /// The URL comes from the webview, so traversal must not resolve at all.

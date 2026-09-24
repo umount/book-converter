@@ -18,6 +18,7 @@ export function createProjectApi(transport: Transport) {
     delete: (args: C.ProjectArgs) => call<void>("project_delete", args),
     exportArchive: (args: C.ArchiveExportArgs) => call<void>("project_archive_export", args),
     importArchive: (args: C.ArchiveImportArgs) => call<C.ProjectDescriptor>("project_archive_import", args),
+    mangaPages: (args: C.ListMangaPagesArgs) => call<C.PageSummaryPage>("manga_list_pages", args),
     chapters: (args: C.ListChaptersArgs) => call<C.ChapterPage>("book_list_chapters", args),
     chapter: (args: C.GetChapterArgs) => call<C.BookChapterView>("book_get_chapter", args),
     translate: (args: C.StartBookTranslationArgs) => call<C.JobRef>("book_start_translation", args),
