@@ -212,6 +212,7 @@ impl ProjectManager {
         real_directory(&directory)?;
         let mut db = storage::open(&directory.join("project.db")).map_err(storage_error)?;
         storage::repository::ProjectRepository::new(&mut db, manifest.kind)?;
+        storage::shared::validate_fixed_languages(&db)?;
         let integrity: String = db
             .query_row("PRAGMA integrity_check", [], |r| r.get(0))
             .map_err(storage_error)?;

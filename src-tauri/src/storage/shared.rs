@@ -77,6 +77,18 @@ pub fn update_settings(
     .collect();
     let json = serde_json::to_string(&profiles).map_err(|_| AppError::invalid("profiles"))?;
     let tx = db.transaction().map_err(storage_error)?;
+    let current = settings(&tx)?;
+    if current.revision.value()? != expected {
+        return Err(conflict());
+    }
+    if current.choices.source_language != choices.source_language
+        || current.choices.target_language != choices.target_language
+    {
+        return Err(AppError::invalid("projectLanguagesImmutable"));
+    }
+    if current.choices == *choices {
+        return Ok(current.revision);
+    }
     let changed = tx.execute("UPDATE project_settings SET source_language=?1,target_language=?2,profiles_json=?3,revision=?4 WHERE singleton=1 AND revision=?5",params![choices.source_language,choices.target_language,json,revision,expected]).map_err(storage_error)?;
     if changed != 1 {
         return Err(conflict());
@@ -84,6 +96,62 @@ pub fn update_settings(
     invalidate(&tx)?;
     tx.commit().map_err(storage_error)?;
     Ok(Revision(revision.to_string()))
+}
+
+/// Only staged imports may set languages. Published projects never unlock them.
+pub(crate) fn finalize_import_settings(
+    db: &mut Connection,
+    expected: &Revision,
+    choices: &ProcessingSettings,
+) -> Result<Revision, AppError> {
+    if choices
+        .source_language
+        .as_deref()
+        .is_none_or(|s| s.trim().is_empty())
+        || choices.target_language.trim().is_empty()
+    {
+        return Err(AppError::invalid("languages"));
+    }
+    let tx = db.transaction().map_err(storage_error)?;
+    let current = settings(&tx)?;
+    if current.revision != *expected {
+        return Err(conflict());
+    }
+    let locked: bool = tx
+        .query_row(
+            "SELECT languages_locked FROM project_settings WHERE singleton=1",
+            [],
+            |r| r.get(0),
+        )
+        .map_err(storage_error)?;
+    if locked {
+        return if current.choices == *choices {
+            Ok(current.revision)
+        } else {
+            Err(AppError::invalid("projectLanguagesImmutable"))
+        };
+    }
+    let profiles: std::collections::BTreeMap<_, _> = [
+        ("book_translation", &choices.book_translation_profile),
+        ("manga_recognition", &choices.manga_recognition_profile),
+        ("manga_translation", &choices.manga_translation_profile),
+        ("assistant", &choices.assistant_profile),
+    ]
+    .into_iter()
+    .filter_map(|(k, v)| v.as_ref().map(|v| (k, v)))
+    .collect();
+    let revision = next(expected.value()?)?;
+    tx.execute("UPDATE project_settings SET source_language=?1,target_language=?2,profiles_json=?3,revision=?4,languages_locked=1 WHERE singleton=1",params![choices.source_language,choices.target_language,serde_json::to_string(&profiles).map_err(|_|AppError::invalid("profiles"))?,revision]).map_err(storage_error)?;
+    tx.commit().map_err(storage_error)?;
+    Ok(Revision(revision.to_string()))
+}
+
+pub(crate) fn validate_fixed_languages(db: &Connection) -> Result<(), AppError> {
+    let valid:bool=db.query_row("SELECT languages_locked=1 AND source_language IS NOT NULL AND length(trim(source_language))>0 AND length(trim(target_language))>0 FROM project_settings WHERE singleton=1",[],|r|r.get(0)).map_err(storage_error)?;
+    if !valid {
+        return Err(AppError::invalid("projectLanguagesUnconfirmed"));
+    }
+    Ok(())
 }
 
 pub(super) fn next(value: i64) -> Result<i64, AppError> {
@@ -123,17 +191,27 @@ pub fn put_term(
     term: &GlossaryTerm,
     expected: Option<&Revision>,
 ) -> Result<Revision, AppError> {
+    let tx = db.transaction().map_err(storage_error)?;
+    let revision = put_term_in(&tx, term, expected)?;
+    tx.commit().map_err(storage_error)?;
+    Ok(revision)
+}
+
+pub fn put_term_in(
+    tx: &Transaction<'_>,
+    term: &GlossaryTerm,
+    expected: Option<&Revision>,
+) -> Result<Revision, AppError> {
     if term.id.is_empty() || term.source.trim().is_empty() || term.target.trim().is_empty() {
         return Err(AppError::invalid("term"));
     }
-    let tx = db.transaction().map_err(storage_error)?;
     let revision = if let Some(expected) = expected {
         let expected = expected.value()?;
         let revision = next(expected)?;
         let changed = tx.execute("UPDATE glossary_terms SET source=?1,target=?2,kind=?3,pinned=?4,frequency=?5,revision=?6 WHERE id=?7 AND revision=?8",params![term.source,term.target,term.kind,term.pinned,term.frequency,revision,term.id,expected]).map_err(storage_error)?;
         if changed != 1 {
             return Err(missing_or_conflict(
-                &tx,
+                tx,
                 "SELECT 1 FROM glossary_terms WHERE id=?1",
                 &term.id,
             )?);
@@ -143,13 +221,17 @@ pub fn put_term(
         tx.execute("INSERT INTO glossary_terms(id,source,target,kind,pinned,frequency) VALUES(?1,?2,?3,?4,?5,?6)",params![term.id,term.source,term.target,term.kind,term.pinned,term.frequency]).map_err(storage_error)?;
         0
     };
-    bump_glossary(&tx)?;
-    tx.commit().map_err(storage_error)?;
+    bump_glossary(tx)?;
     Ok(Revision(revision.to_string()))
 }
 
 pub fn delete_term(db: &mut Connection, id: &str, expected: &Revision) -> Result<(), AppError> {
     let tx = db.transaction().map_err(storage_error)?;
+    delete_term_in(&tx, id, expected)?;
+    tx.commit().map_err(storage_error)
+}
+
+pub fn delete_term_in(tx: &Transaction<'_>, id: &str, expected: &Revision) -> Result<(), AppError> {
     if tx
         .execute(
             "DELETE FROM glossary_terms WHERE id=?1 AND revision=?2",
@@ -159,16 +241,15 @@ pub fn delete_term(db: &mut Connection, id: &str, expected: &Revision) -> Result
         != 1
     {
         return Err(missing_or_conflict(
-            &tx,
+            tx,
             "SELECT 1 FROM glossary_terms WHERE id=?1",
             id,
         )?);
     }
-    bump_glossary(&tx)?;
-    tx.commit().map_err(storage_error)
+    bump_glossary(tx)
 }
 
-fn bump_glossary(tx: &Transaction<'_>) -> Result<(), AppError> {
+pub(crate) fn bump_glossary(tx: &Transaction<'_>) -> Result<(), AppError> {
     tx.execute(
         "UPDATE glossary_state SET revision=revision+1 WHERE singleton=1",
         [],

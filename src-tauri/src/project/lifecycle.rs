@@ -156,7 +156,7 @@ impl ProjectManager {
         let directory = self.root.join("staging").join(&import_id);
         std::fs::create_dir(&directory).map_err(storage_error)?;
         let result = (|| {
-            let mut db = storage::create(&directory.join("project.db"), kind, "und")
+            let mut db = storage::create_staged(&directory.join("project.db"), kind)
                 .map_err(storage_error)?;
             let (language, warnings) = super::import::normalize(kind, path, &directory, &mut db)?;
             db.execute_batch("PRAGMA wal_checkpoint(TRUNCATE)")
@@ -262,7 +262,7 @@ impl ProjectManager {
             }
         }
         let revision = storage::shared::settings(&db)?.revision;
-        storage::shared::update_settings(&mut db, &revision, &settings)?;
+        storage::shared::finalize_import_settings(&mut db, &revision, &settings)?;
         db.execute_batch("PRAGMA wal_checkpoint(TRUNCATE)")
             .map_err(storage_error)?;
         drop(db);
@@ -297,6 +297,7 @@ impl ProjectManager {
         }
         lease.with_connection(|db, _| {
             storage::repository::ProjectRepository::new(db, descriptor.kind)?;
+            storage::shared::validate_fixed_languages(db)?;
             Ok(())
         })?;
         Ok(descriptor)

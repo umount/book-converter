@@ -32,7 +32,7 @@ fn choices() -> ProjectChoices {
     ProjectChoices {
         name: "Example".into(),
         languages: LanguagePair {
-            source: None,
+            source: Some("en".into()),
             target: "ru".into(),
         },
         processing_profile_id: None,

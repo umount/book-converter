@@ -1,8 +1,22 @@
 # book-converter — Design Decisions
 
-> Last updated 2026-09-21
+> Last updated 2026-09-24
 
 Record of the key choices and their rationale. Newest first.
+
+---
+
+## Project languages are chosen once
+
+**Decision (user clarification, 2026-09-24):** choose source and target languages
+when creating a Book or Manga project. They remain fixed for the project lifetime.
+Opening, translating, editing, changing a provider, resuming jobs and assistant
+operations cannot change the pair. Application language defaults apply only to
+future projects. This supersedes the historical app-wide language decision below.
+
+The versioned importer resolves both languages before publication. A one-way SQL
+lock protects them after staging; processing-profile updates expose no language
+fields. A different language pair requires a different project.
 
 ---
 
@@ -20,7 +34,7 @@ code is always `job_running`.
 
 ---
 
-## Language pair and model stay app-wide
+## Historical: language pair and model stay app-wide (superseded for versioned projects)
 
 **Decision:** source/target language and the DeepSeek model remain Settings, not
 per-project fields. The assistant snapshot labels them `app_settings.*` so it

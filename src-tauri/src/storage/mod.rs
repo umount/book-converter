@@ -17,6 +17,12 @@ fn configure(connection: &Connection) -> anyhow::Result<()> {
 }
 
 pub fn create(path: &Path, kind: ProjectKind, target_language: &str) -> anyhow::Result<Connection> {
+    create_with_lock(path,kind,target_language,true)
+}
+pub(crate) fn create_staged(path:&Path,kind:ProjectKind)->anyhow::Result<Connection>{
+    create_with_lock(path,kind,"und",false)
+}
+fn create_with_lock(path:&Path,kind:ProjectKind,target_language:&str,locked:bool)->anyhow::Result<Connection>{
     // Reserve the name exclusively; never open and mutate a concurrent creator's file.
     std::fs::OpenOptions::new()
         .write(true)
@@ -28,13 +34,13 @@ pub fn create(path: &Path, kind: ProjectKind, target_language: &str) -> anyhow::
         let tx = connection.transaction()?;
         tx.execute_batch(include_str!("schema.sql"))?;
         tx.execute(
-            "INSERT INTO project_settings(singleton,kind,target_language) VALUES(1,?1,?2)",
+            "INSERT INTO project_settings(singleton,kind,target_language,languages_locked) VALUES(1,?1,?2,?3)",
             (
                 match kind {
                     ProjectKind::Book => "book",
                     ProjectKind::Manga => "manga",
                 },
-                target_language,
+                target_language, locked,
             ),
         )?;
         tx.commit()?;

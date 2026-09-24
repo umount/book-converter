@@ -4,7 +4,7 @@ use super::contracts::*;
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct LanguagePair {
     pub source: Option<String>,
@@ -383,6 +383,47 @@ pub struct GlossaryListArgs {
     pub limit: u32,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ProcessingChoices {
+    pub book_translation_profile: Option<String>,
+    pub manga_recognition_profile: Option<String>,
+    pub manga_translation_profile: Option<String>,
+    pub assistant_profile: Option<String>,
+}
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+pub struct ProjectSettingsView {
+    pub languages: LanguagePair,
+    pub choices: ProcessingChoices,
+    pub revision: Revision,
+}
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+pub struct GlossaryTermView {
+    pub id: TermId,
+    pub source: String,
+    pub target: String,
+    pub kind: String,
+    pub pinned: bool,
+    pub frequency: u32,
+    pub revision: Revision,
+}
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+pub struct GlossaryPage {
+    pub items: Vec<GlossaryTermView>,
+    pub next_cursor: Option<String>,
+    pub revision: Revision,
+    pub settings_revision: Revision,
+}
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct StartBookGlossaryArgs {
+    pub project_id: ProjectId,
+    pub selection: EntitySelection,
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct GlossaryPutArgs {
@@ -392,7 +433,8 @@ pub struct GlossaryPutArgs {
     pub target: String,
     pub kind: String,
     pub pinned: bool,
-    pub expected_revision: Revision,
+    pub expected_revision: Option<Revision>,
+    pub expected_settings_revision: Revision,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
@@ -401,6 +443,7 @@ pub struct GlossaryDeleteArgs {
     pub project_id: ProjectId,
     pub term_id: TermId,
     pub expected_revision: Revision,
+    pub expected_settings_revision: Revision,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
@@ -423,7 +466,7 @@ pub struct AssistantConfirmArgs {
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ProjectSettingsUpdateArgs {
     pub project_id: ProjectId,
-    pub choices: ProjectChoices,
+    pub choices: ProcessingChoices,
     pub expected_revision: Revision,
 }
 
@@ -564,6 +607,11 @@ pub fn typescript() -> String {
         JobView::decl(&config),
         UpdateTranslationBlockArgs::decl(&config),
         GlossaryListArgs::decl(&config),
+        ProcessingChoices::decl(&config),
+        ProjectSettingsView::decl(&config),
+        GlossaryTermView::decl(&config),
+        GlossaryPage::decl(&config),
+        StartBookGlossaryArgs::decl(&config),
         GlossaryPutArgs::decl(&config),
         GlossaryDeleteArgs::decl(&config),
         AssistantSendArgs::decl(&config),

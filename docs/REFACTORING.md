@@ -35,6 +35,9 @@ status reports stored in the repository and to future handoff documents too.
 - Preserve source books, source archives, `samples/`, the repository, application
   settings and API credentials.
 - Choose Book or Manga before importing a source.
+- Choose the source and target languages during project creation. The pair is fixed
+  for the project lifetime; subsequent work cannot change either language (user
+  clarification, 2026-09-24). Application defaults only affect new projects.
 - Use a shared shell and infrastructure with separate domain models, workspaces
   and processing pipelines.
 - Manga processing is automatic through typeset output. No manual or model-free
@@ -164,7 +167,9 @@ and results. The catalog and frontend read identity through the backend descript
 The backend creates project IDs. Entity IDs are opaque, stable UUID strings;
 list position and printed chapter number are not identity. Store the active project
 by ID, not list index. Languages use stable codes, with display/prompt names resolved
-separately. Source language may be unknown before recognition or manual selection.
+separately. Source language may be unknown during preview, but must be resolved
+before creation. Once published, both languages are immutable, including through
+settings, jobs and assistant tools. Processing profiles may still change.
 
 ```text
 <app_data>/settings.db                         preserved
@@ -282,8 +287,9 @@ Mark later results for review instead of silently issuing paid retranslations.
 For manga: translation/style invalidates typesetting; masks invalidate inpainting
 and typesetting; source/geometry invalidates dependent translation/masks/layout.
 Repeated OCR preserves manually corrected regions through reconciliation.
-Glossary changes mark dependent results stale/needs_review; bulk retarget is an
-explicit operation with an affected-location preview.
+Glossary changes mark dependent results stale/needs_review; bulk terminology
+replacement is an explicit operation with an affected-location preview. It never
+changes the project language pair.
 
 ### AI and settings
 

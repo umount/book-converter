@@ -3,6 +3,7 @@ CREATE TABLE project_settings (
     singleton INTEGER PRIMARY KEY CHECK(singleton = 1),
     kind TEXT NOT NULL CHECK(kind IN ('book', 'manga')),
     source_language TEXT,
+    languages_locked INTEGER NOT NULL DEFAULT 1 CHECK(languages_locked IN (0,1)),
     target_language TEXT NOT NULL CHECK(length(target_language) > 0),
     profiles_json TEXT NOT NULL DEFAULT '{}' CHECK(json_valid(profiles_json)),
     revision INTEGER NOT NULL DEFAULT 0 CHECK(typeof(revision) = 'integer' AND revision >= 0)
@@ -161,3 +162,23 @@ CREATE TABLE book_metadata (
 CREATE TRIGGER metadata_kind_guard BEFORE INSERT ON book_metadata
 WHEN (SELECT kind FROM project_settings WHERE singleton=1)!='book'
 BEGIN SELECT RAISE(ABORT, 'book metadata in manga project'); END;
+
+CREATE TRIGGER project_languages_immutable BEFORE UPDATE OF source_language,target_language ON project_settings
+WHEN OLD.languages_locked=1 AND (NEW.source_language IS NOT OLD.source_language OR NEW.target_language IS NOT OLD.target_language)
+BEGIN SELECT RAISE(ABORT, 'project languages are immutable'); END;
+CREATE TRIGGER project_languages_cannot_unlock BEFORE UPDATE OF languages_locked ON project_settings
+WHEN OLD.languages_locked=1 AND NEW.languages_locked!=1
+BEGIN SELECT RAISE(ABORT, 'project languages cannot be unlocked'); END;
+CREATE TABLE book_glossary_results (
+    id TEXT PRIMARY KEY NOT NULL, chapter_id TEXT NOT NULL REFERENCES book_chapters(id),
+    source_revision INTEGER NOT NULL, settings_revision INTEGER NOT NULL,
+    terms_json TEXT NOT NULL CHECK(json_valid(terms_json))
+);
+CREATE TRIGGER glossary_result_kind_guard BEFORE INSERT ON book_glossary_results
+WHEN (SELECT kind FROM project_settings WHERE singleton=1)!='book'
+BEGIN SELECT RAISE(ABORT, 'book glossary result in manga project'); END;
+CREATE TABLE book_term_occurrences (
+    chapter_id TEXT NOT NULL REFERENCES book_chapters(id) ON DELETE CASCADE,
+    source TEXT NOT NULL, frequency INTEGER NOT NULL CHECK(frequency > 0),
+    PRIMARY KEY(chapter_id,source)
+);
