@@ -610,12 +610,30 @@ pub struct UpdateTranslationBlockArgs {
     pub expected_revision: Revision,
 }
 
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct UpdateTranslationTitleArgs {
+    pub project_id: ProjectId,
+    pub translation_id: String,
+    pub expected_revision: Revision,
+    pub title: String,
+}
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct StartBookTitleArgs {
+    pub project_id: ProjectId,
+    pub chapter_id: ChapterId,
+    pub expected_revision: Revision,
+}
+
 pub fn typescript() -> String {
     let config = ts_rs::Config::default();
     let declarations = [
         TranslationSummary::decl(&config),
         JobView::decl(&config),
         UpdateTranslationBlockArgs::decl(&config),
+        UpdateTranslationTitleArgs::decl(&config),
+        StartBookTitleArgs::decl(&config),
         GlossaryListArgs::decl(&config),
         ProcessingChoices::decl(&config),
         ProjectSettingsView::decl(&config),

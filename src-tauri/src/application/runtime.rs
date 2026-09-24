@@ -192,7 +192,7 @@ pub fn resume_provider(
     let run = manager
         .lease(project)?
         .with_connection(|db, _| runs::get_run(db, job))?;
-    if !["book_translation", "book_metadata", "book_glossary"].contains(&run.kind.as_str())
+    if !["book_translation", "book_metadata", "book_glossary", "book_title"].contains(&run.kind.as_str())
         || !matches!(
             run.state,
             JobState::Queued | JobState::Interrupted | JobState::Failed | JobState::Cancelled
@@ -405,4 +405,22 @@ mod batch_tests {
         drop(db);
         std::fs::remove_dir_all(directory).unwrap();
     }
+}
+
+pub fn prepare_title_run(manager:&ProjectManager,args:&crate::app::requests::StartBookTitleArgs)->Result<JobRef,AppError> {
+    let lease=manager.lease(&args.project_id)?;
+    lease.with_connection(|db,_|{
+        let view=ProjectRepository::new(db,crate::app::contracts::ProjectKind::Book)?.chapter(&args.chapter_id.0)?;
+        let translation=view.translation.ok_or_else(||AppError::invalid("noTranslation"))?;
+        if translation.revision!=args.expected_revision {return Err(crate::storage::repository::conflict())}
+        let settings=shared::settings(db)?;
+        let (profile,key)=provider_profile(settings.choices.book_translation_profile.as_deref())?;
+        ChatCompletions::new(profile.clone(),key)?;
+        let snapshot=runs::RunSnapshot {
+            settings:settings.choices,settings_revision:settings.revision,glossary_revision:shared::glossary_revision(db)?,selected_ids:vec![args.chapter_id.0.clone()],prompt_version:"book-title-v1".into(),stages:vec!["title".into()],provider:Some(profile),instructions:Some(super::book_presentation::read(db)?.instructions),
+        };
+        let job_id=uuid::Uuid::new_v4().to_string();
+        runs::create_run(db,&job_id,"book_title",&snapshot,&now())?;
+        Ok(JobRef {project_id:args.project_id.clone(),job_id})
+    })
 }

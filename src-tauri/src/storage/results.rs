@@ -311,3 +311,28 @@ pub fn edit_translation_block(
     tx.commit().map_err(storage_error)?;
     Ok(result)
 }
+
+/// Title-only revisions preserve the body's origin, review state and continuity.
+pub fn edit_translation_title(db: &mut Connection, id: &str, expected: &Revision, title: &str) -> Result<Revision, AppError> {
+    let tx=db.transaction().map_err(storage_error)?;
+    let (_,revision)=edit_translation_title_in(&tx,id,expected,title,None)?;
+    tx.commit().map_err(storage_error)?;
+    Ok(revision)
+}
+
+pub fn edit_translation_title_in(tx: &rusqlite::Transaction<'_>, id: &str, expected: &Revision, title: &str, inputs:Option<&InputVersions>) -> Result<(String,Revision),AppError> {
+    if let Some(inputs)=inputs {
+        check_inputs(tx,inputs)?;
+        let source:i64=tx.query_row("SELECT c.revision FROM book_chapters c JOIN book_translations t ON t.chapter_id=c.id WHERE t.id=?1",[id],|r|r.get(0)).map_err(storage_error)?;
+        if source!=inputs.source.value()? {return Err(conflict())}
+    }
+    let (revision,status):(i64,String)=tx.query_row("SELECT revision,status FROM book_translations t WHERE id=?1 AND revision=(SELECT MAX(revision) FROM book_translations WHERE chapter_id=t.chapter_id AND target_language=t.target_language)",[id],|r|Ok((r.get(0)?,r.get(1)?))).optional().map_err(storage_error)?.ok_or_else(conflict)?;
+    if revision!=expected.value()? {return Err(conflict())}
+    let revision=next(revision)?;
+    let new_id=uuid::Uuid::new_v4().to_string();
+    tx.execute("UPDATE book_translations SET status='stale' WHERE id=?1",[id]).map_err(storage_error)?;
+    tx.execute("INSERT INTO book_translations(id,chapter_id,source_revision,settings_revision,status,provenance,target_language,translated_title,context_fingerprint,glossary_revision,revision) SELECT ?2,chapter_id,source_revision,settings_revision,?3,provenance,target_language,?4,context_fingerprint,glossary_revision,?5 FROM book_translations WHERE id=?1",params![id,new_id,status,title,revision]).map_err(storage_error)?;
+    tx.execute("INSERT INTO book_translation_blocks(translation_id,chapter_id,source_block_id,translated_text) SELECT ?2,chapter_id,source_block_id,translated_text FROM book_translation_blocks WHERE translation_id=?1",params![id,new_id]).map_err(storage_error)?;
+    tx.execute("INSERT INTO book_contexts(id,translation_id,summary,previous_tail,translation_revision,predecessor_id) SELECT ?3,?2,summary,previous_tail,?4,predecessor_id FROM book_contexts WHERE translation_id=?1",params![id,new_id,uuid::Uuid::new_v4().to_string(),revision]).map_err(storage_error)?;
+    Ok((new_id,Revision(revision.to_string())))
+}

@@ -40,7 +40,7 @@ export function JobPanel({
             {t(
               job.kind === "book_translation" ||
                 job.kind === "book_metadata" ||
-                job.kind === "book_glossary"
+                job.kind === "book_glossary" || job.kind === "book_title"
                 ? job.kind
                 : "processing",
             )}

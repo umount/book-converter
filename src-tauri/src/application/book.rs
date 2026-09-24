@@ -141,6 +141,7 @@ pub struct BookPipeline {
     pub instructions: Option<String>,
 }
 pub enum BookOutput {
+    Title {translation_id:String, revision:Revision, title:String, inputs:results::InputVersions},
     Translation(results::BookTranslation),
     Context(results::BookContext),
     Metadata(super::book_metadata::MetadataOutput),
@@ -212,6 +213,7 @@ impl StepExecutor for BookPipeline {
         Box::pin(async move {
             match stage {
                 "translation" => self.translate(lease, run, entity).await,
+                "title" => self.translate_title(lease, run, entity).await,
                 "context" => self.context(lease, entity).await,
                 "glossary" => {
                     super::book_glossary::compute(lease, run, entity, self.provider.as_ref())
@@ -266,6 +268,7 @@ impl StepExecutor for BookPipeline {
     }
     fn persist(&self, tx: &Transaction<'_>, output: BookOutput) -> Result<String, AppError> {
         match output {
+            BookOutput::Title {translation_id,revision,title,inputs} => results::edit_translation_title_in(tx,&translation_id,&revision,&title,Some(&inputs)).map(|value|value.0),
             BookOutput::Glossary(value) => super::book_glossary::persist(tx, value),
             BookOutput::Metadata(value) => super::book_metadata::persist(tx, value),
             BookOutput::Translation(value) => {
@@ -281,6 +284,21 @@ impl StepExecutor for BookPipeline {
 }
 
 impl BookPipeline {
+    async fn translate_title(&self,lease:&ProjectLease,run:&runs::RunRecord,entity:&str)->Result<BookOutput,AppError> {
+        let (chapter,glossary)=lease.with_connection(|db,_| {
+            if shared::settings(db)?.revision!=run.snapshot.settings_revision || shared::glossary_revision(db)?!=run.snapshot.glossary_revision {return Err(crate::storage::repository::conflict())}
+            Ok((ProjectRepository::new(db,crate::app::contracts::ProjectKind::Book)?.chapter(entity)?,shared::glossary(db)?))
+        })?;
+        let translation=chapter.translation.ok_or_else(||AppError::invalid("noTranslation"))?;
+        let target=&run.snapshot.settings.target_language;
+        let glossary=serde_json::to_string(&glossary).map_err(|_|invalid_output())?;
+        let system=format!("Translate only the supplied chapter title from {} to {target}. Return JSON {{\"segments\":[{{\"id\":\"exact input id\",\"text\":\"translated title\"}}]}}. Keep the title's chapter number. Glossary (respect pinned terms): {glossary}. Book instructions: {}. Chapter instructions: {}",run.snapshot.settings.source_language.as_deref().unwrap_or("the source language"),self.instructions.as_deref().unwrap_or(""),chapter.instructions);
+        let segments=split_segments(&format!("{entity}:title"),&chapter.chapter.title,2048)?;
+        let translated=translate_segments(self.provider.as_ref(),&system,&segments).await?;
+        let mut title=segments.iter().map(|s|translated.get(&s.id).cloned().ok_or_else(invalid_output)).collect::<Result<Vec<_>,_>>()?.join("");
+        super::book_language::repair(self.provider.as_ref(),target,&chapter.chapter.title,&mut title,&mut [],&glossary).await;
+        Ok(BookOutput::Title {translation_id:translation.id,revision:translation.revision,title,inputs:results::InputVersions{source:chapter.chapter.revision,settings:run.snapshot.settings_revision.clone(),glossary:run.snapshot.glossary_revision.clone()}})
+    }
     async fn translate(
         &self,
         lease: &ProjectLease,

@@ -1,6 +1,6 @@
 import { useLayoutEffect, useRef, useSyncExternalStore } from "react";
 import { assetUrl } from "../../shared/api/assets";
-import type { BookEditorSession } from "../../shared/state/editor";
+import { TITLE_DRAFT, type BookEditorSession } from "../../shared/state/editor";
 import type { T } from "../../app/strings";
 import { errorText } from "../../app/strings";
 function AutoText({
@@ -45,9 +45,13 @@ export function BookReader({
   session,
   t,
   focusBlock,
+  onTranslateTitle,
+  busy,
 }: {
   session: BookEditorSession;
   focusBlock?: string | null;
+  onTranslateTitle: () => void;
+  busy: boolean;
   t: T;
 }) {
   const state = useSyncExternalStore(session.subscribe, session.snapshot),
@@ -72,7 +76,14 @@ export function BookReader({
               ? ` · ${t(view.translation.origin === "reference" ? "originReference" : view.translation.origin === "manual" ? "originManual" : "originModel")}`
               : ""}
           </span>
-          <h2>{view.translation?.title ?? "—"}</h2>
+          {view.translation ? (
+            <>
+              <input className="bc-title-editor" aria-label={t("translatedChapterTitle")}
+                value={state.drafts.get(TITLE_DRAFT) ?? view.translation.title}
+                onChange={(e) => session.editTitle(e.target.value)} />
+              <button disabled={busy || state.saving} onClick={onTranslateTitle}>{t("translateTitle")}</button>
+            </>
+          ) : <h2>—</h2>}
           <small role="status">
             {state.saving
               ? t("saving")

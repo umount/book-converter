@@ -232,6 +232,9 @@ const en = {
   resume: "Resume",
   book_translation: "Translation",
   book_metadata: "Book details",
+  book_title: "Translate title",
+  translateTitle: "Translate title",
+  translatedChapterTitle: "Translated chapter title",
   book_glossary: "Term extraction",
 };
 type Key = keyof typeof en;
@@ -469,6 +472,9 @@ const ru: Record<Key, string> = {
   resume: "Продолжить",
   book_translation: "Перевод",
   book_metadata: "Сведения о книге",
+  book_title: "Перевести заголовок",
+  translateTitle: "Перевести заголовок",
+  translatedChapterTitle: "Переведённый заголовок главы",
   book_glossary: "Извлечение терминов",
 };
 const zh: Record<Key, string> = {
@@ -690,6 +696,9 @@ const zh: Record<Key, string> = {
   resume: "继续",
   book_translation: "翻译",
   book_metadata: "书籍信息",
+  book_title: "翻译标题",
+  translateTitle: "翻译标题",
+  translatedChapterTitle: "翻译后的章节标题",
   book_glossary: "提取术语",
 };
 export type T = (key: Key) => string;

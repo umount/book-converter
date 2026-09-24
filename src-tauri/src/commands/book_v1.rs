@@ -450,3 +450,18 @@ pub async fn book_search(context:State<'_,AppContext>,args:BookSearchArgs)->Resu
     let manager=context.manager.clone();
     tauri::async_runtime::spawn_blocking(move||manager.lease(&args.project_id)?.with_connection(|db,_|crate::application::book_search::search(db,&args))).await.map_err(|_|AppError::invalid("task"))?
 }
+
+#[tauri::command]
+pub async fn book_update_translation_title(context: State<'_,AppContext>, args: UpdateTranslationTitleArgs) -> Result<crate::app::contracts::Revision,AppError> {
+    let manager=context.manager.clone();
+    tauri::async_runtime::spawn_blocking(move || manager.lease(&args.project_id)?.with_connection(|db,_| {
+        crate::storage::repository::ProjectRepository::new(db,crate::app::contracts::ProjectKind::Book)?;
+        crate::storage::results::edit_translation_title(db,&args.translation_id,&args.expected_revision,&args.title)
+    })).await.map_err(|_|AppError::invalid("task"))?
+}
+#[tauri::command]
+pub async fn book_start_title(context: State<'_,AppContext>, app: tauri::AppHandle, args: StartBookTitleArgs) -> Result<JobRef,AppError> {
+    let manager=context.manager.clone();
+    let job=tauri::async_runtime::spawn_blocking(move || crate::application::runtime::prepare_title_run(&manager,&args)).await.map_err(|_|AppError::invalid("task"))??;
+    dispatch_created(&context,app,job)
+}

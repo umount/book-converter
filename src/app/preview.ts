@@ -246,6 +246,13 @@ export async function invokePreview<T>(
     case "book_get_chapter":
       result = views.find((v) => v.chapter.id === args.chapterId);
       break;
+    case "book_update_translation_title": {
+      const view=views.find(v=>v.translation?.id===args.translationId);
+      if (!view?.translation || view.translation.revision!==args.expectedRevision) throw {code:"revision_conflict"};
+      const revision=String(Number(view.translation.revision)+1);
+      view.translation={...view.translation,title:args.title,revision,id:`${view.chapter.id}-translation-${revision}`};
+      result=revision;break;
+    }
     case "book_update_translation_block": {
       const view = views.find((v) => v.translation?.id === args.translationId)!;
       if (
@@ -395,6 +402,7 @@ export async function invokePreview<T>(
     case "job_get":
       result = jobs.find((v) => v.job.jobId === args.jobId);
       break;
+    case "book_start_title":
     case "book_start_translation":
     case "book_start_metadata":
     case "book_start_glossary": {

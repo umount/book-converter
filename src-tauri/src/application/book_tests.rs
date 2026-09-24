@@ -615,3 +615,49 @@ async fn malformed_provider_envelope_retries_but_permanent_errors_do_not() {
     assert!(translate_segments(&fake,"Context",&[segment]).await.is_err());
     assert_eq!(fake.requests.lock().unwrap().len(),1);
 }
+
+#[tokio::test]
+async fn title_job_sends_only_title_and_glossary_and_rejects_late_edits() {
+    use crate::{app::{contracts::ProjectKind,requests::{ProjectChoices,LanguagePair}},project::lifecycle::ProjectManager,storage::{repository::ProjectRepository,results,runs,shared},jobs::{durable,durable::StepExecutor}};
+    use std::sync::{Arc,atomic::AtomicBool};
+    let root=std::env::temp_dir().join(format!("title-job-{}",uuid::Uuid::new_v4()));
+    let manager=ProjectManager::new(root.clone());
+    let preview=manager.inspect_source(ProjectKind::Book,&std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../tests/fixtures/structural.epub")).unwrap();
+    let project=manager.create(&preview.import_id.0,&ProjectChoices{name:"Title".into(),languages:LanguagePair{source:Some("en".into()),target:"ru".into()},processing_profile_id:None}).unwrap();
+    let lease=manager.lease(&project.id).unwrap();
+    let chapter=lease.with_connection(|db,_|{
+        let id:String=db.query_row("SELECT id FROM book_chapters ORDER BY position LIMIT 1",[],|r|r.get(0)).unwrap();
+        let view=ProjectRepository::new(db,ProjectKind::Book)?.chapter(&id)?;
+        results::save_translation(db,&results::BookTranslation{id:"original".into(),chapter_id:id.clone(),inputs:results::InputVersions{source:view.chapter.revision,settings:shared::settings(db)?.revision,glossary:shared::glossary_revision(db)?},expected_translation:None,title:"Old title".into(),provenance:"reference".into(),context_fingerprint:"reference".into(),blocks:view.blocks.iter().filter(|b|!matches!(b.content,crate::app::contracts::BookBlockContent::Image{..})).map(|b|(b.id.clone(),"FULL REFERENCE BODY".into())).collect()})?;
+        db.execute("INSERT INTO glossary_terms(id,source,target,kind,pinned) VALUES('term','Chapter','Глава','term',1)",[]).unwrap();
+        Ok(id)
+    }).unwrap();
+    let reply=serde_json::json!({"segments":[{"id":format!("{chapter}:title:0"),"text":"Глава первая"}]}).to_string();
+    let provider=Arc::new(Fake::new(vec![&reply,&reply]));
+    lease.with_connection(|db,_|{
+        let settings=shared::settings(db)?;
+        runs::create_run(db,"title-run","book_title",&runs::RunSnapshot{settings:settings.choices,settings_revision:settings.revision,glossary_revision:shared::glossary_revision(db)?,selected_ids:vec![chapter.clone()],prompt_version:"book-title-v1".into(),stages:vec!["title".into()],provider:Some(provider.profile.clone()),instructions:Some("Keep chapter numbers".into())},"now")
+    }).unwrap();
+    let pipeline=BookPipeline{provider:provider.clone(),instructions:Some("Keep chapter numbers".into())};
+    durable::execute(&manager,&project.id,"title-run",&pipeline,Arc::new(AtomicBool::new(false)),|_|{}).await.unwrap();
+    lease.with_connection(|db,_|{
+        let view=ProjectRepository::new(db,ProjectKind::Book)?.chapter(&chapter)?;
+        assert_eq!(view.translation.as_ref().unwrap().title,"Глава первая");assert_eq!(view.translation.as_ref().unwrap().origin,"reference");assert_eq!(view.blocks[0].translated_text.as_deref(),Some("FULL REFERENCE BODY"));
+        // Simulate recovery after the completed step was committed.
+        db.execute("UPDATE job_runs SET state='interrupted' WHERE id='title-run'",[]).unwrap();Ok(())
+    }).unwrap();
+    durable::execute(&manager,&project.id,"title-run",&pipeline,Arc::new(AtomicBool::new(false)),|_|{}).await.unwrap();
+    {
+        let requests=provider.requests.lock().unwrap();assert_eq!(requests.len(),1);
+        assert_eq!(requests[0]["segments"].as_array().unwrap().len(),1);
+        let system=requests[0]["system"].as_str().unwrap();assert!(system.contains("Глава"));assert!(system.contains("Keep chapter numbers"));assert!(!requests[0].to_string().contains("FULL REFERENCE BODY"));assert!(!requests[0].to_string().contains("Original text."));
+    }
+    let run=lease.with_connection(|db,_|runs::get_run(db,"title-run")).unwrap();
+    let late=pipeline.compute(&lease,&run,&chapter,"title").await.unwrap();
+    lease.with_connection(|db,_|{
+        let t=ProjectRepository::new(db,ProjectKind::Book)?.chapter(&chapter)?.translation.unwrap();
+        results::edit_translation_title(db,&t.id,&t.revision,"Ручной заголовок")?;
+        let tx=db.transaction().unwrap();assert!(pipeline.persist(&tx,late).is_err());Ok(())
+    }).unwrap();
+    drop(lease);drop(manager);std::fs::remove_dir_all(root).unwrap();
+}

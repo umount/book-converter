@@ -28,3 +28,19 @@ test("a concurrent translation replacement after saving does not silently drop t
   const session=new BookEditorSession({chapter:async()=>view("9","replacement"),editTranslation:async()=>"2"},"p",view());
   session.edit("b","local"); await assert.rejects(session.flush(),e=>e.code==="revision_conflict"); assert.equal(session.snapshot().drafts.get("b"),"local"); session.dispose();
 });
+
+test("title and body drafts serialize revisions and retain title typing during save", async () => {
+  const first=deferred(),calls=[];let saved=view();saved.translation.title="Old title";
+  const api={chapter:async()=>saved,
+    editTitle:async args=>{calls.push(["title",args]);if(calls.length===1)await first.promise;const revision=String(Number(saved.translation.revision)+1);saved={...saved,translation:{...saved.translation,id:`t${revision}`,revision,title:args.title}};return revision;},
+    editTranslation:async args=>{calls.push(["body",args]);const revision=String(Number(saved.translation.revision)+1);saved={...saved,translation:{...saved.translation,id:`t${revision}`,revision},blocks:saved.blocks.map(b=>({...b,translatedText:args.text}))};return revision;}};
+  const session=new BookEditorSession(api,"p",saved);
+  session.editTitle("First");const saving=session.flush();session.editTitle("Final");session.edit("b","Body");first.resolve();await saving;
+  assert.deepEqual(calls.map(([kind,a])=>[kind,a.expectedRevision]),[["title","1"],["title","2"],["body","3"]]);
+  assert.equal(session.snapshot().view.translation.title,"Final");assert.equal(session.snapshot().view.blocks[0].translatedText,"Body");assert.equal(session.snapshot().drafts.size,0);session.dispose();
+});
+
+test("failed title save retains the title draft until explicit discard", async () => {
+ const session=new BookEditorSession({chapter:async()=>view("3"),editTitle:async()=>{throw {code:"revision_conflict"};}},"p",view());
+ session.editTitle("Unsaved title");await assert.rejects(session.flush());assert.equal(session.snapshot().drafts.size,1);await session.refresh();assert.equal(session.snapshot().view.translation.revision,"1");await session.discard();assert.equal(session.snapshot().drafts.size,0);session.dispose();
+});

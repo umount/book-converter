@@ -838,3 +838,15 @@ button + button {
     grid-template-columns: 1fr;
   }
 }
+
+.bc-title-editor {
+  width: 100%;
+  font: 24px/1.4 Georgia, "Times New Roman", serif;
+  color: var(--text);
+  background: transparent;
+  border: 0;
+  border-bottom: 1px solid var(--line);
+  border-radius: 0;
+  padding: 4px 0;
+  margin: 0 0 12px;
+}

@@ -1,6 +1,7 @@
 import type { BookChapterView } from "../contracts/generated";
 import type { createProjectApi } from "../api/transport";
-type Api = Pick<ReturnType<typeof createProjectApi>, "chapter" | "editTranslation">;
+type Api = Pick<ReturnType<typeof createProjectApi>, "chapter" | "editTranslation" | "editTitle">;
+export const TITLE_DRAFT = "$title";
 export interface EditorState { view: BookChapterView; drafts: ReadonlyMap<string, string>; saving: boolean; error: unknown }
 /** Serialize whole-translation revisions while retaining edits typed during a save. */
 export class BookEditorSession {
@@ -17,6 +18,12 @@ export class BookEditorSession {
   private publish(patch: Partial<EditorState>) { this.state = { ...this.state, ...patch }; for (const fn of this.listeners) fn(); }
   edit(id: string, text: string) {
     if (!this.state.view.translation || !this.state.view.blocks.some(b => b.id === id && b.content.kind !== "image")) return;
+    this.queue(id, text);
+  }
+  editTitle(text: string) {
+    if (this.state.view.translation) this.queue(TITLE_DRAFT, text);
+  }
+  private queue(id: string, text: string) {
     ++this.generation;
     const drafts = new Map(this.state.drafts); drafts.set(id, text); this.publish({ drafts });
     clearTimeout(this.timer);
@@ -33,7 +40,9 @@ export class BookEditorSession {
         const [blockId, text] = this.state.drafts.entries().next().value!;
         const translation = this.state.view.translation;
         if (!translation) throw new Error("Missing translation");
-        const revision = await this.api.editTranslation({ projectId: this.projectId, translationId: translation.id, blockId, text, expectedRevision: translation.revision });
+        const revision = await (blockId === TITLE_DRAFT
+          ? this.api.editTitle({ projectId: this.projectId, translationId: translation.id, title: text, expectedRevision: translation.revision })
+          : this.api.editTranslation({ projectId: this.projectId, translationId: translation.id, blockId, text, expectedRevision: translation.revision }));
         const view = await this.api.chapter({ projectId: this.projectId, chapterId: this.state.view.chapter.id });
         if (view.chapter.id !== this.state.view.chapter.id || view.translation?.revision !== revision) throw { code: "revision_conflict", messageKey: "errors.revisionConflict" };
         const drafts = new Map(this.state.drafts);

@@ -638,3 +638,14 @@ fallback. Keep commits scoped; push only on user request.
 - Eight book pipeline tests passed, including identical full retry payloads,
   malformed provider envelopes, bounded failures and partial-result preservation.
 - Strict all-target Clippy passed. No frontend or contract changes in this slice.
+
+### P05/P06 restore chapter-title actions
+
+- Restored editable translated titles with serialized autosave and title-only model
+  jobs. Body text, origin flags, review state and saved continuity survive title edits.
+- Model title jobs send the source title, glossary and book/chapter instructions,
+  never the chapter body. Durable completion survives interruption without repeating
+  the paid step. Late model responses cannot overwrite newer manual corrections.
+- Full library suite passed 330 tests; frontend tests and production build passed.
+  Added mixed title/body autosave race and title conflict tests. The user's subsequent
+  glossary-scope correction is the next slice: select only terms occurring in sent text.

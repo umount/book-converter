@@ -569,6 +569,13 @@ function Shell({
                       session={editor}
                       t={t}
                       focusBlock={focusBlock}
+                      busy={busy || jobList.some(j => j.job.projectId === project.id && ["queued","running","cancelling"].includes(j.state))}
+                      onTranslateTitle={() => void act(async () => {
+                        const view=editor.snapshot().view;
+                        if (!view.translation) return;
+                        const job=await api.translateTitle({projectId:project.id,chapterId:view.chapter.id,expectedRevision:view.translation.revision});
+                        await jobs.refresh(job);setShowJobs(true);
+                      })}
                     />
                   ) : (
                     <p className="bc-empty">{t("noChapter")}</p>

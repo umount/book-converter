@@ -84,6 +84,10 @@ export function createProjectApi(transport: Transport) {
       call<C.Revision>("book_update_instructions", args),
     editSource: (args: C.UpdateBookBlockArgs) =>
       call<C.Revision>("book_update_block", args),
+    editTitle: (args: C.UpdateTranslationTitleArgs) =>
+      call<C.Revision>("book_update_translation_title", args),
+    translateTitle: (args: C.StartBookTitleArgs) =>
+      call<C.JobRef>("book_start_title", args),
     editTranslation: (args: C.UpdateTranslationBlockArgs) =>
       call<C.Revision>("book_update_translation_block", args),
     jobs: (args: C.ListJobsArgs) => call<C.JobView[]>("job_list", args),
