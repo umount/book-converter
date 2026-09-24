@@ -39,7 +39,19 @@ pub fn export_book(manager: &ProjectManager, args: &BookExportArgs) -> Result<()
     if descriptor.kind != ProjectKind::Book {
         return Err(AppError::invalid("projectKind"));
     }
-    let destination = Path::new(&args.destination);
+    let destination_path = if args.format == BookExportFormat::Fb2 {
+        let lower = args.destination.to_ascii_lowercase();
+        if lower.ends_with(".zip") {
+            PathBuf::from(&args.destination)
+        } else if lower.ends_with(".fb2") {
+            PathBuf::from(format!("{}.zip", args.destination))
+        } else {
+            PathBuf::from(format!("{}.fb2.zip", args.destination))
+        }
+    } else {
+        PathBuf::from(&args.destination)
+    };
+    let destination = destination_path.as_path();
     let parent = destination
         .parent()
         .filter(|p| !p.as_os_str().is_empty())
@@ -76,6 +88,34 @@ pub fn export_book(manager: &ProjectManager, args: &BookExportArgs) -> Result<()
     };
     let temporary = scratch.0.join(format!("book.{}", format.ext()));
     export::export(&chapters, format, &meta, &temporary).map_err(storage_error)?;
+    let temporary = if args.format == BookExportFormat::Fb2 {
+        let archive = scratch.0.join("book.fb2.zip");
+        let mut zip = zip::ZipWriter::new(std::fs::File::create(&archive).map_err(storage_error)?);
+        let stem = destination
+            .file_stem()
+            .and_then(|s| s.to_str())
+            .unwrap_or("book");
+        let entry = if stem.to_ascii_lowercase().ends_with(".fb2") {
+            stem.to_string()
+        } else {
+            format!("{stem}.fb2")
+        };
+        zip.start_file(
+            entry,
+            zip::write::SimpleFileOptions::default()
+                .compression_method(zip::CompressionMethod::Deflated),
+        )
+        .map_err(storage_error)?;
+        std::io::copy(
+            &mut std::fs::File::open(&temporary).map_err(storage_error)?,
+            &mut zip,
+        )
+        .map_err(storage_error)?;
+        zip.finish().map_err(storage_error)?;
+        archive
+    } else {
+        temporary
+    };
     std::fs::File::open(&temporary)
         .and_then(|f| f.sync_all())
         .map_err(storage_error)?;
@@ -268,6 +308,16 @@ mod tests {
     };
     use std::io::Read;
 
+    fn read_fb2_zip(path: &Path, name: &str) -> String {
+        let mut archive = zip::ZipArchive::new(std::fs::File::open(path).unwrap()).unwrap();
+        assert_eq!(archive.len(), 1);
+        let mut entry = archive.by_name(name).unwrap();
+        assert_eq!(entry.compression(), zip::CompressionMethod::Deflated);
+        let mut text = String::new();
+        entry.read_to_string(&mut text).unwrap();
+        text
+    }
+
     #[test]
     fn structured_exports_preserve_images_and_reject_incomplete_or_existing_outputs() {
         let temp = Scratch(
@@ -325,9 +375,9 @@ mod tests {
         assert_eq!(image_files, 1);
         assert_eq!(image_occurrences, 3);
         args.format = BookExportFormat::Fb2;
-        args.destination = temp.0.join("output.fb2").to_string_lossy().into_owned();
+        args.destination = temp.0.join("output.fb2.zip").to_string_lossy().into_owned();
         export_book(&manager, &args).unwrap();
-        let text = std::fs::read_to_string(&args.destination).unwrap();
+        let text = read_fb2_zip(Path::new(&args.destination), "output.fb2");
         assert_eq!(text.matches("<image ").count(), 3);
         assert_eq!(text.matches("<binary ").count(), 1);
         let imported = manager
@@ -346,7 +396,7 @@ mod tests {
                 },
             )
             .unwrap();
-        let roundtrip_path = temp.0.join("roundtrip.fb2");
+        let roundtrip_path = temp.0.join("roundtrip.fb2.zip");
         export_book(
             &manager,
             &BookExportArgs {
@@ -358,7 +408,7 @@ mod tests {
             },
         )
         .unwrap();
-        let roundtrip = std::fs::read_to_string(roundtrip_path).unwrap();
+        let roundtrip = read_fb2_zip(&roundtrip_path, "roundtrip.fb2");
         assert_eq!(roundtrip.matches("<image ").count(), 3);
         assert_eq!(roundtrip.matches("<binary ").count(), 1);
         let before = crate::book::load::load_book_text(&text, "UTF-8").unwrap();
@@ -397,10 +447,14 @@ mod tests {
             .unwrap();
         args.destination = temp.0.join("covered.fb2").to_string_lossy().into_owned();
         export_book(&manager, &args).unwrap();
-        let covered = std::fs::read_to_string(&args.destination).unwrap();
+        assert!(!Path::new(&args.destination).exists());
+        let covered = read_fb2_zip(Path::new(&format!("{}.zip", args.destination)), "covered.fb2");
         assert!(covered.contains("Manual export title"));
         assert!(covered.contains("Manual annotation"));
-        assert!(crate::book::load::load_book_text(&covered, "UTF-8").unwrap().cover.is_some());
+        assert!(crate::book::load::load_book_text(&covered, "UTF-8")
+            .unwrap()
+            .cover
+            .is_some());
         args.format = BookExportFormat::Txt;
         args.destination = temp.0.join("output.txt").to_string_lossy().into_owned();
         export_book(&manager, &args).unwrap();
@@ -419,25 +473,73 @@ mod tests {
 
     #[test]
     fn adopted_reference_exports_full_body_after_glossary_and_prompt_changes() {
-        let temp=Scratch(std::env::temp_dir().join(format!("reference-export-{}",uuid::Uuid::new_v4())));
+        let temp = Scratch(
+            std::env::temp_dir().join(format!("reference-export-{}", uuid::Uuid::new_v4())),
+        );
         std::fs::create_dir(&temp.0).unwrap();
-        let manager=ProjectManager::new(temp.0.join("app"));
-        let preview=manager.inspect_source(ProjectKind::Book,&Path::new(env!("CARGO_MANIFEST_DIR")).join("../tests/fixtures/structural.epub")).unwrap();
-        let project=manager.create(&preview.import_id.0,&ProjectChoices{name:"Reference".into(),languages:LanguagePair{source:Some("en".into()),target:"ru".into()},processing_profile_id:None}).unwrap();
-        let reference=temp.0.join("reference.fb2");
-        let full=format!("{}КОНЕЦ ПОЛНОГО ПЕРЕВОДА", "Готовый перевод. ".repeat(2000));
+        let manager = ProjectManager::new(temp.0.join("app"));
+        let preview = manager
+            .inspect_source(
+                ProjectKind::Book,
+                &Path::new(env!("CARGO_MANIFEST_DIR")).join("../tests/fixtures/structural.epub"),
+            )
+            .unwrap();
+        let project = manager
+            .create(
+                &preview.import_id.0,
+                &ProjectChoices {
+                    name: "Reference".into(),
+                    languages: LanguagePair {
+                        source: Some("en".into()),
+                        target: "ru".into(),
+                    },
+                    processing_profile_id: None,
+                },
+            )
+            .unwrap();
+        let reference = temp.0.join("reference.fb2");
+        let full = format!("{}КОНЕЦ ПОЛНОГО ПЕРЕВОДА", "Готовый перевод. ".repeat(2000));
         std::fs::write(&reference,format!(r#"<?xml version="1.0" encoding="utf-8"?><FictionBook xmlns="http://www.gribuser.ru/xml/fictionbook/2.0"><description><title-info><book-title>Reference</book-title><lang>ru</lang></title-info></description><body><section><title><p>Chapter 1</p></title><p>{full}</p></section><section><title><p>Chapter 3</p></title><p>Последняя глава.</p></section></body></FictionBook>"#)).unwrap();
-        super::super::book_reference::import(&manager,&crate::app::requests::BookReferenceImportArgs{project_id:project.id.clone(),path:reference.to_string_lossy().into_owned()}).unwrap();
-        manager.lease(&project.id).unwrap().with_connection(|db,_|{
-            db.execute("UPDATE glossary_state SET revision=revision+1",[]).unwrap();
-            db.execute("UPDATE project_settings SET revision=revision+1",[]).unwrap();
-            db.execute("UPDATE book_chapters SET instructions='New prompt',revision=revision+1",[]).unwrap();
-            Ok(())
-        }).unwrap();
-        let destination=temp.0.join("translated.txt");
-        export_book(&manager,&BookExportArgs{project_id:project.id,selection:EntitySelection::All,destination:destination.to_string_lossy().into_owned(),format:BookExportFormat::Txt,incomplete_policy:IncompletePolicy::Reject}).unwrap();
-        let output=std::fs::read_to_string(destination).unwrap();
-        assert!(output.contains(&full));assert!(output.contains("Последняя глава."));assert!(!output.contains("Original text."));
+        super::super::book_reference::import(
+            &manager,
+            &crate::app::requests::BookReferenceImportArgs {
+                project_id: project.id.clone(),
+                path: reference.to_string_lossy().into_owned(),
+            },
+        )
+        .unwrap();
+        manager
+            .lease(&project.id)
+            .unwrap()
+            .with_connection(|db, _| {
+                db.execute("UPDATE glossary_state SET revision=revision+1", [])
+                    .unwrap();
+                db.execute("UPDATE project_settings SET revision=revision+1", [])
+                    .unwrap();
+                db.execute(
+                    "UPDATE book_chapters SET instructions='New prompt',revision=revision+1",
+                    [],
+                )
+                .unwrap();
+                Ok(())
+            })
+            .unwrap();
+        let destination = temp.0.join("translated.txt");
+        export_book(
+            &manager,
+            &BookExportArgs {
+                project_id: project.id,
+                selection: EntitySelection::All,
+                destination: destination.to_string_lossy().into_owned(),
+                format: BookExportFormat::Txt,
+                incomplete_policy: IncompletePolicy::Reject,
+            },
+        )
+        .unwrap();
+        let output = std::fs::read_to_string(destination).unwrap();
+        assert!(output.contains(&full));
+        assert!(output.contains("Последняя глава."));
+        assert!(!output.contains("Original text."));
     }
 
     #[test]
