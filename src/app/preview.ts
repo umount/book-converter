@@ -328,13 +328,21 @@ export async function invokePreview<T>(
     case "book_reference_get":
       result = { chapters: [], mappings: [], fingerprint: "preview" };
       break;
-    case "glossary_list":
+    case "glossary_list": {
+      const matches = glossary.filter(
+        (v) =>
+          (!args.pinnedOnly || v.pinned) &&
+          (v.source.includes(args.query) || v.target.includes(args.query)),
+      );
       result = {
-        items: glossary,
+        items: matches,
+        total: matches.length,
+        revision: "0",
         nextCursor: null,
         settingsRevision: String(settingsRevision),
       };
       break;
+    }
     case "glossary_put": {
       const old = glossary.find((v) => v.id === args.termId);
       if (

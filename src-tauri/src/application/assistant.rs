@@ -122,7 +122,7 @@ impl AssistantService {
             let details=super::book_presentation::read(db)?;
             let chapter=args.chapter_id.as_ref().map(|id|ProjectRepository::new(db,ProjectKind::Book)?.chapter(&id.0)).transpose()?;
             let chapter_revision=chapter.as_ref().map(|c|serde_json::to_string(c).unwrap_or_default());
-            let glossary=super::preferences::glossary_page(db,&GlossaryListArgs{project_id:args.project_id.clone(),cursor:None,limit:100})?.items;
+            let glossary=super::preferences::glossary_page(db,&GlossaryListArgs{query:String::new(),pinned_only:false,project_id:args.project_id.clone(),cursor:None,limit:100})?.items;
             let history=shared::history(db,20)?.into_iter().map(|m|serde_json::json!({"role":m.role,"text":m.content.chars().take(4000).collect::<String>()})).collect::<Vec<_>>();
             let chapter=chapter.map(|c|serde_json::to_string(&c).unwrap_or_default().chars().take(24000).collect::<String>());
             let context=serde_json::json!({"languages":{"source":settings.choices.source_language,"target":settings.choices.target_language},"instructions":details.instructions,"chapter":chapter,"glossary":glossary.into_iter().map(|g|serde_json::json!({"source":g.source,"target":g.target,"category":g.kind})).collect::<Vec<_>>(),"history":history,"request":args.message});

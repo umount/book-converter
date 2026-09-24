@@ -382,6 +382,8 @@ impl EntitySelection {
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct GlossaryListArgs {
     pub project_id: ProjectId,
+    pub query: String,
+    pub pinned_only: bool,
     pub cursor: Option<String>,
     pub limit: u32,
 }
@@ -415,6 +417,7 @@ pub struct GlossaryTermView {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
 #[serde(rename_all = "camelCase")]
 pub struct GlossaryPage {
+    pub total: u32,
     pub items: Vec<GlossaryTermView>,
     pub next_cursor: Option<String>,
     pub revision: Revision,

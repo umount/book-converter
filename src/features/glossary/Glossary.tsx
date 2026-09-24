@@ -21,11 +21,16 @@ export function Glossary({
     [error, setError] = useState<unknown>(null),
     [busy, setBusy] = useState(false),
     [edit, setEdit] = useState<GlossaryTermView | null>(null);
+  const [query, setQuery] = useState(""),
+    [pinnedOnly, setPinnedOnly] = useState(false);
+  const [filter, setFilter] = useState({ query: "", pinnedOnly: false });
   async function load(more = false) {
     setBusy(true);
+    setError(null);
     try {
       const next = await projectApi.glossary({
         projectId,
+        ...filter,
         cursor: more ? (page?.nextCursor ?? null) : null,
         limit: 100,
       });
@@ -41,18 +46,24 @@ export function Glossary({
   }
   useEffect(() => {
     let alive = true;
+    setBusy(true);
+    setPage(null);
+    setError(null);
     void projectApi
-      .glossary({ projectId, cursor: null, limit: 100 })
+      .glossary({ projectId, ...filter, cursor: null, limit: 100 })
       .then((v) => {
         if (alive) setPage(v);
       })
       .catch((e) => {
         if (alive) setError(e);
+      })
+      .finally(() => {
+        if (alive) setBusy(false);
       });
     return () => {
       alive = false;
     };
-  }, [projectId]);
+  }, [projectId, filter]);
   async function saveTerm() {
     if (!edit || !page) return;
     setBusy(true);
@@ -117,6 +128,38 @@ export function Glossary({
           </button>
         </div>
       </header>
+      <form
+        className="bc-fields"
+        onSubmit={(e) => {
+          e.preventDefault();
+          setFilter({ query, pinnedOnly });
+        }}
+      >
+        <label>
+          {t("glossarySearch")}
+          <input
+            value={query}
+            disabled={busy}
+            onChange={(e) => setQuery(e.target.value)}
+            maxLength={1024}
+          />
+        </label>
+        <label className="bc-check">
+          <input
+            type="checkbox"
+            checked={pinnedOnly}
+            disabled={busy}
+            onChange={(e) => setPinnedOnly(e.target.checked)}
+          />
+          {t("pinnedOnly")}
+        </label>
+        <button disabled={busy}>{t("find")}</button>
+      </form>
+      {page && (
+        <p className="bc-hint" role="status">
+          {t("termsFound")}: {page.total}
+        </p>
+      )}
       <div className="bc-term-grid bc-term-heading">
         <span>{t("termSource")}</span>
         <span>{t("termTarget")}</span>
@@ -127,6 +170,7 @@ export function Glossary({
         <button
           className="bc-term-grid bc-term"
           key={term.id}
+          disabled={busy}
           onClick={() => {
             setError(null);
             setEdit(term);
@@ -142,7 +186,13 @@ export function Glossary({
         </button>
       ))}
       {page && !page.items.length && (
-        <p className="bc-hint">{t("emptyTerms")}</p>
+        <p className="bc-hint">
+          {t(
+            filter.query || filter.pinnedOnly
+              ? "noMatchingTerms"
+              : "emptyTerms",
+          )}
+        </p>
       )}
       {page?.nextCursor && (
         <button disabled={busy} onClick={() => void load(true)}>

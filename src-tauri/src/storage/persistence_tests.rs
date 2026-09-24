@@ -692,11 +692,14 @@ fn glossary_api_paginates_and_rejects_a_stale_editor() {
     args.source = "Beta".into();
     preferences::put_term(&mut db, &args).unwrap();
     let mut list = GlossaryListArgs {
+        query: String::new(),
+        pinned_only: false,
         project_id: project,
         cursor: None,
         limit: 1,
     };
     let first = preferences::glossary_page(&mut db, &list).unwrap();
+    assert_eq!(first.total, 2);
     assert_eq!(first.items[0].source, "Alpha");
     list.cursor = first.next_cursor;
     let second = preferences::glossary_page(&mut db, &list).unwrap();
@@ -709,6 +712,23 @@ fn glossary_api_paginates_and_rejects_a_stale_editor() {
         preferences::put_term(&mut db, &args).unwrap_err().code,
         ErrorCode::RevisionConflict
     );
+    list.cursor = None;
+    list.query = "New".into();
+    assert_eq!(preferences::glossary_page(&mut db, &list).unwrap().total, 1);
+    list.query = "%".into();
+    assert_eq!(preferences::glossary_page(&mut db, &list).unwrap().total, 0);
+    args.expected_revision = Some(rev(1));
+    args.target = "爷爷".into();
+    args.pinned = false;
+    preferences::put_term(&mut db, &args).unwrap();
+    list.query = "爷".into();
+    assert_eq!(preferences::glossary_page(&mut db, &list).unwrap().total, 1);
+    list.pinned_only = true;
+    assert_eq!(preferences::glossary_page(&mut db, &list).unwrap().total, 0);
+    list.query.clear();
+    let pinned = preferences::glossary_page(&mut db, &list).unwrap();
+    assert_eq!(pinned.total, 1);
+    assert_eq!(pinned.items[0].source, "Alpha");
     let mut settings = shared::settings(&db).unwrap().choices;
     settings.book_translation_profile = Some("changed".into());
     shared::update_settings(&mut db, &rev(0), &settings).unwrap();

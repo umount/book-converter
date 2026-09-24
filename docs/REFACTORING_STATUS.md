@@ -503,3 +503,14 @@ fallback. Keep commits scoped; push only on user request.
   mixed inline text, CDATA, repeated images and invalid references.
 - Full suite passed 314 tests before deleting the obsolete converter and its test;
   strict all-target Clippy passed after that deletion. No manga feature changes.
+
+### P05/P06 glossary review between batches
+
+- Added literal case-sensitive search over source and target terms, a pinned-only
+  filter and a matching-term count. Filtering and counting happen in SQLite before
+  bounded pagination; editing continues to use revision guards.
+- Regression covers pagination/counts, searching translated Unicode text, literal
+  percent signs, pinned filtering and stale writes. Frontend tests/build, generated
+  contracts and strict all-target Clippy passed.
+- Browser fixture verified searching `остров` returns `the island`, then enabling
+  pinned-only returns zero matches. Filtered empty results have their own message.

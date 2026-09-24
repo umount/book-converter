@@ -43,7 +43,7 @@ pub fn glossary_page(
     db: &mut Connection,
     args: &GlossaryListArgs,
 ) -> Result<GlossaryPage, AppError> {
-    if args.limit == 0 || args.limit > 500 {
+    if args.limit == 0 || args.limit > 500 || args.query.len() > 1024 {
         return Err(AppError::invalid("limit"));
     }
     let tx = db.transaction().map_err(storage_error)?;
@@ -62,13 +62,15 @@ pub fn glossary_page(
     } else {
         None
     };
-    let mut q=tx.prepare("SELECT id,source,target,kind,pinned,frequency,revision FROM glossary_terms WHERE (?1 IS NULL OR (source,id)>(?1,?2)) ORDER BY source,id LIMIT ?3").map_err(storage_error)?;
+    let mut q=tx.prepare("SELECT id,source,target,kind,pinned,frequency,revision FROM glossary_terms WHERE (?1 IS NULL OR (source,id)>(?1,?2)) AND (instr(source,?4)>0 OR instr(target,?4)>0) AND (NOT ?5 OR pinned=1) ORDER BY source,id LIMIT ?3").map_err(storage_error)?;
     let mut items = q
         .query_map(
             rusqlite::params![
                 after.as_ref().map(|v| &v.0),
                 after.as_ref().map(|v| &v.1),
-                args.limit + 1
+                args.limit + 1,
+                args.query,
+                args.pinned_only
             ],
             |r| {
                 Ok(GlossaryTermView {
@@ -91,7 +93,9 @@ pub fn glossary_page(
     } else {
         None
     };
+    let total = tx.query_row("SELECT COUNT(*) FROM glossary_terms WHERE (instr(source,?1)>0 OR instr(target,?1)>0) AND (NOT ?2 OR pinned=1)", rusqlite::params![args.query,args.pinned_only], |r| r.get(0)).map_err(storage_error)?;
     Ok(GlossaryPage {
+        total,
         items,
         next_cursor,
         revision: shared::glossary_revision(&tx)?,
