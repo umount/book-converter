@@ -9,6 +9,7 @@
 mod assistant;
 mod book_v1;
 mod manga_v1;
+mod models;
 mod export_cmd;
 mod glossary;
 pub(crate) mod ops;
@@ -28,6 +29,7 @@ pub use crate::session::AppState;
 pub use assistant::*;
 pub use book_v1::*;
 pub use manga_v1::*;
+pub use models::*;
 pub use export_cmd::*;
 pub use glossary::*;
 pub use project::*;

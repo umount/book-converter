@@ -21,6 +21,7 @@ mod export;
 mod glossary;
 mod i18n;
 pub mod jobs;
+pub mod models;
 mod language;
 mod orchestrator;
 mod paths;
@@ -82,6 +83,10 @@ pub fn run() {
         .manage(commands::AppState::new())
         .manage(std::sync::Arc::new(assistant::AssistantRuntime::new()))
         .invoke_handler(tauri::generate_handler![
+            commands::model_list,
+            commands::model_download,
+            commands::model_pause,
+            commands::model_remove,
             commands::project_inspect_manifest,
             commands::project_settings_get,
             commands::project_settings_update,

@@ -179,3 +179,47 @@ Save exact model/weight hashes, runtime/provider versions, CPU/OS/architecture,
 commands and failures in REFACTORING_STATUS.md. Prefer the simplest candidate that
 passes all gates. Documentation support alone is not evidence of acceptable quality,
 low resource use or a working packaged build.
+
+## On-demand Hugging Face downloads (implemented 2026-09-24)
+
+Model weights are not bundled. Settings exposes the application-owned catalog and
+explicit download/pause/resume/remove actions. The cache is global under
+`<app-data>/models/<model-id>-<sha256>/`, independent of projects and fixed language
+choices. Closing Settings leaves downloads running; an app restart leaves a resumable
+partial file. Import/open never starts a download. Public downloads use their own HTTP
+client and never receive the book provider's API key. Private/gated repositories and
+arbitrary repository URLs are not supported by this first catalog implementation.
+
+The first **experimental download candidate**, not an accepted processing default:
+
+- Repository: `Carve/LaMa-ONNX`; file: `lama_fp32.onnx`.
+- Commit: `a3ee2fca54baebec351b8fa7786154ffa7555aa6`.
+- Exact bytes: `208044816` (198.4 MiB); repository-declared license: Apache-2.0.
+- SHA-256: `1faef5301d78db7dda502fe59966957ec4b79dd64e16f03ed96913c7a4eb68d6`.
+- Provenance: [pinned artifact](https://huggingface.co/Carve/LaMa-ONNX/blob/a3ee2fca54baebec351b8fa7786154ffa7555aa6/lama_fp32.onnx)
+  and the Hugging Face model API at that same commit (`blobs=true`), checked 2026-09-24.
+- Runtime/OS acceptance, model license/provenance review and image-quality benchmarks
+  remain open. Downloaded/verified is deliberately distinct from processing readiness.
+  Recognition/translation still use the planned cloud path; no local LLM stack is
+  silently added and no downloaded Python code is executed.
+
+Downloads always use the pinned commit, not `main`. HTTP ranges are validated against
+both the local offset and exact total length. A server that ignores Range restarts the
+file from zero. Truncated downloads retain received bytes; checksum failures discard
+the corrupt partial file. Complete files are hashed before publication and checked
+again when a fresh manager reads the installed cache. The eventual inference adapter
+must verify artifacts at its own load boundary as well. A downloaded file does not
+activate any manga processing capability.
+
+The downloader permits one active write, streams to `.part`, restricts redirects to
+HTTPS Hugging Face download domains, bounds bytes to the catalog size, and publishes
+only verified files. Symlink cache entries are rejected. Cancellation interrupts HTTP
+waits and retains the partial file; deleting a model's files is blocked while its writer
+is active. No archive extraction or automatic model execution occurs.
+
+Validation used tiny local HTTP fixtures, not a paid provider or a production weight
+download. Tests cover ranges, ignored ranges, truncated streams, cancellation during a
+stalled request, checksum failure, restart verification, concurrent write guards and
+symlinks. The catalog is tested against the 500 MiB download budget. See the official
+[Hugging Face download documentation](https://huggingface.co/docs/huggingface_hub/package_reference/file_download)
+for the distinction between a pinned revision, ETag and content hashes.
