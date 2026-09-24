@@ -71,6 +71,12 @@ pub async fn translate_segments(
     system: &str,
     segments: &[Segment],
 ) -> Result<HashMap<String, String>, AppError> {
+    translate_segments_with_glossary(provider,system,segments,&[]).await
+}
+
+pub(super) async fn translate_segments_with_glossary(
+    provider: &dyn Provider, system: &str, segments: &[Segment], terms: &[shared::GlossaryTerm],
+) -> Result<HashMap<String,String>,AppError> {
     let mut accepted = HashMap::new();
     let mut pending = segments.to_vec();
     for _ in 0..3 {
@@ -79,7 +85,7 @@ pub async fn translate_segments(
         }
         let response = provider
             .complete(Request::Structured {
-                system: system.into(),
+                system: format!("{system}\nGlossary (respect pinned translations): {}",super::book_terms::payload(terms,&pending.iter().map(|s|s.text.as_str()).collect::<Vec<_>>().join("\n"),false)),
                 user: serde_json::to_string(&serde_json::json!({"segments":pending}))
                     .map_err(|_| invalid_output())?,
             })
@@ -291,10 +297,9 @@ impl BookPipeline {
         })?;
         let translation=chapter.translation.ok_or_else(||AppError::invalid("noTranslation"))?;
         let target=&run.snapshot.settings.target_language;
-        let glossary=serde_json::to_string(&glossary).map_err(|_|invalid_output())?;
-        let system=format!("Translate only the supplied chapter title from {} to {target}. Return JSON {{\"segments\":[{{\"id\":\"exact input id\",\"text\":\"translated title\"}}]}}. Keep the title's chapter number. Glossary (respect pinned terms): {glossary}. Book instructions: {}. Chapter instructions: {}",run.snapshot.settings.source_language.as_deref().unwrap_or("the source language"),self.instructions.as_deref().unwrap_or(""),chapter.instructions);
+        let system=format!("Translate only the supplied chapter title from {} to {target}. Return JSON {{\"segments\":[{{\"id\":\"exact input id\",\"text\":\"translated title\"}}]}}. Keep the title's chapter number. Book instructions: {}. Chapter instructions: {}",run.snapshot.settings.source_language.as_deref().unwrap_or("the source language"),self.instructions.as_deref().unwrap_or(""),chapter.instructions);
         let segments=split_segments(&format!("{entity}:title"),&chapter.chapter.title,2048)?;
-        let translated=translate_segments(self.provider.as_ref(),&system,&segments).await?;
+        let translated=translate_segments_with_glossary(self.provider.as_ref(),&system,&segments,&glossary).await?;
         let mut title=segments.iter().map(|s|translated.get(&s.id).cloned().ok_or_else(invalid_output)).collect::<Result<Vec<_>,_>>()?.join("");
         super::book_language::repair(self.provider.as_ref(),target,&chapter.chapter.title,&mut title,&mut [],&glossary).await;
         Ok(BookOutput::Title {translation_id:translation.id,revision:translation.revision,title,inputs:results::InputVersions{source:chapter.chapter.revision,settings:run.snapshot.settings_revision.clone(),glossary:run.snapshot.glossary_revision.clone()}})
@@ -343,10 +348,10 @@ impl BookPipeline {
             .source_language
             .as_deref()
             .unwrap_or("the detected source language");
-        let system=format!("Translate every text segment faithfully from {source} to {target}. Return only JSON {{\"segments\":[{{\"id\":\"exact input id\",\"text\":\"translation\"}}]}}. Keep every ID exactly once. Do not add image markers or explanations. Segments may continue mid-paragraph. Preserve whitespace boundaries. Instructions: {}\nChapter instructions: {}\nGlossary (respect pinned translations): {}\nPrevious context: {}\nReference: {}",self.instructions.as_deref().unwrap_or(""),chapter.instructions,serde_json::to_string(&glossary).map_err(|_|invalid_output())?,serde_json::to_string(&context).map_err(|_|invalid_output())?,reference.as_deref().unwrap_or(""));
+        let system=format!("Translate every text segment faithfully from {source} to {target}. Return only JSON {{\"segments\":[{{\"id\":\"exact input id\",\"text\":\"translation\"}}]}}. Keep every ID exactly once. Do not add image markers or explanations. Segments may continue mid-paragraph. Preserve whitespace boundaries. Instructions: {}\nChapter instructions: {}\nPrevious context: {}\nReference: {}",self.instructions.as_deref().unwrap_or(""),chapter.instructions,serde_json::to_string(&context).map_err(|_|invalid_output())?,reference.as_deref().unwrap_or(""));
         let mut translated = HashMap::new();
         for batch in segments.chunks(4) {
-            translated.extend(translate_segments(self.provider.as_ref(), &system, batch).await?);
+            translated.extend(translate_segments_with_glossary(self.provider.as_ref(), &system, batch, &glossary).await?);
         }
         let mut title = segments
             .iter()
@@ -370,7 +375,7 @@ impl BookPipeline {
         let source_text = segments.iter().map(|s| s.text.as_str()).collect::<Vec<_>>().join("\n");
         super::book_language::repair(
             self.provider.as_ref(), target, &source_text, &mut title, &mut blocks,
-            &serde_json::to_string(&glossary).map_err(|_| invalid_output())?,
+            &glossary,
         ).await;
         Ok(BookOutput::Translation(results::BookTranslation {
             id: uuid::Uuid::new_v4().to_string(),

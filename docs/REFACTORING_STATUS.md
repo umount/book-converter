@@ -649,3 +649,17 @@ fallback. Keep commits scoped; push only on user request.
 - Full library suite passed 330 tests; frontend tests and production build passed.
   Added mixed title/body autosave race and title conflict tests. The user's subsequent
   glossary-scope correction is the next slice: select only terms occurring in sent text.
+
+### P05 restrict glossary payloads to text occurrences
+
+- Chapter/title translation now selects only terms whose source occurs literally in
+  the request's pending source segments. Selection is repeated after partial success,
+  so retries do not resend terms from already accepted segments. Pinned terms are
+  authoritative when matched, not an exception that sends unrelated entries.
+- Language-repair requests select terms occurring in the affected lines, checking
+  both source and translated forms. Prompt entries contain source/target/kind/pinned
+  only; storage IDs, revisions and counters are not sent to the model.
+- Glossary extraction already filters existing entries to each source chunk and
+  retains that behavior. Matching remains case-sensitive/literal, as in the old pipeline.
+- Full library suite passed 332 tests; strict all-target Clippy passed. Added actual
+  request assertions for title-only exclusions, repair filtering and partial retries.

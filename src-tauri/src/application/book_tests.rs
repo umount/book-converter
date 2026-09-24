@@ -630,6 +630,7 @@ async fn title_job_sends_only_title_and_glossary_and_rejects_late_edits() {
         let view=ProjectRepository::new(db,ProjectKind::Book)?.chapter(&id)?;
         results::save_translation(db,&results::BookTranslation{id:"original".into(),chapter_id:id.clone(),inputs:results::InputVersions{source:view.chapter.revision,settings:shared::settings(db)?.revision,glossary:shared::glossary_revision(db)?},expected_translation:None,title:"Old title".into(),provenance:"reference".into(),context_fingerprint:"reference".into(),blocks:view.blocks.iter().filter(|b|!matches!(b.content,crate::app::contracts::BookBlockContent::Image{..})).map(|b|(b.id.clone(),"FULL REFERENCE BODY".into())).collect()})?;
         db.execute("INSERT INTO glossary_terms(id,source,target,kind,pinned) VALUES('term','Chapter','Глава','term',1)",[]).unwrap();
+        db.execute("INSERT INTO glossary_terms(id,source,target,kind,pinned) VALUES('body-term','Original','BODY ONLY TERM','term',1)",[]).unwrap();
         Ok(id)
     }).unwrap();
     let reply=serde_json::json!({"segments":[{"id":format!("{chapter}:title:0"),"text":"Глава первая"}]}).to_string();
@@ -650,7 +651,7 @@ async fn title_job_sends_only_title_and_glossary_and_rejects_late_edits() {
     {
         let requests=provider.requests.lock().unwrap();assert_eq!(requests.len(),1);
         assert_eq!(requests[0]["segments"].as_array().unwrap().len(),1);
-        let system=requests[0]["system"].as_str().unwrap();assert!(system.contains("Глава"));assert!(system.contains("Keep chapter numbers"));assert!(!requests[0].to_string().contains("FULL REFERENCE BODY"));assert!(!requests[0].to_string().contains("Original text."));
+        let system=requests[0]["system"].as_str().unwrap();assert!(system.contains("Глава"));assert!(system.contains("Keep chapter numbers"));assert!(!system.contains("BODY ONLY TERM"));assert!(!requests[0].to_string().contains("FULL REFERENCE BODY"));assert!(!requests[0].to_string().contains("Original text."));
     }
     let run=lease.with_connection(|db,_|runs::get_run(db,"title-run")).unwrap();
     let late=pipeline.compute(&lease,&run,&chapter,"title").await.unwrap();
@@ -660,4 +661,15 @@ async fn title_job_sends_only_title_and_glossary_and_rejects_late_edits() {
         let tx=db.transaction().unwrap();assert!(pipeline.persist(&tx,late).is_err());Ok(())
     }).unwrap();
     drop(lease);drop(manager);std::fs::remove_dir_all(root).unwrap();
+}
+
+#[tokio::test]
+async fn glossary_is_filtered_again_for_only_the_unresolved_fragments() {
+    let terms=vec![super::book_terms::term("Alpha","Первый"),super::book_terms::term("Beta","Второй"),super::book_terms::term("NeverOccurs","НЕ ОТПРАВЛЯТЬ")];
+    let fake=Fake::new(vec![r#"{"segments":[{"id":"a","text":"Первый"}]}"#,r#"{"segments":[{"id":"b","text":"Второй"}]}"#]);
+    let segments=[Segment{id:"a".into(),text:"Alpha appears".into()},Segment{id:"b".into(),text:"Beta appears".into()}];
+    super::book::translate_segments_with_glossary(&fake,"Translate",&segments,&terms).await.unwrap();
+    let requests=fake.requests.lock().unwrap();let first=requests[0]["system"].as_str().unwrap();let retry=requests[1]["system"].as_str().unwrap();
+    assert!(first.contains("Первый"));assert!(first.contains("Второй"));assert!(!first.contains("НЕ ОТПРАВЛЯТЬ"));
+    assert!(retry.contains("Второй"));assert!(!retry.contains("Первый"));assert!(!retry.contains("NeverOccurs"));
 }

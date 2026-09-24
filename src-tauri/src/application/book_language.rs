@@ -26,7 +26,7 @@ pub async fn repair(
     source: &str,
     title: &mut String,
     blocks: &mut [(String, String)],
-    glossary: &str,
+    glossary: &[crate::storage::shared::GlossaryTerm],
 ) {
     let Some(script) = textutil::expected_script(target) else {
         return;
@@ -68,6 +68,15 @@ pub async fn repair(
             }
             let batch = &targets[start..end];
             start = end;
+            let glossary = super::book_terms::payload(
+                glossary,
+                &batch
+                    .iter()
+                    .map(|line| line.text.as_str())
+                    .collect::<Vec<_>>()
+                    .join("\n"),
+                true,
+            );
             let system=format!("Repair only foreign-language fragments in these {target} translation lines. Use the established glossary: {glossary}. Transliterate personal names appropriately for {target}; translate other terms faithfully. Preserve meaning, punctuation, whitespace and all other wording. Never summarize, merge or split lines. Return only JSON {{\"lines\":[{{\"n\":0,\"text\":\"corrected line\"}}]}} using only supplied line numbers.");
             let response = provider
                 .complete(Request::Structured {
@@ -185,7 +194,7 @@ mod tests {
             ("block-a".into(), "Чистая строка.\n\nОн увидел 王林.".into()),
             ("block-b".into(), "  Без изменений.  \n".into()),
         ];
-        repair(&fake, "ru", "王林", &mut title, &mut blocks, "[]").await;
+        repair(&fake, "ru", "王林", &mut title, &mut blocks, &[]).await;
         assert_eq!(title, "Ван Линь");
         assert_eq!(
             blocks[0],
@@ -212,7 +221,10 @@ mod tests {
             "王林",
             &mut title,
             &mut blocks,
-            r#"[{"source":"王林","target":"Ван Линь","pinned":true}]"#,
+            &[
+                super::super::book_terms::term("王林", "Ван Линь"),
+                super::super::book_terms::term("韩立", "Хань Ли"),
+            ],
         )
         .await;
         assert_eq!(title, "  Ван Линь  ");
@@ -223,6 +235,7 @@ mod tests {
         assert_eq!(sent[0]["lines"][0]["n"], 0);
         assert!(sent[0]["system"].as_str().unwrap().contains("Ван Линь"));
         assert!(!sent[0].to_string().contains("Тело главы"));
+        assert!(!sent[0]["system"].as_str().unwrap().contains("Хань Ли"));
     }
 
     #[tokio::test]
@@ -238,7 +251,7 @@ mod tests {
             let mut title = "Глава".into();
             let original = vec![("a".into(), "王林 пришёл.".into())];
             let mut blocks = original.clone();
-            repair(&fake, "ru", "", &mut title, &mut blocks, "[]").await;
+            repair(&fake, "ru", "", &mut title, &mut blocks, &[]).await;
             assert_eq!(blocks, original);
             assert_eq!(title, "Глава");
             assert_eq!(fake.sent.lock().unwrap().len(), 1);
@@ -252,7 +265,7 @@ mod tests {
         ]);
         let mut title = "Глава".into();
         let mut blocks = vec![("a".into(), "王林 увидел 李雷 и 韩立.".into())];
-        repair(&fake, "ru", "", &mut title, &mut blocks, "[]").await;
+        repair(&fake, "ru", "", &mut title, &mut blocks, &[]).await;
         assert_eq!(fake.sent.lock().unwrap().len(), 2);
         assert!(blocks[0].1.contains("韩立"));
         let failed = Fake::new(vec![]);
@@ -262,7 +275,7 @@ mod tests {
             .unwrap()
             .push_back(Err(AppError::invalid("offline")));
         let before = blocks.clone();
-        repair(&failed, "ru", "", &mut title, &mut blocks, "[]").await;
+        repair(&failed, "ru", "", &mut title, &mut blocks, &[]).await;
         assert_eq!(blocks, before);
     }
     #[tokio::test]
@@ -270,8 +283,8 @@ mod tests {
         let fake = Fake::new(vec![]);
         let mut title = "Глава".into();
         let mut blocks = vec![("a".into(), "В тексте слово OpenAI.".into())];
-        repair(&fake, "ru", "OpenAI", &mut title, &mut blocks, "[]").await;
-        repair(&fake, "ja", "", &mut title, &mut blocks, "[]").await;
+        repair(&fake, "ru", "OpenAI", &mut title, &mut blocks, &[]).await;
+        repair(&fake, "ja", "", &mut title, &mut blocks, &[]).await;
         assert!(fake.sent.lock().unwrap().is_empty());
     }
 }
