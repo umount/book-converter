@@ -12,6 +12,33 @@ pub struct AssetStore {
 }
 
 impl AssetStore {
+    /// Read an existing protocol asset without creating directories or following symlinks.
+    pub fn read_path(path: &Path) -> anyhow::Result<Vec<u8>> {
+        let directory = path
+            .parent()
+            .ok_or_else(|| anyhow::anyhow!("Missing asset directory"))?;
+        let project = directory
+            .parent()
+            .ok_or_else(|| anyhow::anyhow!("Missing project directory"))?;
+        anyhow::ensure!(
+            directory.file_name() == Some(std::ffi::OsStr::new(DIRECTORY)),
+            "Invalid asset directory"
+        );
+        for parent in [project, directory] {
+            let metadata = std::fs::symlink_metadata(parent)?;
+            anyhow::ensure!(
+                metadata.is_dir() && !metadata.file_type().is_symlink(),
+                "Invalid asset directory"
+            );
+        }
+        let metadata = std::fs::symlink_metadata(path)?;
+        anyhow::ensure!(
+            metadata.is_file() && !metadata.file_type().is_symlink(),
+            "Invalid asset file"
+        );
+        Ok(std::fs::read(path)?)
+    }
+
     pub fn new(project_directory: &Path) -> anyhow::Result<Self> {
         let directory = project_directory.join(DIRECTORY);
         std::fs::create_dir_all(&directory)?;
@@ -116,7 +143,30 @@ mod tests {
             1
         );
         assert_eq!(std::fs::read_dir(root.join(DIRECTORY)).unwrap().count(), 1);
+        assert_eq!(
+            AssetStore::read_path(&root.join(DIRECTORY).join(format!("{first}.png"))).unwrap(),
+            bytes
+        );
         drop(db);
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn protocol_reads_reject_symlinked_assets_and_directories() {
+        use std::os::unix::fs::symlink;
+        let root = std::env::temp_dir().join(format!("asset-paths-{}", uuid::Uuid::new_v4()));
+        let project = root.join("project");
+        std::fs::create_dir_all(project.join(DIRECTORY)).unwrap();
+        let outside = root.join("outside.png");
+        std::fs::write(&outside, b"outside").unwrap();
+        let asset = project.join(DIRECTORY).join("hash.png");
+        symlink(&outside, &asset).unwrap();
+        assert!(AssetStore::read_path(&asset).is_err());
+        std::fs::remove_file(&asset).unwrap();
+        std::fs::remove_dir(project.join(DIRECTORY)).unwrap();
+        symlink(&root, project.join(DIRECTORY)).unwrap();
+        assert!(AssetStore::read_path(&project.join(DIRECTORY).join("outside.png")).is_err());
         std::fs::remove_dir_all(root).unwrap();
     }
 }

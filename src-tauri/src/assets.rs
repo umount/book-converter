@@ -29,7 +29,7 @@ pub(crate) fn respond<R: Runtime>(
     request: Request<Vec<u8>>,
 ) -> Response<Vec<u8>> {
     match resolve(request.uri().path()) {
-        Some(path) => match std::fs::read(&path) {
+        Some(path) => match store::AssetStore::read_path(&path) {
             Ok(bytes) => Response::builder()
                 .status(StatusCode::OK)
                 .header(header::CONTENT_TYPE, image_mime(&path.to_string_lossy()))

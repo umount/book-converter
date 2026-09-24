@@ -4,7 +4,7 @@
 
 P00: completed. Baseline and deterministic fixtures.
 P01: completed. Typed contracts, composition boundary and frontend test harness.
-P02: in_progress. Schema/asset prototype committed; repositories and protocol remain.
+P02: in_progress. Initial domain repositories and AssetStore protocol reads added.
 P03–P13: pending. No production behavior has been replaced yet.
 
 ## Baseline (2026-09-23)
@@ -41,7 +41,8 @@ P03–P13: pending. No production behavior has been replaced yet.
 
 ## Next executable step
 
-Continue P02 repositories and asset protocol integration.
+Continue P02 shared settings/glossary/job repositories, translation/result persistence
+and full schema invariants before starting the P03 lifecycle cutover.
 Plan snapshot committed as a45d990. Baseline formatting drift is recorded, not hidden.
 
 ## Evidence rules
@@ -72,8 +73,8 @@ fallback. Keep commits scoped; push only on user request.
 - Content-addressed AssetStore publication/deduplication test passed. Image MIME
   and dimensions are validated; publication never replaces existing content.
   Assets no longer import a constant from commands. No UI/persistence cutover yet.
-- This is deliberately not a completed P02; repositories and protocol integration
-  need further work before project lifecycle replacement.
+- This is deliberately not a completed P02; shared repositories and complete domain
+  result persistence still need work before project lifecycle replacement.
 
 ## Recovery and P01 continuation (2026-09-24)
 
@@ -95,3 +96,21 @@ fallback. Keep commits scoped; push only on user request.
   npm test, npm run build and strict all-target Clippy passed. ts-rs reports that
   deny_unknown_fields has no TS representation; serde still enforces it at runtime.
 - P01 is complete as a contract/composition milestone, not a domain/UI cutover.
+
+## P02 repository/protocol slice (2026-09-24)
+
+- Added a domain-scoped ProjectRepository: atomic chapter/block insertion, consistent
+  source chapter snapshots, revision-checked text updates, manga volume/page insertion
+  and ordered page reads. Page dimensions must match registered immutable assets.
+- Removed the standalone untyped text-update prototype. Missing entities, wrong
+  domain, invalid image edits and stale revisions now have distinct AppError codes.
+- The image protocol reads through AssetStore; existing file, asset-directory and
+  project-directory symlinks are rejected without creating paths during reads.
+- Added NOT NULL to text primary keys and SQL guards against changing project kind,
+  asset metadata, or original page pixels/dimensions after insertion.
+- Evidence: 260 Rust library tests passed; strict all-target Clippy passed.
+  After the final SQL guard changes, all 7 storage tests passed again, including
+  rollback on missing assets, source block order, kind isolation and immutable data.
+- P02 remains in progress. Shared settings/glossary/job repositories, translation
+  and manga result persistence, and complete schema invariant coverage remain.
+- No user data reset, GUI cutover, paid model call or remote push was performed.

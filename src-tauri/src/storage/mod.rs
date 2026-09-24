@@ -1,4 +1,6 @@
 //! Explicit versioned connections. Old progress databases are never migrated here.
+pub mod repository;
+
 use crate::app::contracts::ProjectKind;
 use rusqlite::{Connection, OpenFlags};
 use std::{path::Path, time::Duration};
@@ -52,29 +54,6 @@ pub fn open(path: &Path) -> anyhow::Result<Connection> {
     anyhow::ensure!(version == 1, "Unsupported project database version");
     configure(&connection)?;
     Ok(connection)
-}
-
-/// The revision predicate and mutation execute in one SQLite statement.
-pub fn update_book_text(
-    connection: &mut Connection,
-    id: &str,
-    expected: i64,
-    text: &str,
-) -> anyhow::Result<i64> {
-    let tx = connection.transaction()?;
-    let chapter: String = tx.query_row(
-        "UPDATE book_source_blocks SET text=?1,revision=revision+1 WHERE id=?2 AND revision=?3 AND kind IN ('text','caption') RETURNING chapter_id",
-        (text,id,expected), |row| row.get(0))?;
-    tx.execute(
-        "UPDATE book_chapters SET revision=revision+1 WHERE id=?1",
-        [&chapter],
-    )?;
-    tx.execute(
-        "UPDATE book_translations SET status='stale' WHERE chapter_id=?1",
-        [&chapter],
-    )?;
-    tx.commit()?;
-    Ok(expected + 1)
 }
 
 #[cfg(test)]
@@ -142,8 +121,30 @@ mod tests {
         )
         .unwrap();
         db.execute("INSERT INTO book_source_blocks(id,chapter_id,position,kind,text) VALUES('b','c',0,'text','Before')", []).unwrap();
-        assert_eq!(update_book_text(&mut db, "b", 0, "After").unwrap(), 1);
-        assert!(update_book_text(&mut db, "b", 0, "Late result").is_err());
+        let mut repository =
+            repository::ProjectRepository::new(&mut db, ProjectKind::Book).unwrap();
+        let revision = crate::app::contracts::Revision("0".into());
+        assert_eq!(
+            repository
+                .update_book_text("b", &revision, "After")
+                .unwrap()
+                .0,
+            "1"
+        );
+        assert_eq!(
+            repository
+                .update_book_text("b", &revision, "Late result")
+                .unwrap_err()
+                .code,
+            crate::app::contracts::ErrorCode::RevisionConflict
+        );
+        assert_eq!(
+            repository
+                .update_book_text("missing", &revision, "After")
+                .unwrap_err()
+                .code,
+            crate::app::contracts::ErrorCode::NotFound
+        );
         assert_eq!(
             db.query_row(
                 "SELECT text FROM book_source_blocks WHERE id='b'",
@@ -184,5 +185,12 @@ mod tests {
             2
         );
         assert!(db.execute("DELETE FROM assets", []).is_err());
+        assert!(db
+            .execute("UPDATE assets SET relative_path='assets/replaced.png'", [])
+            .is_err());
+        assert!(db.execute("UPDATE manga_pages SET width=64", []).is_err());
+        assert!(db
+            .execute("UPDATE project_settings SET kind='book'", [])
+            .is_err());
     }
 }
