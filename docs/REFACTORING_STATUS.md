@@ -624,3 +624,17 @@ fallback. Keep commits scoped; push only on user request.
 - Validation: full library suite passed 326 tests; strict all-target Clippy passed.
   This slice changes no frontend or IPC contract. Real-provider translation quality
   remains a separate acceptance check.
+
+### P05 distinguish failed requests from language repair
+
+- A wholly unusable translation response resends the unresolved original request,
+  with the same glossary/instructions/rolling context, up to three total attempts.
+  Empty text, malformed segment JSON, provider response-envelope errors and unknown
+  segment IDs now follow the same bounded path. Partial successes remain retained:
+  only missing/invalid segments are sent again.
+- Network/429/5xx retries remain owned by the shared provider transport; permanent
+  provider/configuration errors are not multiplied by a second retry loop.
+  This is separate from the two-pass language repair of already translated lines.
+- Eight book pipeline tests passed, including identical full retry payloads,
+  malformed provider envelopes, bounded failures and partial-result preservation.
+- Strict all-target Clippy passed. No frontend or contract changes in this slice.

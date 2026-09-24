@@ -9,7 +9,7 @@ use std::{future::Future, pin::Pin};
 
 struct Fake {
     profile: ProviderProfile,
-    replies: Mutex<std::collections::VecDeque<String>>,
+    replies: Mutex<std::collections::VecDeque<Result<String, AppError>>>,
     requests: Mutex<Vec<serde_json::Value>>,
 }
 impl Fake {
@@ -24,7 +24,7 @@ impl Fake {
                 timeout_seconds: 1,
                 network_retries: 0,
             },
-            replies: Mutex::new(replies.into_iter().map(String::from).collect()),
+            replies: Mutex::new(replies.into_iter().map(|s|Ok(s.to_owned())).collect()),
             requests: Mutex::new(vec![]),
         }
     }
@@ -37,11 +37,13 @@ impl Provider for Fake {
         &self,
         request: Request,
     ) -> Pin<Box<dyn Future<Output = Result<Completion, AppError>> + Send + '_>> {
-        if let Request::Structured { user, .. } = request {
+        if let Request::Structured { user, system } = request {
+            let mut payload:serde_json::Value=serde_json::from_str(&user).unwrap();
+            payload["system"]=system.into();
             self.requests
                 .lock()
                 .unwrap()
-                .push(serde_json::from_str(&user).unwrap());
+                .push(payload);
         }
         Box::pin(async {
             Ok(Completion {
@@ -50,7 +52,7 @@ impl Provider for Fake {
                     .lock()
                     .unwrap()
                     .pop_front()
-                    .expect("bounded number of calls"),
+                    .expect("bounded number of calls")?,
                 finish_reason: "stop".into(),
                 usage: Usage::default(),
                 tool_calls: vec![],
@@ -95,7 +97,7 @@ async fn unknown_ids_are_rejected_and_malformed_repairs_are_bounded() {
         id: "a".into(),
         text: "source".into(),
     };
-    let fake = Fake::new(vec![r#"{"segments":[{"id":"invented","text":"bad"}]}"#]);
+    let fake = Fake::new(vec![r#"{"segments":[{"id":"invented","text":"bad"}]}"#; 3]);
     assert!(
         translate_segments(&fake, "JSON", std::slice::from_ref(&segment))
             .await
@@ -586,4 +588,30 @@ async fn glossary_run_resumes_without_repeating_published_chapters_or_overwritin
         })
         .unwrap();
     std::fs::remove_dir_all(root).unwrap();
+}
+
+
+#[tokio::test]
+async fn wholly_invalid_translation_retries_the_complete_input_with_context() {
+    let segments=[Segment{id:"title".into(),text:"Source title".into()},Segment{id:"body".into(),text:"Source body".into()}];
+    for invalid in ["", "not JSON", r#"{"segments":[]}"#, r#"{"segments":[{"id":"other","text":"Wrong"}]}"#] {
+        let fake=Fake::new(vec![invalid,r#"{"segments":[{"id":"title","text":"Заголовок"},{"id":"body","text":"Перевод"}]}"#]);
+        let output=translate_segments(&fake,"Glossary and rolling context",&segments).await.unwrap();
+        assert_eq!(output.len(),2);
+        let requests=fake.requests.lock().unwrap();assert_eq!(requests.len(),2);assert_eq!(requests[0],requests[1]);
+        assert_eq!(requests[1]["segments"].as_array().unwrap().len(),2);
+    }
+}
+
+#[tokio::test]
+async fn malformed_provider_envelope_retries_but_permanent_errors_do_not() {
+    let segment=Segment{id:"body".into(),text:"Source".into()};
+    let fake=Fake::new(vec![r#"{"segments":[{"id":"body","text":"Перевод"}]}"#]);
+    fake.replies.lock().unwrap().push_front(Err(AppError{code:crate::app::contracts::ErrorCode::InvalidOutput,message_key:"errors.providerResponse".into(),params:Default::default(),retryable:false}));
+    assert!(translate_segments(&fake,"Context",std::slice::from_ref(&segment)).await.is_ok());
+    assert_eq!(fake.requests.lock().unwrap().len(),2);
+    let fake=Fake::new(vec![]);
+    fake.replies.lock().unwrap().push_front(Err(AppError::invalid("credentials")));
+    assert!(translate_segments(&fake,"Context",&[segment]).await.is_err());
+    assert_eq!(fake.requests.lock().unwrap().len(),1);
 }

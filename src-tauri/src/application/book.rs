@@ -83,7 +83,12 @@ pub async fn translate_segments(
                 user: serde_json::to_string(&serde_json::json!({"segments":pending}))
                     .map_err(|_| invalid_output())?,
             })
-            .await?;
+            .await;
+        let response = match response {
+            Ok(response) => response,
+            Err(error) if error.code == ErrorCode::InvalidOutput => continue,
+            Err(error) => return Err(error),
+        };
         if response.finish_reason != "stop" {
             if response.finish_reason == "length" {
                 continue;
@@ -104,7 +109,8 @@ pub async fn translate_segments(
             .iter()
             .any(|s| !expected.contains(s.id.as_str()))
         {
-            return Err(invalid_output());
+            // Discard an untrustworthy response and retry the unresolved input.
+            continue;
         }
         let mut counts = HashMap::new();
         for s in &output.segments {
