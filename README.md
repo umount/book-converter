@@ -88,6 +88,5 @@ and `package.json`; `make version V=x.y.z` updates these together.
 
 ## License
 
-Book Converter's source code is proprietary; see [LICENSE.md](LICENSE.md).
-Official compiled releases are free to use. This does not grant permission to use,
-modify or redistribute the source code. Third-party components retain their own licenses.
+Book Converter is free and open-source software under the [MIT License](LICENSE.md).
+Third-party components and model weights retain their own licenses.

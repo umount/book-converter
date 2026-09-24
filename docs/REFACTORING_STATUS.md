@@ -948,14 +948,14 @@ used fake providers and synthetic local assets; no paid API request was made.
   retains explicit preview and apply. Chapter instructions open from the reader
   toolbar and flush before closing; obsolete workspace tools were removed.
 - Help / About displays the Tauri version, timestamp/Git build identifier (optional
-  BC_BUILD_NUMBER override), build date and proprietary-source/free-binary notice.
+  BC_BUILD_NUMBER override), build date and license notice (now MIT).
 - FB2 exports publish a compressed ZIP containing one FB2 document. Round-trip
   tests cover embedded illustrations and cover images, including a .fb2 destination
   automatically receiving the .zip suffix. Atomic no-overwrite publication remains.
 - Validation: 184 Rust library tests, Clippy, frontend tests and production build.
   Synthetic browser checks covered menus, About, instruction save/reopen, replace
   preview/apply, book export options and switching to manga formats.
-- Source licensing is proprietary; official compiled releases are free to use.
+- Initial proprietary-source decision was superseded by the user: project licensing is now MIT.
   Third-party license notices are preserved.
 
 ### P06 project navigation and chapter-oriented progress
@@ -1058,7 +1058,7 @@ used fake providers and synthetic local assets; no paid API request was made.
 - Confirmed LaMa family but different checkpoint: Koharu uses manga-finetuned
   `mayocream/lama-manga`, while our CPU experiment uses `Carve/LaMa-ONNX`.
 - Adapted its symmetric LaMa border handling, retained MIT attribution/notice and
-  added notices to desktop bundle resources. Project source remains proprietary.
+  added notices to desktop bundle resources. Project source is now MIT under the subsequent user decision.
 - Native unit coverage includes small/one-pixel crops, border reflection and thin-mask
   retention. Full adapter integration, model comparison and release targets remain open.
 - Next executable step: adapt/evaluate Koharu's crop orchestration and manga-specific
@@ -1088,3 +1088,11 @@ mask/LaMa smoke passed (exact unmasked pixels, immutable original, no overwrite)
   only; this does not verify live provider translation quality.
 - Full automatic page processing remains unfinished: connect local mask/cleanup worker,
   lettering, result display and bounded full-pipeline admission before enabling it.
+
+### Licensing decision: MIT (2026-09-24)
+
+User explicitly changed the earlier proprietary-source decision to support open source.
+LICENSE.md now contains MIT with Denis Sobolev and Book Converter contributors credited.
+Updated npm/Cargo metadata, README and About strings in all three locales. Include the
+project license in desktop bundles; retain every third-party/model notice independently.
+This changes licensing only, not GitHub repository visibility or package publishing.

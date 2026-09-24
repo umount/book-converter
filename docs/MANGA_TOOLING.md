@@ -281,7 +281,7 @@ remain on this synthetic fixture; mask margins/projection and cleanup quality ne
 further work. Do not enable automatic processing based on this experiment. Real
 page quality, cancellation, bundled runtime size and all release OS/architecture
 checks remain open. Release distribution must retain third-party runtime/model
-license notices independently from this project's proprietary source license.
+license notices alongside this project's MIT license.
 
 ### P09 isolated worker and synthetic smoke follow-up
 
@@ -309,7 +309,7 @@ reviewed at `c697b31eb1de016d9272743a2973f0e6a67eae6c`.
 Use its existing manga implementations as the reference before writing more adapters.
 The source is MIT OR Apache-2.0; adapted code uses MIT with its full copyright/permission
 notice retained in `third-party/koharu-LICENSE-MIT` and included in desktop resources.
-This does not change this application's proprietary source license.
+The application is now MIT-licensed by the user's subsequent decision; upstream notices remain intact.
 
 The examined LaMa adapter uses `mayocream/lama-manga`, pinned upstream revision
 `f91c85b26913b3e83f9877867b4c336da3675238`, file `lama-manga.safetensors`.

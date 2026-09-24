@@ -3,7 +3,7 @@ name = "manga-inference"
 version = "0.1.0"
 edition = "2021"
 publish = false
-license-file = "../../LICENSE.md"
+license = "MIT"
 
 [features]
 default = []

@@ -28,7 +28,8 @@
     "targets": "all",
     "resources": {
       "pdfium/": "pdfium/",
-      "../third-party/": "third-party/"
+      "../third-party/": "third-party/",
+      "../LICENSE.md": "LICENSE.md"
     },
     "icon": [
       "icons/32x32.png",
