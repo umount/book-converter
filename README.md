@@ -15,7 +15,8 @@ tracked in [REFACTORING](docs/REFACTORING.md).
 2. Configure an API provider profile in Settings and assign translation and assistant
    roles. Profiles have independent endpoints, models and credentials.
 3. For books, set the title, author, summary, cover and shared translation prompt
-   in Overview. Imported EPUB and FB2 covers are retained when declared by the source.
+   in Overview. Imported EPUB/FB2 covers are retained; PDF JPEG covers are extracted
+   from the first page when available.
 4. Start a batch with an explicit chapter count. Optional glossary extraction runs
    before translation; processing stops after the selected batch. Review the glossary
    and results, adjust the prompt if needed, then start another batch.
@@ -80,8 +81,7 @@ and `package.json`; `make version V=x.y.z` updates these together.
 - [Manga tooling requirements](docs/MANGA_TOOLING.md)
 - [Documentation index](docs/README.md)
 
-Some older architecture and settings documents describe the previous implementation.
-Consult the refactoring status before relying on their workflow or IPC descriptions.
+[Current architecture](docs/ARCHITECTURE.md) describes the active backend. Use the refactoring status for remaining work and verification evidence.
 
 ## License
 

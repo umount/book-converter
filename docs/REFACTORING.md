@@ -2,7 +2,7 @@
 
 > Execution plan and handoff document for another coding agent.
 > Prepared on 2026-09-23 against source HEAD `d636c5d`.
-> Execution status: P00–P02 complete; P03/P04 in progress.
+> Current priority: finish books → remove superseded backend → automatic manga.
 > See [REFACTORING_STATUS.md](REFACTORING_STATUS.md) for current evidence.
 > Breaking changes to code, APIs and project storage are explicitly allowed.
 
@@ -15,10 +15,10 @@ resource budgets and cross-platform release gates. If the documents disagree abo
 takes precedence. Record any new decision here before implementing it, and update
 the related documents.
 
-ARCHITECTURE.md, DECISIONS.md, SETTINGS.md and PROJECT_ISOLATION.md describe the old
-implementation. Treat them as a feature inventory, not a requirement to preserve
-old code. Previous chat statements are not test evidence: run the relevant checks
-again in the current environment.
+[ARCHITECTURE.md](ARCHITECTURE.md), [DECISIONS.md](DECISIONS.md),
+[SETTINGS.md](SETTINGS.md) and [ASSISTANT.md](ASSISTANT.md) describe the active
+implementation. The baseline findings below record the original refactor inputs;
+removed modules are not APIs to preserve. Consult execution status for current evidence.
 
 **Language rule:** write all new or modified code comments, docstrings and repository
 documentation in English. Keep user-facing UI strings localized in English, Russian

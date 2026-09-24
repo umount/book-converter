@@ -53,8 +53,8 @@ User priority update (2026-09-24): **books → legacy removal → manga**.
    Structural FB2 illustrations and PDF outline fallback are implemented. Verify import →
    metadata → bounded translation → edit → search → export and native save/close
    behavior where the host permits it. Keep language pairs immutable.
-2. Delete superseded code and IPC, preserving still-needed book behavior through
-   the new services. Verify regressions and replace outdated architecture docs.
+2. Superseded backend/IPC removal is complete (2026-09-24). New services are the
+   sole runtime; architecture/settings/assistant documents describe the current code.
 3. Only then resume automatic manga recognition, cleanup, lettering and acceptance.
 
 Original phase numbering does not override this priority. Existing manga functionality
@@ -798,3 +798,35 @@ fallback. Keep commits scoped; push only on user request.
   mutation command. Remaining legacy commands/runtime still need staged removal.
 - Verification: all 340 Rust library tests and strict all-target Clippy passed;
   whitespace check passed. Frontend code/contracts were unchanged in this slice.
+
+### Legacy backend removal (books first)
+
+- Removed the superseded Tauri command layer, command operations, AppState/session,
+  progress.db Store, old translator/orchestrator, assistant tool loop, reference and
+  glossary service duplicates, thread-based translation/retarget jobs and old DTOs.
+  Only versioned project commands and actively used app-wide settings remain registered.
+- Kept the format parsers, writers, local language detection and candidate matcher
+  that the new services actually use. Project path validation moved to paths.rs;
+  the explicit reset utility remains available but was not executed again.
+- Removed legacy export string/image-marker interpretation and unused compatibility
+  helpers. Export tests now use explicit image blocks and verify literal marker text.
+  Removed tests belonged to deleted implementations; retained application/storage,
+  format, transport, model and lifecycle regressions still run normally.
+- Preserved useful behavior by routing PDF cover extraction through the shared loader
+  (tested with an embedded JPEG), and sentence-aware closing excerpts through ordinary,
+  reference and glossary-correction continuity paths. A continuity regression now checks
+  the sentence boundary as well as the final text and rolling summary.
+- Replaced ARCHITECTURE.md and the documentation index with the active boundaries;
+  obsolete documents were removed/replaced with current settings, assistant, decisions
+  and manga requirements. No user project data was touched.
+- Verification: 173 current Rust library tests passed, including the book workflow
+  roundtrip; frontend tests/build passed. Native GUI and real-provider acceptance
+  remain outstanding. This removal does not claim full legacy assistant tool parity
+  or automatic model-based chapter delimiter inference in the new import workflow.
+
+- Final removal verification: all 173 tests passed again after the settings cleanup;
+  strict all-target Clippy, generated contract check, frontend tests/build and local
+  documentation links passed. Frontend command names match registered IPC handlers.
+- Removed unused global source/target-language and chunk-size fields from default
+  provider configuration and settings responses. Project language choices remain
+  immutable; stored user settings/credentials were not erased.
