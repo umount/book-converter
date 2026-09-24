@@ -1096,3 +1096,23 @@ LICENSE.md now contains MIT with Denis Sobolev and Book Converter contributors c
 Updated npm/Cargo metadata, README and About strings in all three locales. Include the
 project license in desktop bundles; retain every third-party/model notice independently.
 This changes licensing only, not GitHub repository visibility or package publishing.
+
+### P09 local image stages connected to project jobs
+
+- Masks/inpainting now implement the durable step executor and stage IPC admission.
+  Download-catalog paths and application-owned worker/runtime paths are resolved by
+  the backend; the webview cannot select an executable or arbitrary model path.
+- Region coordinates map to canonical pixels; native mask requests produce whole-page
+  masks. Cleanup uses bounded context crops on larger pages and pastes only masked
+  core pixels. Empty masks bypass inference. Originals are never overwritten.
+- Complete outputs become content-addressed assets and versioned stage results in
+  the same transaction as checkpoints. Geometry/dependency changes during inference
+  reject publication. Mask records refer to the published immutable asset.
+- Added application tests for mask→cleanup persistence, prerequisite/skip admission,
+  original preservation and rejection after edits. All 20 manga tests passed.
+- Real opt-in integration smoke passed through the application's job runner and SQLite
+  asset store with the pinned CPU models and committed synthetic fixture. No live AI
+  call or user project was used. Native crate unit tests, strict app Clippy, frontend
+  tests/build also passed. This proves stage integration, not final page quality/p95.
+- Native release packaging, lettering and whole-pipeline UI/admission are still open;
+  no full automatic-translation button has been enabled.

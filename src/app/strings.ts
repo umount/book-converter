@@ -306,6 +306,8 @@ const en = {
   translatedChapterTitle: "Translated chapter title",
   manga_recognition: "Manga recognition",
   manga_translation: "Manga translation",
+  manga_masks: "Text masks",
+  manga_inpainting: "Manga cleanup",
   book_glossary: "Term extraction",
 };
 type Key = keyof typeof en;
@@ -619,6 +621,8 @@ const ru: Record<Key, string> = {
   translatedChapterTitle: "Переведённый заголовок главы",
   manga_recognition: "Распознавание манги",
   manga_translation: "Перевод манги",
+  manga_masks: "Маски текста",
+  manga_inpainting: "Очистка манги",
   book_glossary: "Извлечение терминов",
 };
 const zh: Record<Key, string> = {
@@ -914,6 +918,8 @@ const zh: Record<Key, string> = {
   translatedChapterTitle: "翻译后的章节标题",
   manga_recognition: "漫画识别",
   manga_translation: "漫画翻译",
+  manga_masks: "文字蒙版",
+  manga_inpainting: "漫画清理",
   book_glossary: "提取术语",
 };
 export type T = (key: Key) => string;

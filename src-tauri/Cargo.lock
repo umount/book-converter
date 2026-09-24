@@ -376,6 +376,7 @@ dependencies = [
  "genpdf",
  "image 0.25.10",
  "lopdf 0.42.0",
+ "manga-inference",
  "pdf-extract",
  "pdfium-render",
  "quick-xml 0.36.2",
@@ -2638,6 +2639,18 @@ name = "lzw"
 version = "0.10.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7d947cbb889ed21c2a84be6ffbaebf5b4e0f4340638cba0444907e38b56be084"
+
+[[package]]
+name = "manga-inference"
+version = "0.1.0"
+dependencies = [
+ "image 0.25.10",
+ "serde",
+ "serde_json",
+ "sha2",
+ "thiserror 2.0.18",
+ "tokio",
+]
 
 [[package]]
 name = "markup5ever"

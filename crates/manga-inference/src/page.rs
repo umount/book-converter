@@ -135,3 +135,106 @@ mod tests {
         assert!(segment_page(&page, &regions[..1], 0, |_, _| Ok(GrayImage::new(1, 1))).is_err());
     }
 }
+
+/// Bounded crop cleanup with original-image context. Each masked pixel belongs to
+/// one core tile; overlapping context is never pasted over already cleaned pixels.
+/// This is the fixed-512 counterpart of Koharu's context-crop orchestration.
+pub fn clean_page(
+    original: &RgbImage,
+    mask: &GrayImage,
+    mut clean: impl FnMut(&RgbImage, &GrayImage) -> Result<RgbImage>,
+) -> Result<RgbImage> {
+    validate_mask(mask)?;
+    if original.dimensions() != mask.dimensions() {
+        return Err(Error::Dimensions);
+    }
+    if !mask.as_raw().contains(&255) {
+        return Ok(original.clone());
+    }
+    if original.width().max(original.height()) <= 512 {
+        return crate::composite(original, &clean(original, mask)?, mask);
+    }
+    let mut tiles = Vec::new();
+    for y in (0..mask.height()).step_by(256) {
+        for x in (0..mask.width()).step_by(256) {
+            let core = Crop {
+                x,
+                y,
+                width: 256.min(mask.width() - x),
+                height: 256.min(mask.height() - y),
+            };
+            let contains = (y..y + core.height).any(|row| {
+                mask.as_raw()[(row * mask.width() + x) as usize
+                    ..(row * mask.width() + x + core.width) as usize]
+                    .contains(&255)
+            });
+            if contains {
+                tiles.push(core);
+            }
+        }
+    }
+    if tiles.len() > 64 {
+        return Err(Error::Crop);
+    }
+    let mut output = original.clone();
+    for core in tiles {
+        let crop = core.padded(128, original.width(), original.height())?;
+        let image =
+            image::imageops::crop_imm(original, crop.x, crop.y, crop.width, crop.height).to_image();
+        let crop_mask =
+            image::imageops::crop_imm(mask, crop.x, crop.y, crop.width, crop.height).to_image();
+        let cleaned = clean(&image, &crop_mask)?;
+        if cleaned.dimensions() != image.dimensions() {
+            return Err(Error::Output);
+        }
+        for y in core.y..core.y + core.height {
+            for x in core.x..core.x + core.width {
+                if mask.get_pixel(x, y)[0] == 255 {
+                    output.put_pixel(x, y, *cleaned.get_pixel(x - crop.x, y - crop.y));
+                }
+            }
+        }
+    }
+    Ok(output)
+}
+
+#[cfg(test)]
+mod cleanup_tests {
+    use super::*;
+    use image::Rgb;
+    #[test]
+    fn tile_boundaries_keep_original_context_and_unmasked_pixels() {
+        let original = RgbImage::from_pixel(520, 300, Rgb([40, 50, 60]));
+        let mut mask = GrayImage::new(520, 300);
+        for x in [255, 256, 511, 512] {
+            mask.put_pixel(x, 100, Luma([255]));
+        }
+        let mut calls = 0;
+        let result = clean_page(&original, &mask, |crop, _| {
+            assert!(crop.width() <= 512 && crop.height() <= 512);
+            assert!(crop.pixels().all(|p| *p == Rgb([40, 50, 60])));
+            calls += 1;
+            Ok(RgbImage::from_pixel(
+                crop.width(),
+                crop.height(),
+                Rgb([calls, 0, 0]),
+            ))
+        })
+        .unwrap();
+        assert_eq!(calls, 3);
+        for (x, y, p) in result.enumerate_pixels() {
+            if mask.get_pixel(x, y)[0] == 0 {
+                assert_eq!(*p, Rgb([40, 50, 60]));
+            } else {
+                assert_ne!(*p, Rgb([40, 50, 60]));
+            }
+        }
+        assert_eq!(
+            clean_page(&original, &GrayImage::new(520, 300), |_, _| panic!(
+                "empty mask"
+            ))
+            .unwrap(),
+            original
+        );
+    }
+}

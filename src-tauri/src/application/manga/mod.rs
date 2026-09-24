@@ -12,3 +12,6 @@ pub mod preflight;
 
 pub mod translation;
 pub mod translation_pipeline;
+
+pub mod local;
+pub mod image_pipeline;

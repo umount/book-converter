@@ -37,15 +37,16 @@ struct Fixture {
 }
 impl Fixture {
     fn new(max: u32) -> Self {
+        Self::with_source(
+            max,
+            &std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+                .join("../tests/fixtures/two-volumes.cbz"),
+        )
+    }
+    fn with_source(max: u32, path: &std::path::Path) -> Self {
         let root = std::env::temp_dir().join(format!("manga-run-{}", uuid::Uuid::new_v4()));
         let manager = Arc::new(ProjectManager::new(root.clone()));
-        let preview = manager
-            .inspect_source(
-                ProjectKind::Manga,
-                &std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-                    .join("../tests/fixtures/two-volumes.cbz"),
-            )
-            .unwrap();
+        let preview = manager.inspect_source(ProjectKind::Manga, path).unwrap();
         let project = manager
             .create(
                 &preview.import_id.0,
@@ -812,4 +813,233 @@ async fn dialogue_prompt_uses_only_matching_terms_and_locked_text_as_context() {
     assert_eq!(p["glossary"][0]["source"], "王林");
     assert_eq!(p["regions"][1]["lockedTranslation"], "Сохранить точно");
     assert_eq!(p["translateIds"].as_array().unwrap().len(), 1);
+}
+
+struct ImageFake {
+    hook: Option<Box<dyn Fn() + Send + Sync>>,
+}
+impl super::local::ImageWorker for ImageFake {
+    fn run<'a>(
+        &'a self,
+        request: &'a manga_inference::protocol::Request,
+    ) -> Pin<
+        Box<dyn Future<Output = Result<manga_inference::protocol::Response, AppError>> + Send + 'a>,
+    > {
+        Box::pin(async move {
+            let input = request.input.read().unwrap();
+            let image = match &request.operation {
+                manga_inference::protocol::Operation::Masks { regions, .. } => {
+                    assert!(!regions.is_empty());
+                    let mut mask = image::GrayImage::new(input.width(), input.height());
+                    mask.put_pixel(1, 1, image::Luma([255]));
+                    image::DynamicImage::ImageLuma8(mask)
+                }
+                manga_inference::protocol::Operation::Inpainting { mask } => {
+                    let mask = mask.read().unwrap().to_luma8();
+                    assert_eq!(mask.get_pixel(1, 1)[0], 255);
+                    let mut cleaned = input.to_rgb8();
+                    cleaned.put_pixel(1, 1, image::Rgb([240, 240, 240]));
+                    image::DynamicImage::ImageRgb8(cleaned)
+                }
+            };
+            manga_inference::protocol::save_new(&image, &request.output).unwrap();
+            if let Some(hook) = &self.hook {
+                hook();
+            }
+            Ok(manga_inference::protocol::Response {
+                version: 1,
+                width: input.width(),
+                height: input.height(),
+                load_millis: 0,
+                inference_millis: 1,
+            })
+        })
+    }
+}
+fn create_image(f: &Fixture, id: &str, stage: crate::app::contracts::MangaStage) {
+    f.manager
+        .lease(&f.id)
+        .unwrap()
+        .with_connection(|db, _| {
+            super::local::create_run(
+                db,
+                id,
+                &crate::app::requests::StartMangaStageArgs {
+                    project_id: f.id.clone(),
+                    selection: EntitySelection::All,
+                    stage,
+                    options: crate::app::requests::MangaStageOptions {
+                        max_pages: 1,
+                        force: false,
+                    },
+                },
+                "test-hash",
+            )
+        })
+        .unwrap();
+}
+fn image_pipeline(
+    stage: crate::app::contracts::MangaStage,
+    worker: ImageFake,
+) -> super::image_pipeline::ImagePipeline {
+    super::image_pipeline::ImagePipeline {
+        worker: Arc::new(worker),
+        runtime: std::env::temp_dir().join("unused-runtime"),
+        model: std::env::temp_dir().join("unused-model"),
+        stage,
+        model_hash: "test-hash".into(),
+    }
+}
+#[tokio::test]
+async fn local_masks_and_cleanup_publish_immutable_assets_with_checkpoints() {
+    use crate::app::contracts::MangaStage;
+    let f = recognized_fixture(1).await;
+    let page = f.run().snapshot.selected_ids[0].clone();
+    let original=f.manager.lease(&f.id).unwrap().with_connection(|db,root|{
+        let relative:String=db.query_row("SELECT a.relative_path FROM manga_pages p JOIN assets a ON a.id=p.original_asset_id WHERE p.id=?1",[&page],|r|r.get(0)).unwrap();
+        Ok((root.join(relative.clone()),std::fs::read(root.join(relative)).unwrap()))
+    }).unwrap();
+    for (id, stage) in [
+        ("masks", MangaStage::Masks),
+        ("cleanup", MangaStage::Inpainting),
+    ] {
+        create_image(&f, id, stage.clone());
+        durable::execute(
+            &f.manager,
+            &f.id,
+            id,
+            &image_pipeline(stage, ImageFake { hook: None }),
+            Arc::new(AtomicBool::new(false)),
+            |_| {},
+        )
+        .await
+        .unwrap();
+    }
+    f.manager.lease(&f.id).unwrap().with_connection(|db,_|{
+        assert_eq!(db.query_row("SELECT COUNT(*) FROM manga_masks WHERE page_id=?1",[&page],|r|r.get::<_,i64>(0)).unwrap(),1);
+        assert_eq!(db.query_row("SELECT COUNT(*) FROM manga_results WHERE page_id=?1 AND stage IN ('masks','inpainting') AND validity='current' AND output_asset_id IS NOT NULL",[&page],|r|r.get::<_,i64>(0)).unwrap(),2);
+        assert_eq!(runs::get_run(db,"cleanup")?.state,JobState::Succeeded);
+        assert!(super::local::create_run(db,"again",&crate::app::requests::StartMangaStageArgs{project_id:f.id.clone(),selection:EntitySelection::All,stage:MangaStage::Masks,options:crate::app::requests::MangaStageOptions{max_pages:1,force:false}},"test-hash").is_err());
+        Ok(())
+    }).unwrap();
+    assert_eq!(std::fs::read(original.0).unwrap(), original.1);
+}
+#[tokio::test]
+async fn local_output_after_geometry_change_is_not_published() {
+    use crate::app::contracts::MangaStage;
+    let f = recognized_fixture(1).await;
+    create_image(&f, "masks", MangaStage::Masks);
+    let manager = f.manager.clone();
+    let project = f.id.clone();
+    let worker = ImageFake {
+        hook: Some(Box::new(move || {
+            manager
+                .lease(&project)
+                .unwrap()
+                .with_connection(|db, _| {
+                    db.execute("UPDATE manga_pages SET revision=revision+1", [])
+                        .unwrap();
+                    Ok(())
+                })
+                .unwrap();
+        })),
+    };
+    let error = durable::execute(
+        &f.manager,
+        &f.id,
+        "masks",
+        &image_pipeline(MangaStage::Masks, worker),
+        Arc::new(AtomicBool::new(false)),
+        |_| {},
+    )
+    .await
+    .unwrap_err();
+    assert_eq!(error.code, ErrorCode::RevisionConflict);
+    f.manager
+        .lease(&f.id)
+        .unwrap()
+        .with_connection(|db, _| {
+            assert_eq!(
+                db.query_row("SELECT COUNT(*) FROM manga_masks", [], |r| r
+                    .get::<_, i64>(0))
+                    .unwrap(),
+                0
+            );
+            assert_eq!(
+                db.query_row(
+                    "SELECT COUNT(*) FROM manga_results WHERE stage='masks'",
+                    [],
+                    |r| r.get::<_, i64>(0)
+                )
+                .unwrap(),
+                0
+            );
+            Ok(())
+        })
+        .unwrap();
+}
+
+#[tokio::test]
+#[ignore = "requires MANGA_RUNTIME, MANGA_WORKER, MANGA_MASK_MODEL, MANGA_LAMA_MODEL"]
+async fn native_image_stages_publish_real_masks_and_cleanup() {
+    use crate::app::contracts::MangaStage;
+    let f = Fixture::with_source(
+        1,
+        &std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../crates/manga-inference/tests/fixtures"),
+    );
+    let fake = Fake::new(0);
+    *fake.text.lock().unwrap()=serde_json::json!({"regions":[{"id":"source","readingOrder":0,"category":"dialogue","bounds":{"x":0,"y":0,"width":384,"height":384},"sourceText":"Synthetic text"}]}).to_string();
+    durable::execute(
+        &f.manager,
+        &f.id,
+        "run",
+        &RecognitionPipeline {
+            provider: Arc::new(fake),
+        },
+        Arc::new(AtomicBool::new(false)),
+        |_| {},
+    )
+    .await
+    .unwrap();
+    let page = f.run().snapshot.selected_ids[0].clone();
+    for (id, stage, model) in [
+        ("masks", MangaStage::Masks, "MANGA_MASK_MODEL"),
+        ("cleanup", MangaStage::Inpainting, "MANGA_LAMA_MODEL"),
+    ] {
+        create_image(&f, id, stage.clone());
+        let pipeline = super::image_pipeline::ImagePipeline {
+            worker: Arc::new(super::local::NativeWorker {
+                executable: std::env::var_os("MANGA_WORKER")
+                    .expect("MANGA_WORKER")
+                    .into(),
+            }),
+            runtime: std::env::var_os("MANGA_RUNTIME")
+                .expect("MANGA_RUNTIME")
+                .into(),
+            model: std::env::var_os(model).expect(model).into(),
+            stage,
+            model_hash: "test-hash".into(),
+        };
+        durable::execute(
+            &f.manager,
+            &f.id,
+            id,
+            &pipeline,
+            Arc::new(AtomicBool::new(false)),
+            |_| {},
+        )
+        .await
+        .unwrap();
+    }
+    f.manager.lease(&f.id).unwrap().with_connection(|db,root|{
+        let load=|stage:&str|{
+            let relative:String=db.query_row("SELECT a.relative_path FROM manga_results r JOIN assets a ON a.id=r.output_asset_id WHERE r.page_id=?1 AND r.stage=?2 AND r.validity='current'",rusqlite::params![page,stage],|r|r.get(0)).unwrap();image::open(root.join(relative)).unwrap()
+        };
+        let mask=load("masks").to_luma8();let clean=load("inpainting").to_rgb8();
+        let original=image::load_from_memory(include_bytes!("../../../../crates/manga-inference/tests/fixtures/synthetic-dialogue.png")).unwrap().to_rgb8();
+        assert!(mask.as_raw().contains(&255));
+        for (x,y,pixel) in original.enumerate_pixels(){if mask.get_pixel(x,y)[0]==0{assert_eq!(pixel,clean.get_pixel(x,y));}}
+        assert_eq!(runs::get_run(db,"cleanup")?.state,JobState::Succeeded);Ok(())
+    }).unwrap();
 }

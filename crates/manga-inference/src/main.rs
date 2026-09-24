@@ -115,7 +115,9 @@ fn worker() -> Result<(), Box<dyn std::error::Error>> {
             let mask = mask.as_luma8().ok_or("mask must be grayscale 8-bit")?;
             let mut model = onnx::Lama::load(&request.model)?;
             loaded = started.elapsed();
-            image::DynamicImage::ImageRgb8(model.clean(&original, mask)?)
+            image::DynamicImage::ImageRgb8(page::clean_page(&original, mask, |image, mask| {
+                model.clean(image, mask)
+            })?)
         }
     };
     protocol::save_new(&output, &request.output)?;

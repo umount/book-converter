@@ -101,3 +101,8 @@ manual translations, publishes a complete versioned result atomically and resume
 without translating already completed pages again. Malformed or stale replies cannot
 replace region text. Full automatic processing is still gated on local image stages
 and lettering. Qwen/local LLM deployment is explicitly outside this implementation.
+
+Local mask and cleanup stages now use the isolated native worker through the durable
+job runner. The backend resolves installed catalog models and packaged native files;
+results are revision-checked immutable assets. Full automatic translation remains
+unavailable until lettering, complete pipeline admission and packaging are connected.

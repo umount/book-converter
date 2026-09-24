@@ -55,7 +55,11 @@ export function JobPanel({
                   job.kind === "book_metadata" ||
                   job.kind === "book_glossary" ||
                   job.kind === "book_title" ||
-                  job.kind === "book_retarget"
+                  job.kind === "book_retarget" ||
+                  job.kind === "manga_recognition" ||
+                  job.kind === "manga_translation" ||
+                  job.kind === "manga_masks" ||
+                  job.kind === "manga_inpainting"
                   ? job.kind
                   : "processing",
               )}
@@ -69,7 +73,13 @@ export function JobPanel({
             {["running", "queued"].includes(job.state) && job.currentStage && (
               <span className="bc-hint">
                 {t(
-                  job.currentStage === "context"
+                  job.currentStage === "recognition"
+                    ? "mangaRecognition"
+                    : job.currentStage === "masks"
+                      ? "mangaMasks"
+                      : job.currentStage === "inpainting"
+                        ? "mangaInpainting"
+                        : job.currentStage === "context"
                     ? "jobContext"
                     : job.currentStage === "glossary"
                       ? "book_glossary"

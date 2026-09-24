@@ -51,7 +51,7 @@ fn dispatch(
     job: String,
 ) -> Result<(), AppError> {
     let kind = context.manager.lease(&project)?.with_connection(|db, _| Ok(runs::get_run(db, &job)?.kind))?;
-    if matches!(kind.as_str(), "manga_recognition" | "manga_translation") { return super::manga_v1::dispatch(context, app, project, job); }
+    if matches!(kind.as_str(), "manga_recognition" | "manga_translation" | "manga_masks" | "manga_inpainting") { return super::manga_v1::dispatch(context, app, project, job); }
     let pipeline = crate::application::runtime::resume_provider(&context.manager, &project, &job)?;
     let cancel = context.book_jobs.reserve(&project, &job)?;
     let manager = context.manager.clone();
@@ -124,6 +124,10 @@ pub async fn job_resume(
     app: tauri::AppHandle,
     args: JobArgs,
 ) -> Result<JobRef, AppError> {
+    let kind=context.manager.lease(&args.project_id)?.with_connection(|db,_|Ok(runs::get_run(db,&args.job_id.0)?.kind))?;
+    if matches!(kind.as_str(),"manga_masks"|"manga_inpainting") {
+        context.models.list().await.map_err(|_|AppError::invalid("mangaModelMissing"))?;
+    }
     dispatch(
         &context,
         app,

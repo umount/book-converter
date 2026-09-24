@@ -187,9 +187,34 @@ pub async fn manga_start_stage(
     app: tauri::AppHandle,
     args: crate::app::requests::StartMangaStageArgs,
 ) -> Result<crate::app::contracts::JobRef, AppError> {
+    use crate::{
+        app::contracts::{JobRef, MangaStage},
+        application::manga::local,
+    };
     let manager = context.manager.clone();
+    let local_hash = if matches!(args.stage, MangaStage::Masks | MangaStage::Inpainting) {
+        context
+            .models
+            .list()
+            .await
+            .map_err(|_| AppError::invalid("mangaModelMissing"))?;
+        Some(local::pipeline(&context.models, native_files(&app)?, args.stage.clone())?.model_hash)
+    } else {
+        None
+    };
     let job = tauri::async_runtime::spawn_blocking(move || {
-        crate::application::manga::runtime::prepare(&manager, &args)
+        if let Some(hash) = local_hash {
+            let id = uuid::Uuid::new_v4().to_string();
+            manager
+                .lease(&args.project_id)?
+                .with_connection(|db, _| local::create_run(db, &id, &args, &hash))?;
+            Ok(JobRef {
+                project_id: args.project_id,
+                job_id: id,
+            })
+        } else {
+            crate::application::manga::runtime::prepare(&manager, &args)
+        }
     })
     .await
     .map_err(|_| AppError::invalid("task"))??;
@@ -202,16 +227,44 @@ pub(super) fn dispatch(
     project: crate::app::contracts::ProjectId,
     job: String,
 ) -> Result<(), AppError> {
-    let translation=context.manager.lease(&project)?.with_connection(|db,_|Ok(crate::storage::runs::get_run(db,&job)?.kind=="manga_translation"))?;
+    let kind = context
+        .manager
+        .lease(&project)?
+        .with_connection(|db, _| Ok(crate::storage::runs::get_run(db, &job)?.kind))?;
+    if matches!(kind.as_str(), "manga_masks" | "manga_inpainting") {
+        let stage = if kind == "manga_masks" {
+            crate::app::contracts::MangaStage::Masks
+        } else {
+            crate::app::contracts::MangaStage::Inpainting
+        };
+        let pipeline = crate::application::manga::local::pipeline(
+            &context.models,
+            native_files(&app)?,
+            stage,
+        )?;
+        return launch(context, app, project, job, pipeline);
+    }
+    let translation = kind == "manga_translation";
     if translation {
-        let pipeline=crate::application::manga::runtime::resume_translation(&context.manager,&project,&job)?;
-        launch(context,app,project,job,pipeline)
-    }else{
-        let pipeline=crate::application::manga::runtime::resume_provider(&context.manager,&project,&job)?;
-        launch(context,app,project,job,pipeline)
+        let pipeline = crate::application::manga::runtime::resume_translation(
+            &context.manager,
+            &project,
+            &job,
+        )?;
+        launch(context, app, project, job, pipeline)
+    } else {
+        let pipeline =
+            crate::application::manga::runtime::resume_provider(&context.manager, &project, &job)?;
+        launch(context, app, project, job, pipeline)
     }
 }
-fn launch<P:crate::jobs::durable::StepExecutor+'static>(context:&AppContext,app:tauri::AppHandle,project:crate::app::contracts::ProjectId,job:String,pipeline:P)->Result<(),AppError>{
+fn launch<P: crate::jobs::durable::StepExecutor + 'static>(
+    context: &AppContext,
+    app: tauri::AppHandle,
+    project: crate::app::contracts::ProjectId,
+    job: String,
+    pipeline: P,
+) -> Result<(), AppError> {
     use tauri::Emitter;
     let cancel = context.book_jobs.reserve(&project, &job)?;
     let manager = context.manager.clone();
@@ -257,8 +310,28 @@ pub async fn manga_preflight(
 ) -> Result<crate::app::contracts::MangaPreflight, AppError> {
     let manager = context.manager.clone();
     tauri::async_runtime::spawn_blocking(move || {
-        manager.lease(&args.project_id)?.with_connection(|db, _| {
-            crate::application::manga::preflight::inspect(db)
-        })
-    }).await.map_err(|_| AppError::invalid("task"))?
+        manager
+            .lease(&args.project_id)?
+            .with_connection(|db, _| crate::application::manga::preflight::inspect(db))
+    })
+    .await
+    .map_err(|_| AppError::invalid("task"))?
+}
+
+fn native_files(
+    app: &tauri::AppHandle,
+) -> Result<crate::application::manga::local::NativeFiles, AppError> {
+    use tauri::Manager;
+    let resources = app
+        .path()
+        .resource_dir()
+        .map_err(|_| AppError::invalid("mangaRuntimeMissing"))?;
+    let result = crate::application::manga::local::NativeFiles::discover(&resources);
+    #[cfg(debug_assertions)]
+    if result.is_err() {
+        return crate::application::manga::local::NativeFiles::discover(std::path::Path::new(
+            env!("CARGO_MANIFEST_DIR"),
+        ));
+    }
+    result
 }

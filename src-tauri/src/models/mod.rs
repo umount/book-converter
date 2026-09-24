@@ -122,6 +122,20 @@ impl ModelManager {
         self.initialize().await?;
         Ok(self.inner.lock().unwrap().views.clone())
     }
+    /// Admission only; the isolated worker rechecks pinned bytes/hash at model load.
+    pub fn downloaded_artifact(&self, id: &str) -> Option<(ModelSpec, PathBuf)> {
+        let inner = self.inner.lock().ok()?;
+        let view = inner
+            .views
+            .iter()
+            .find(|view| view.model.id == id && view.status == ModelStatus::Downloaded)?;
+        Some((
+            view.model.clone(),
+            self.root
+                .join(view.model.directory())
+                .join(view.model.artifact_name()),
+        ))
+    }
     pub async fn start(self: &Arc<Self>, id: &str) -> Result<(), ModelFailure> {
         self.initialize().await?;
         let mut inner = self.inner.lock().unwrap();
