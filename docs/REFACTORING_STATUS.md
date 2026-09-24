@@ -11,7 +11,8 @@ P05: in_progress. Translation, context, editing, reference, export and metadata 
 P06: in_progress. New shell, wizard, structural editor and supporting screens wired; native acceptance remains.
 P07: in_progress. Book assistant, guarded proposals and persisted history implemented.
 P08: partial. Import/read-only page workspace available; model processing not implemented.
-P09–P13: pending.
+P09: in_progress. Bounded vision adapter and coordinate validation; persistence and real quality acceptance remain.
+P10–P13: pending.
 
 ## Baseline (2026-09-23)
 
@@ -875,3 +876,19 @@ production build, generated contracts check and strict all-target Clippy passed.
 - P08 remains partial pending native/source-removal and resource acceptance. Next is
   the recognition contract/adapter slice; real OCR quality and automatic pixel masks
   remain unimplemented and must not be represented as validated processing.
+
+## P09 recognition adapter foundation (2026-09-24)
+
+- Added a bounded canonical-image vision adapter using the shared Provider port.
+  Cloud response geometry/order/text is validated before becoming domain output.
+- Added explicit inverse crop/resize coordinate mapping. Text rectangles are not
+  erasure masks. Results use request-local IDs, awaiting durable publication.
+- Official DeepSeek vision request shape rechecked; no account capability or paid
+  model call was tested. Fake-provider tests cannot establish OCR quality.
+- Remaining: persisted recognition runs, edited-region reconciliation, capability
+  preflight, inspector/comparison, automatic pixel masks, real sample quality and
+  runtime/resource acceptance. P09 is in progress, not complete.
+
+Validation: all 177 Rust library tests and strict all-target Clippy pass.
+Recognition tests cover inverse crop/resize mapping, malformed regions, invalid order,
+inline image requests and truncated fake-provider responses.

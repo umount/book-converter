@@ -25,3 +25,5 @@ pub mod book_retarget;
 
 #[cfg(test)]
 mod book_workflow_tests;
+
+pub mod manga;

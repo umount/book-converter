@@ -223,3 +223,22 @@ stalled request, checksum failure, restart verification, concurrent write guards
 symlinks. The catalog is tested against the 500 MiB download budget. See the official
 [Hugging Face download documentation](https://huggingface.co/docs/huggingface_hub/package_reference/file_download)
 for the distinction between a pinned revision, ETag and content hashes.
+
+## Vision adapter input contract (2026-09-24)
+
+The recognition adapter uses the existing OpenAI-compatible `Request::Vision` path:
+user-message `image_url` with inline PNG and `detail=high`, plus JSON output. This
+shape and the `deepseek-flash` candidate were rechecked against the official
+[vision guide](https://api-docs.deepseek.com/guides/vision/). Account/model access has
+not been exercised. The application keeps its stricter 32 MiB request-body limit.
+Canonical pages are decoded within existing pixel/allocation budgets and resized to
+at most 2048 pixels on either axis for this initial overview adapter. Small-text crop
+recognition remains required for quality acceptance; overview success is not proof
+that dense or vertical text is complete.
+
+The adapter rejects truncated responses, duplicate region IDs/order, empty text,
+unknown region categories, noncontiguous reading order and out-of-bounds geometry.
+Accepted coordinates map back to canonical pixels. It returns request-local IDs;
+the future result-publishing service owns durable region IDs and edit reconciliation.
+It produces no masks, cleanup, translation or lettering, and enables no processing
+button until the remaining capability and persistence stages are implemented.
