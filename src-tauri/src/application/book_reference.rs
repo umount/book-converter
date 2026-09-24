@@ -411,6 +411,8 @@ mod tests {
             .unwrap()
             .chapter("b")
             .unwrap();
-        assert_eq!(view.translation.unwrap().origin, "manual");
+        let edited=view.translation.unwrap();
+        assert_eq!(edited.origin, "manual");
+        assert_eq!(edited.status, "ready");
     }
 }

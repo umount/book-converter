@@ -84,8 +84,8 @@ pub fn preview(
     let mut bytes = 0usize;
     for chapter in args.selection.resolve(&ordered)? {
         use rusqlite::OptionalExtension;
-        let row = tx.query_row("SELECT id,revision,translated_title,source_revision,settings_revision,glossary_revision,context_fingerprint,status FROM book_translations WHERE chapter_id=?1 AND target_language=?2 ORDER BY revision DESC LIMIT 1", rusqlite::params![chapter,settings.choices.target_language], |r| Ok((r.get::<_,String>(0)?,r.get::<_,i64>(1)?,r.get::<_,String>(2)?,r.get::<_,i64>(3)?,r.get::<_,i64>(4)?,r.get::<_,i64>(5)?,r.get::<_,String>(6)?,r.get::<_,String>(7)?))).optional().map_err(storage_error)?;
-        let Some((id, revision, title, source, setting_rev, glossary_rev, context, status)) = row
+        let row = tx.query_row("SELECT id,revision,translated_title,source_revision,settings_revision,glossary_revision,context_fingerprint,status,provenance FROM book_translations WHERE chapter_id=?1 AND target_language=?2 ORDER BY revision DESC LIMIT 1", rusqlite::params![chapter,settings.choices.target_language], |r| Ok((r.get::<_,String>(0)?,r.get::<_,i64>(1)?,r.get::<_,String>(2)?,r.get::<_,i64>(3)?,r.get::<_,i64>(4)?,r.get::<_,i64>(5)?,r.get::<_,String>(6)?,r.get::<_,String>(7)?,r.get::<_,String>(8)?))).optional().map_err(storage_error)?;
+        let Some((id, revision, title, source, setting_rev, glossary_rev, context, status, provenance)) = row
         else {
             continue;
         };
@@ -128,9 +128,10 @@ pub fn preview(
         // A reviewed literal edit is allowed on an older translation. It does not
         // establish that the rest of the chapter meets the updated book inputs.
         if status != "ready"
-            || source != current_source
-            || setting_rev.to_string() != settings.revision.0
-            || glossary_rev.to_string() != glossary.0
+            || (provenance != "reference"
+                && (source != current_source
+                    || setting_rev.to_string() != settings.revision.0
+                    || glossary_rev.to_string() != glossary.0))
         {
             needs_review.insert(chapter.clone());
         }

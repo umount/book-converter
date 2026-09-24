@@ -597,3 +597,12 @@ fallback. Keep commits scoped; push only on user request.
   continuity regression passed separately. Strict all-target Clippy, frontend tests,
   production build and generated-contract check passed. No paid-provider quality
   assessment or native desktop acceptance is implied by these deterministic tests.
+
+### P05 manual corrections retain the restored flag semantics
+
+- Bulk replacement's existing `manual-replace` provenance now maps to the legacy
+  `manual` origin, just like direct editor corrections. Correcting a ready reference
+  does not require model-input review merely because prompt/glossary settings changed.
+- Final full library suite: 321 passed. Strict all-target Clippy passed. Frontend
+  tests/build and contract checks passed earlier in this change; subsequent changes
+  only affect backend correction semantics and regression coverage.

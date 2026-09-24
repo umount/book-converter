@@ -121,7 +121,7 @@ impl<'a> ProjectRepository<'a> {
             .optional()
             .map_err(storage_error)?
             .ok_or_else(not_found)?;
-        let translation=tx.query_row("SELECT id,revision,translated_title,status,CASE WHEN provenance IN ('reference','manual') THEN provenance ELSE 'model' END FROM book_translations WHERE chapter_id=?1 AND target_language=(SELECT target_language FROM project_settings WHERE singleton=1) ORDER BY revision DESC LIMIT 1",[id],|r|Ok(TranslationSummary{id:r.get(0)?,revision:Revision(r.get::<_,i64>(1)?.to_string()),title:r.get(2)?,status:r.get(3)?,origin:r.get(4)?})).optional().map_err(storage_error)?;
+        let translation=tx.query_row("SELECT id,revision,translated_title,status,CASE WHEN provenance='reference' THEN 'reference' WHEN provenance IN ('manual','manual-replace') THEN 'manual' ELSE 'model' END FROM book_translations WHERE chapter_id=?1 AND target_language=(SELECT target_language FROM project_settings WHERE singleton=1) ORDER BY revision DESC LIMIT 1",[id],|r|Ok(TranslationSummary{id:r.get(0)?,revision:Revision(r.get::<_,i64>(1)?.to_string()),title:r.get(2)?,status:r.get(3)?,origin:r.get(4)?})).optional().map_err(storage_error)?;
         let translated: std::collections::HashMap<String, String> = if let Some(translation) =
             &translation
         {

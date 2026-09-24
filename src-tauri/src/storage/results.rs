@@ -252,7 +252,7 @@ pub fn edit_translation_block(
     text: &str,
 ) -> Result<Revision, AppError> {
     let tx = db.transaction().map_err(storage_error)?;
-    let (chapter,title,source,settings_rev,glossary,revision,context,status):(String,String,i64,i64,i64,i64,String,String)=tx.query_row("SELECT chapter_id,translated_title,source_revision,settings_revision,glossary_revision,revision,context_fingerprint,status FROM book_translations WHERE id=?1",[id],|r|Ok((r.get(0)?,r.get(1)?,r.get(2)?,r.get(3)?,r.get(4)?,r.get(5)?,r.get(6)?,r.get(7)?))).optional().map_err(storage_error)?.ok_or_else(not_found)?;
+    let (chapter,title,source,settings_rev,glossary,revision,context,status,provenance):(String,String,i64,i64,i64,i64,String,String,String)=tx.query_row("SELECT chapter_id,translated_title,source_revision,settings_revision,glossary_revision,revision,context_fingerprint,status,provenance FROM book_translations WHERE id=?1",[id],|r|Ok((r.get(0)?,r.get(1)?,r.get(2)?,r.get(3)?,r.get(4)?,r.get(5)?,r.get(6)?,r.get(7)?,r.get(8)?))).optional().map_err(storage_error)?.ok_or_else(not_found)?;
     if revision != expected.value()? {
         return Err(conflict());
     }
@@ -279,9 +279,10 @@ pub fn edit_translation_block(
         )
         .map_err(storage_error)?;
     let needs_review = status != "ready"
-        || source != current_source
-        || settings_rev != current_settings.revision.value()?
-        || glossary != current_glossary.value()?;
+        || (provenance != "reference"
+            && (source != current_source
+                || settings_rev != current_settings.revision.value()?
+                || glossary != current_glossary.value()?));
     let new_id = uuid::Uuid::new_v4().to_string();
     let result = save_translation_in(
         &tx,

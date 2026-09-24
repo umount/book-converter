@@ -814,3 +814,15 @@ fn legacy_origin_and_language_flags_follow_manual_corrections() {
     let view=ProjectRepository::new(&mut db,ProjectKind::Book).unwrap().chapter("chapter").unwrap();
     assert_eq!(view.translation.unwrap().origin,"manual");assert!(view.lang_issues.is_empty());
 }
+
+#[test]
+fn bulk_correction_keeps_legacy_manual_origin_for_reference() {
+    use crate::{application::book_edit, app::{contracts::{EntitySelection,ProjectId},requests::BookReplacePreviewArgs}};
+    let mut db=book();let mut value=translation();value.provenance="reference".into();
+    results::save_translation(&mut db,&value).unwrap();
+    db.execute("UPDATE glossary_state SET revision=1",[]).unwrap();
+    let preview=book_edit::preview(&mut db,&BookReplacePreviewArgs{project_id:ProjectId::new(),selection:EntitySelection::All,search:"Translated".into(),replacement:"Corrected".into(),case_sensitive:true}).unwrap();
+    book_edit::apply(&mut db,preview).unwrap();
+    let view=super::repository::ProjectRepository::new(&mut db,ProjectKind::Book).unwrap().chapter("chapter").unwrap();
+    let t=view.translation.unwrap();assert_eq!(t.origin,"manual");assert_eq!(t.status,"ready");
+}
