@@ -84,6 +84,15 @@ pub struct UpdateBookBlockArgs {
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct UpdateChapterInstructionsArgs {
+    pub project_id: ProjectId,
+    pub chapter_id: ChapterId,
+    pub instructions: String,
+    pub expected_revision: Revision,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct TranslationOptions {
     pub force: bool,
     pub instructions: Option<String>,
@@ -102,6 +111,45 @@ pub struct StartBookTranslationArgs {
 pub struct BookReferenceImportArgs {
     pub project_id: ProjectId,
     pub path: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+pub struct BookMetadataView {
+    pub id: String,
+    pub title: String,
+    pub author: String,
+    pub summary: String,
+    pub current: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+pub struct ReferenceChapterView {
+    pub id: String,
+    pub position: u32,
+    pub title: String,
+    pub text: String,
+}
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ReferenceMapping {
+    pub chapter_id: ChapterId,
+    pub reference_id: String,
+}
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+pub struct BookReferenceView {
+    pub fingerprint: String,
+    pub chapters: Vec<ReferenceChapterView>,
+    pub mappings: Vec<ReferenceMapping>,
+}
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct BookReferenceMapArgs {
+    pub project_id: ProjectId,
+    pub expected_fingerprint: String,
+    pub mappings: Vec<ReferenceMapping>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
@@ -404,6 +452,7 @@ pub struct ChapterPage {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct BookChapterView {
+    pub instructions: String,
     pub chapter: ChapterSummary,
     pub blocks: Vec<BookBlockView>,
     pub translation: Option<TranslationSummary>,
@@ -542,9 +591,15 @@ pub fn typescript() -> String {
         ListChaptersArgs::decl(&config),
         GetChapterArgs::decl(&config),
         UpdateBookBlockArgs::decl(&config),
+        UpdateChapterInstructionsArgs::decl(&config),
         TranslationOptions::decl(&config),
         StartBookTranslationArgs::decl(&config),
         BookReferenceImportArgs::decl(&config),
+        BookMetadataView::decl(&config),
+        ReferenceChapterView::decl(&config),
+        ReferenceMapping::decl(&config),
+        BookReferenceView::decl(&config),
+        BookReferenceMapArgs::decl(&config),
         BookReplacePreviewArgs::decl(&config),
         BookReplaceApplyArgs::decl(&config),
         BookReplaceChange::decl(&config),

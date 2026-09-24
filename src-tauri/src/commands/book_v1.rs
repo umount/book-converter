@@ -89,7 +89,14 @@ pub async fn book_start_translation(
     })
     .await
     .map_err(|_| AppError::invalid("task"))??;
-    if let Err(error) = dispatch(&context, app, job.project_id.clone(), job.job_id.clone()) {
+    dispatch_created(&context, app, job)
+}
+fn dispatch_created(
+    context: &AppContext,
+    app: tauri::AppHandle,
+    job: JobRef,
+) -> Result<JobRef, AppError> {
+    if let Err(error) = dispatch(context, app, job.project_id.clone(), job.job_id.clone()) {
         context
             .manager
             .lease(&job.project_id)?
@@ -281,6 +288,122 @@ pub async fn book_update_block(
                 crate::app::contracts::ProjectKind::Book,
             )?
             .update_book_text(&args.block_id.0, &args.expected_revision, &args.text)
+        })
+    })
+    .await
+    .map_err(|_| AppError::invalid("task"))?
+}
+
+#[tauri::command]
+pub async fn book_export(
+    context: State<'_, AppContext>,
+    args: BookExportArgs,
+) -> Result<(), AppError> {
+    let manager = context.manager.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        crate::application::book_export::export_book(&manager, &args)
+    })
+    .await
+    .map_err(|_| AppError::invalid("task"))?
+}
+
+#[tauri::command]
+pub async fn book_reference_import(
+    context: State<'_, AppContext>,
+    args: BookReferenceImportArgs,
+) -> Result<BookReferenceView, AppError> {
+    let manager = context.manager.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        crate::application::book_reference::import(&manager, &args)
+    })
+    .await
+    .map_err(|_| AppError::invalid("task"))?
+}
+#[tauri::command]
+pub async fn book_reference_get(
+    context: State<'_, AppContext>,
+    args: ProjectArgs,
+) -> Result<BookReferenceView, AppError> {
+    let manager = context.manager.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        manager.lease(&args.project_id)?.with_connection(|db, _| {
+            crate::storage::repository::ProjectRepository::new(
+                db,
+                crate::app::contracts::ProjectKind::Book,
+            )?;
+            let tx = db.transaction().map_err(storage_error)?;
+            crate::application::book_reference::read(&tx)
+        })
+    })
+    .await
+    .map_err(|_| AppError::invalid("task"))?
+}
+#[tauri::command]
+pub async fn book_reference_map(
+    context: State<'_, AppContext>,
+    args: BookReferenceMapArgs,
+) -> Result<BookReferenceView, AppError> {
+    let manager = context.manager.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        manager
+            .lease(&args.project_id)?
+            .with_connection(|db, _| crate::application::book_reference::map(db, &args))
+    })
+    .await
+    .map_err(|_| AppError::invalid("task"))?
+}
+
+#[tauri::command]
+pub async fn book_start_metadata(
+    context: State<'_, AppContext>,
+    app: tauri::AppHandle,
+    args: ProjectArgs,
+) -> Result<JobRef, AppError> {
+    let manager = context.manager.clone();
+    let job = tauri::async_runtime::spawn_blocking(move || {
+        crate::application::runtime::prepare_metadata_run(&manager, &args.project_id)
+    })
+    .await
+    .map_err(|_| AppError::invalid("task"))??;
+    dispatch_created(&context, app, job)
+}
+#[tauri::command]
+pub async fn book_metadata_get(
+    context: State<'_, AppContext>,
+    args: ProjectArgs,
+) -> Result<Option<BookMetadataView>, AppError> {
+    let manager = context.manager.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        manager.lease(&args.project_id)?.with_connection(|db, _| {
+            crate::storage::repository::ProjectRepository::new(
+                db,
+                crate::app::contracts::ProjectKind::Book,
+            )?;
+            let tx = db.transaction().map_err(storage_error)?;
+            crate::application::book_metadata::read(&tx)
+        })
+    })
+    .await
+    .map_err(|_| AppError::invalid("task"))?
+}
+
+#[tauri::command]
+pub async fn book_update_instructions(
+    context: State<'_, AppContext>,
+    args: UpdateChapterInstructionsArgs,
+) -> Result<crate::app::contracts::Revision, AppError> {
+    let manager = context.manager.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        manager.lease(&args.project_id)?.with_connection(|db, _| {
+            crate::storage::repository::ProjectRepository::new(
+                db,
+                crate::app::contracts::ProjectKind::Book,
+            )?
+            .update_chapter_instructions(
+                &args.chapter_id.0,
+                &args.expected_revision,
+                &args.instructions,
+            )
         })
     })
     .await

@@ -7,7 +7,7 @@ P01: completed. Typed contracts, composition boundary and frontend test harness.
 P02: completed. Versioned repositories, immutable assets and domain result persistence.
 P03: backend lifecycle implemented; reset execution and UI activation remain.
 P04: in_progress. Durable execution and structured provider transport implemented.
-P05: in_progress. Structural translation, context and manual saves implemented.
+P05: in_progress. Translation, context, editing, reference, export and metadata backend implemented.
 P06–P13: pending; typed frontend API methods prepared.
 
 ## Baseline (2026-09-23)
@@ -44,8 +44,8 @@ P06–P13: pending; typed frontend API methods prepared.
 
 ## Next executable step
 
-Continue P05 editing/reference/export and independent metadata/glossary jobs, then
-P06 workspace integration. Close remaining P04 acceptance items before cutover.
+Continue P05 independent glossary extraction and shared settings/retarget integration,
+then P06 workspace integration. Close remaining P04 acceptance items before cutover.
 Plan snapshot committed as a45d990. Baseline formatting drift is recorded, not hidden.
 
 ## Evidence rules
@@ -199,3 +199,43 @@ fallback. Keep commits scoped; push only on user request.
   transport; an imported snapshot cannot redirect the default key. The dedicated
   credential-destination regression test passed. The legacy default key is used only
   by the default profile; custom profiles require their own credential setting.
+
+## P05 export and reference boundary (2026-09-24)
+
+- All four existing book writers now accept explicit structural text/image blocks.
+  Legacy marker parsing is confined to the legacy body variant; new text that looks
+  like a marker stays text. Typed exports read one SQLite snapshot, enforce the
+  incomplete-translation policy, verify/copy immutable assets, and publish a complete
+  file without replacing an existing destination or writing inside app storage.
+- 14 export tests passed, including existing PDF checks and new EPUB/FB2 duplicate
+  image occurrence checks, literal-marker text and failure without output publication.
+  Explicit typed PDF invocation and platform/font coverage still need P12 validation.
+- Added reference import, read and explicit stable-ID correspondence commands.
+  Reference changes use a fingerprint guard, roll back invalid mappings and advance
+  chapter revisions, rejecting already-running translations with old reference input.
+  Reapplying the same correspondence does not advance revisions.
+- The combined regression at this boundary passed all 287 Rust tests. Strict Clippy
+  passed before the subsequent metadata/instructions additions.
+
+## P05 metadata and chapter instructions (2026-09-24)
+
+- Added an independent persisted metadata job and immutable metadata results. It
+  uses a bounded source sample, rejects truncated/malformed responses, and validates
+  source/settings versions before publication. Opening a project never starts it.
+  Empty text layers do not trigger a metadata provider request.
+- Metadata reads expose validity; source/settings changes make old results stale.
+  Structured export uses current metadata and falls back to the project name when
+  no current generated title exists. Credentials remain outside project persistence.
+- Added revision-guarded chapter instructions and included them in translation
+  prompts. Changes invalidate chapter/dependent results and stale editors conflict.
+- Targeted metadata tests and the chapter-instruction regression passed. Final
+  contract generation, frontend build and Clippy are recorded below after integration.
+- P05 remains in progress: glossary extraction jobs, shared glossary/retarget UI
+  integration, broader roundtrip coverage and the P06 workspace cutover remain.
+  The new metadata table is part of the unreleased format-1 schema; no deployed
+  project migration or user-data reset was executed.
+- Final integration evidence: all 8 application-service tests and the new chapter
+  instruction test passed; strict all-target Clippy, contract generation/check,
+  frontend tests and production build passed. Clippy's test-module ordering finding
+  was corrected before this successful run. No paid request, native GUI smoke test,
+  user-data reset or remote push was performed.

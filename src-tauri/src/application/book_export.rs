@@ -65,7 +65,9 @@ pub fn export_book(manager: &ProjectManager, args: &BookExportArgs) -> Result<()
         }
         snapshot(db, directory, &scratch.0, args)
     })?;
-    meta.title = descriptor.name;
+    if meta.title.trim().is_empty() {
+        meta.title = descriptor.name;
+    }
     let format = match args.format {
         BookExportFormat::Txt => OutputFormat::Txt,
         BookExportFormat::Fb2 => OutputFormat::Fb2,
@@ -200,9 +202,19 @@ fn snapshot(
     if chapters.is_empty() {
         return Err(AppError::invalid("selection"));
     }
+    let metadata = super::book_metadata::read(&tx)?.filter(|m| m.current);
     Ok((
         chapters,
         OutputMeta {
+            title: metadata
+                .as_ref()
+                .map(|m| m.title.clone())
+                .unwrap_or_default(),
+            author: metadata
+                .as_ref()
+                .map(|m| m.author.clone())
+                .unwrap_or_default(),
+            annotation: metadata.map(|m| m.summary).filter(|s| !s.is_empty()),
             lang: settings.choices.target_language,
             images,
             ..Default::default()

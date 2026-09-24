@@ -137,6 +137,7 @@ pub struct BookPipeline {
 pub enum BookOutput {
     Translation(results::BookTranslation),
     Context(results::BookContext),
+    Metadata(super::book_metadata::MetadataOutput),
 }
 
 fn digest(value: &impl Serialize) -> Result<String, AppError> {
@@ -164,6 +165,15 @@ impl StepExecutor for BookPipeline {
         entity: &str,
         stage: &str,
     ) -> Result<String, AppError> {
+        if stage == "metadata" {
+            return lease.with_connection(|db, _| {
+                digest(&(
+                    super::book_metadata::fingerprint(db)?,
+                    &run.snapshot.prompt_version,
+                    self.provider.profile(),
+                ))
+            });
+        }
         lease.with_connection(|db,_|{
             let source:i64=db.query_row("SELECT revision FROM book_chapters WHERE id=?1",[entity],|r|r.get(0)).map_err(storage_error)?;
             let current_settings=shared::settings(db)?.revision;let glossary=shared::glossary_revision(db)?;
@@ -182,12 +192,16 @@ impl StepExecutor for BookPipeline {
             match stage {
                 "translation" => self.translate(lease, run, entity).await,
                 "context" => self.context(lease, entity).await,
+                "metadata" => super::book_metadata::compute(lease, run, self.provider.as_ref())
+                    .await
+                    .map(BookOutput::Metadata),
                 _ => Err(AppError::invalid("bookStage")),
             }
         })
     }
     fn persist(&self, tx: &Transaction<'_>, output: BookOutput) -> Result<String, AppError> {
         match output {
+            BookOutput::Metadata(value) => super::book_metadata::persist(tx, value),
             BookOutput::Translation(value) => {
                 results::save_translation_in(tx, &value)?;
                 Ok(value.id)
@@ -245,7 +259,7 @@ impl BookPipeline {
             .source_language
             .as_deref()
             .unwrap_or("the detected source language");
-        let system=format!("Translate every text segment faithfully from {source} to {target}. Return only JSON {{\"segments\":[{{\"id\":\"exact input id\",\"text\":\"translation\"}}]}}. Keep every ID exactly once. Do not add image markers or explanations. Segments may continue mid-paragraph. Preserve whitespace boundaries. Instructions: {}\nGlossary (respect pinned translations): {}\nPrevious context: {}\nReference: {}",self.instructions.as_deref().unwrap_or(""),serde_json::to_string(&glossary).map_err(|_|invalid_output())?,context.as_ref().map(|c|c.1.as_str()).unwrap_or(""),reference.as_deref().unwrap_or(""));
+        let system=format!("Translate every text segment faithfully from {source} to {target}. Return only JSON {{\"segments\":[{{\"id\":\"exact input id\",\"text\":\"translation\"}}]}}. Keep every ID exactly once. Do not add image markers or explanations. Segments may continue mid-paragraph. Preserve whitespace boundaries. Instructions: {}\nChapter instructions: {}\nGlossary (respect pinned translations): {}\nPrevious context: {}\nReference: {}",self.instructions.as_deref().unwrap_or(""),chapter.instructions,serde_json::to_string(&glossary).map_err(|_|invalid_output())?,context.as_ref().map(|c|c.1.as_str()).unwrap_or(""),reference.as_deref().unwrap_or(""));
         let mut translated = HashMap::new();
         for batch in segments.chunks(4) {
             translated.extend(translate_segments(self.provider.as_ref(), &system, batch).await?);

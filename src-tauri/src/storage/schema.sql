@@ -152,3 +152,12 @@ BEGIN SELECT RAISE(ABORT, 'not_a_text_block'); END;
 CREATE INDEX translation_chapter ON book_translations(chapter_id, target_language, revision DESC);
 CREATE INDEX result_page ON manga_results(page_id, stage, revision DESC);
 PRAGMA user_version = 1;
+
+-- Independent metadata results; historical jobs keep their immutable output reference.
+CREATE TABLE book_metadata (
+    id TEXT PRIMARY KEY NOT NULL, input_fingerprint TEXT NOT NULL,
+    title TEXT NOT NULL, author TEXT NOT NULL, summary TEXT NOT NULL
+);
+CREATE TRIGGER metadata_kind_guard BEFORE INSERT ON book_metadata
+WHEN (SELECT kind FROM project_settings WHERE singleton=1)!='book'
+BEGIN SELECT RAISE(ABORT, 'book metadata in manga project'); END;

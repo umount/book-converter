@@ -83,6 +83,13 @@ pub fn run() {
         .manage(std::sync::Arc::new(assistant::AssistantRuntime::new()))
         .invoke_handler(tauri::generate_handler![
             commands::project_inspect_manifest,
+            commands::book_update_instructions,
+            commands::book_start_metadata,
+            commands::book_metadata_get,
+            commands::book_reference_import,
+            commands::book_reference_get,
+            commands::book_reference_map,
+            commands::book_export,
             commands::book_update_block,
             commands::book_replace_preview,
             commands::book_replace_apply,

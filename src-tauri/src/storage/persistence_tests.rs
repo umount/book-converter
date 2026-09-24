@@ -525,3 +525,27 @@ fn reference_mapping_rejects_stale_views_and_invalidates_inflight_translation() 
     assert!(book_reference::map(&mut db, &args).is_err());
     assert_eq!(book_reference::read(&db).unwrap(), after);
 }
+
+#[test]
+fn chapter_instructions_are_revision_guarded_and_invalidate_translation() {
+    let mut db = book();
+    results::save_translation(&mut db, &translation()).unwrap();
+    let mut repository =
+        super::repository::ProjectRepository::new(&mut db, ProjectKind::Book).unwrap();
+    assert_eq!(
+        repository
+            .update_chapter_instructions("chapter", &rev(0), "Keep honorifics")
+            .unwrap(),
+        rev(1)
+    );
+    assert_eq!(
+        repository
+            .update_chapter_instructions("chapter", &rev(0), "Stale editor")
+            .unwrap_err()
+            .code,
+        ErrorCode::RevisionConflict
+    );
+    let chapter = repository.chapter("chapter").unwrap();
+    assert_eq!(chapter.instructions, "Keep honorifics");
+    assert_eq!(chapter.translation.unwrap().status, "needs_review");
+}

@@ -159,12 +159,50 @@ impl<'a> ProjectRepository<'a> {
                 .map_err(storage_error)?;
             rows.collect::<Result<Vec<_>, _>>().map_err(storage_error)?
         };
+        let instructions = tx
+            .query_row(
+                "SELECT instructions FROM book_chapters WHERE id=?1",
+                [id],
+                |r| r.get::<_, String>(0),
+            )
+            .map_err(storage_error)?;
         tx.commit().map_err(storage_error)?;
         Ok(BookChapterView {
+            instructions,
             chapter,
             blocks,
             translation,
         })
+    }
+
+    pub fn update_chapter_instructions(
+        &mut self,
+        id: &str,
+        expected: &Revision,
+        instructions: &str,
+    ) -> Result<Revision, AppError> {
+        self.require(ProjectKind::Book)?;
+        if instructions.len() > 32768 {
+            return Err(AppError::invalid("instructions"));
+        }
+        let tx = self.connection.transaction().map_err(storage_error)?;
+        let revision = super::shared::next(expected.value()?)?;
+        let changed = tx
+            .execute(
+                "UPDATE book_chapters SET instructions=?1,revision=?2 WHERE id=?3 AND revision=?4",
+                params![instructions, revision, id, expected.value()?],
+            )
+            .map_err(storage_error)?;
+        if changed != 1 {
+            return Err(super::shared::missing_or_conflict(
+                &tx,
+                "SELECT 1 FROM book_chapters WHERE id=?1",
+                id,
+            )?);
+        }
+        tx.execute("UPDATE book_translations SET status='needs_review' WHERE status='ready' AND chapter_id IN (SELECT id FROM book_chapters WHERE position >= (SELECT position FROM book_chapters WHERE id=?1))",[id]).map_err(storage_error)?;
+        tx.commit().map_err(storage_error)?;
+        Ok(Revision(revision.to_string()))
     }
 
     pub fn update_book_text(

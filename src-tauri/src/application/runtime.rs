@@ -122,7 +122,7 @@ pub fn resume_provider(
     let run = manager
         .lease(project)?
         .with_connection(|db, _| runs::get_run(db, job))?;
-    if run.kind != "book_translation"
+    if !["book_translation", "book_metadata"].contains(&run.kind.as_str())
         || !matches!(
             run.state,
             JobState::Queued | JobState::Interrupted | JobState::Failed | JobState::Cancelled
@@ -186,6 +186,43 @@ fn validate_credential_destination(
         return Err(AppError::invalid("providerEndpointChanged"));
     }
     Ok(())
+}
+
+pub fn prepare_metadata_run(
+    manager: &ProjectManager,
+    project: &ProjectId,
+) -> Result<JobRef, AppError> {
+    let lease = manager.lease(project)?;
+    lease.with_connection(|db, _| {
+        ProjectRepository::new(db, crate::app::contracts::ProjectKind::Book)?;
+        let settings = shared::settings(db)?;
+        let (profile, key) =
+            provider_profile(settings.choices.book_translation_profile.as_deref())?;
+        ChatCompletions::new(profile.clone(), key)?;
+        let first: String = db
+            .query_row(
+                "SELECT id FROM book_chapters ORDER BY position LIMIT 1",
+                [],
+                |r| r.get(0),
+            )
+            .map_err(storage_error)?;
+        let snapshot = runs::RunSnapshot {
+            settings: settings.choices,
+            settings_revision: settings.revision,
+            glossary_revision: shared::glossary_revision(db)?,
+            selected_ids: vec![first],
+            prompt_version: "book-metadata-v1".into(),
+            stages: vec!["metadata".into()],
+            provider: Some(profile),
+            instructions: None,
+        };
+        let job_id = uuid::Uuid::new_v4().to_string();
+        runs::create_run(db, &job_id, "book_metadata", &snapshot, &now())?;
+        Ok(JobRef {
+            project_id: project.clone(),
+            job_id,
+        })
+    })
 }
 
 #[cfg(test)]

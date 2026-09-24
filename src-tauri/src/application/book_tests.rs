@@ -201,3 +201,132 @@ async fn pipeline_translates_structural_fixture_and_keeps_images_in_place() {
     }).unwrap();
     std::fs::remove_dir_all(root).unwrap();
 }
+
+#[tokio::test]
+async fn metadata_job_persists_independently_and_becomes_stale_after_source_edit() {
+    use crate::{
+        app::{
+            contracts::ProjectKind,
+            requests::{LanguagePair, ProjectChoices},
+        },
+        jobs::durable,
+        project::lifecycle::ProjectManager,
+        storage::{runs, shared},
+    };
+    use std::sync::{atomic::AtomicBool, Arc};
+    let root = std::env::temp_dir().join(format!("metadata-job-{}", uuid::Uuid::new_v4()));
+    let manager = ProjectManager::new(root.clone());
+    let preview = manager
+        .inspect_source(
+            ProjectKind::Book,
+            &std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+                .join("../tests/fixtures/structural.epub"),
+        )
+        .unwrap();
+    let project = manager
+        .create(
+            &preview.import_id.0,
+            &ProjectChoices {
+                name: "Source title".into(),
+                languages: LanguagePair {
+                    source: Some("en".into()),
+                    target: "ru".into(),
+                },
+                processing_profile_id: None,
+            },
+        )
+        .unwrap();
+    struct MetadataProvider(ProviderProfile);
+    impl Provider for MetadataProvider {
+        fn profile(&self) -> &ProviderProfile {
+            &self.0
+        }
+        fn complete(
+            &self,
+            request: Request,
+        ) -> Pin<Box<dyn Future<Output = Result<Completion, AppError>> + Send + '_>> {
+            assert!(matches!(request, Request::Structured { .. }));
+            Box::pin(async {
+                Ok(Completion {
+                    text: r#"{"title":"Test title","author":"","summary":"Test summary"}"#.into(),
+                    finish_reason: "stop".into(),
+                    usage: Usage::default(),
+                    tool_calls: vec![],
+                })
+            })
+        }
+    }
+    let profile = Fake::new(vec![]).profile;
+    manager
+        .lease(&project.id)
+        .unwrap()
+        .with_connection(|db, _| {
+            assert!(super::book_metadata::read(db)?.is_none());
+            let chapter: String = db
+                .query_row(
+                    "SELECT id FROM book_chapters ORDER BY position LIMIT 1",
+                    [],
+                    |r| r.get(0),
+                )
+                .unwrap();
+            let settings = shared::settings(db)?;
+            runs::create_run(
+                db,
+                "metadata",
+                "book_metadata",
+                &runs::RunSnapshot {
+                    settings: settings.choices,
+                    settings_revision: settings.revision,
+                    glossary_revision: shared::glossary_revision(db)?,
+                    selected_ids: vec![chapter],
+                    prompt_version: "book-metadata-v1".into(),
+                    stages: vec!["metadata".into()],
+                    provider: Some(profile.clone()),
+                    instructions: None,
+                },
+                "now",
+            )
+        })
+        .unwrap();
+    let pipeline = BookPipeline {
+        provider: Arc::new(MetadataProvider(profile)),
+        instructions: None,
+    };
+    durable::execute(
+        &manager,
+        &project.id,
+        "metadata",
+        &pipeline,
+        Arc::new(AtomicBool::new(false)),
+        |_| {},
+    )
+    .await
+    .unwrap();
+    manager
+        .lease(&project.id)
+        .unwrap()
+        .with_connection(|db, _| {
+            let value = super::book_metadata::read(db)?.unwrap();
+            assert!(value.current);
+            assert_eq!(value.title, "Test title");
+            assert_eq!(
+                db.query_row("SELECT COUNT(*) FROM book_translations", [], |r| r
+                    .get::<_, i64>(0))
+                    .unwrap(),
+                0
+            );
+            assert_eq!(
+                runs::get_run(db, "metadata")?.state,
+                crate::app::contracts::JobState::Succeeded
+            );
+            db.execute(
+                "UPDATE book_chapters SET revision=revision+1 WHERE position=0",
+                [],
+            )
+            .unwrap();
+            assert!(!super::book_metadata::read(db)?.unwrap().current);
+            Ok(())
+        })
+        .unwrap();
+    std::fs::remove_dir_all(root).unwrap();
+}
