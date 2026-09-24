@@ -157,24 +157,19 @@ pub fn toc_chapters(path: &Path) -> Option<Vec<(String, String)>> {
         }
         cur = item.get(b"Next").ok().and_then(|o| o.as_reference().ok());
     }
-    if items.len() < 2 {
-        return None;
-    }
-
+    let ranges = outline_ranges(items, total_pages)?;
     let mut chapters = Vec::new();
-    for (i, (title, start)) in items.iter().enumerate() {
-        let end = items.get(i + 1).map(|(_, p)| *p).unwrap_or(total_pages + 1);
-        let last = (end.saturating_sub(1)).max(*start);
+    for (title, start, last) in ranges {
         // Prefer pdfium, then Poppler, then lopdf with cipher recovery.
-        let body = pdfium_text(path, Some(*start), Some(last))
+        let body = pdfium_text(path, Some(start), Some(last))
             .filter(|t| looks_like_text(t))
-            .or_else(|| pdftotext(path, Some(*start), Some(last)).filter(|t| looks_like_text(t)))
+            .or_else(|| pdftotext(path, Some(start), Some(last)).filter(|t| looks_like_text(t)))
             .or_else(|| {
-                let range: Vec<u32> = (*start..end.max(*start + 1)).collect();
+                let range: Vec<u32> = (start..=last).collect();
                 recover_text(&doc.extract_text(&range).unwrap_or_default())
             })
             .unwrap_or_default();
-        chapters.push((title.clone(), body.trim().to_string()));
+        chapters.push((title, body.trim().to_string()));
     }
 
     // If most bodies are mis-decoded, the split is not trustworthy.
@@ -183,6 +178,33 @@ pub fn toc_chapters(path: &Path) -> Option<Vec<(String, String)>> {
         return None;
     }
     Some(chapters)
+}
+
+/// Page boundaries must partition the document, including front matter. Several
+/// bookmarks on one page cannot be split reliably by a page-only extractor.
+fn outline_ranges(mut items: Vec<(String, u32)>, total: u32) -> Option<Vec<(String, u32, u32)>> {
+    items.retain(|(_, page)| *page > 0 && *page <= total);
+    items.sort_by_key(|(_, page)| *page);
+    items.dedup_by_key(|(_, page)| *page);
+    if items.len() < 2 {
+        return None;
+    }
+    if items[0].1 > 1 {
+        items.insert(0, ("1".into(), 1));
+    }
+    Some(
+        items
+            .iter()
+            .enumerate()
+            .map(|(index, (title, start))| {
+                let last = items
+                    .get(index + 1)
+                    .map(|(_, page)| page - 1)
+                    .unwrap_or(total);
+                (title.clone(), *start, last)
+            })
+            .collect(),
+    )
 }
 
 /// Heuristic: does this look like natural-language text (not empty, not a mis-decoded
@@ -314,6 +336,29 @@ fn dest_page(doc: &Document, item: &Dictionary, page_num: &HashMap<ObjectId, u32
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn outline_pages_partition_document_without_duplicates_or_lost_front_matter() {
+        let ranges = outline_ranges(
+            vec![
+                ("Last".into(), 5),
+                ("First".into(), 3),
+                ("Duplicate".into(), 3),
+                ("Invalid".into(), 9),
+            ],
+            6,
+        )
+        .unwrap();
+        assert_eq!(
+            ranges,
+            vec![
+                ("1".into(), 1, 2),
+                ("First".into(), 3, 4),
+                ("Last".into(), 5, 6)
+            ]
+        );
+        assert!(outline_ranges(vec![("Only".into(), 2), ("Same page".into(), 2)], 4).is_none());
+    }
 
     #[test]
     fn latin_text_needs_spaces() {

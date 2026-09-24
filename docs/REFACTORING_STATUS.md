@@ -49,8 +49,8 @@ P09–P13: pending.
 
 User priority update (2026-09-24): **books → legacy removal → manga**.
 
-1. Close the remaining book workflow and fidelity gaps, including FB2 inline
-   illustrations, assistant scope and book-specific acceptance. Verify import →
+1. Close remaining book workflow gaps, assistant scope and book-specific acceptance.
+   Structural FB2 illustrations and PDF outline fallback are implemented. Verify import →
    metadata → bounded translation → edit → search → export and native save/close
    behavior where the host permits it. Keep language pairs immutable.
 2. Delete superseded code and IPC, preserving still-needed book behavior through
@@ -728,3 +728,17 @@ fallback. Keep commits scoped; push only on user request.
   Result snippets are limited visually to three lines in the compact sidebar.
 - Browser fixture check: keyboard opening, Enter search, cross-chapter result
   navigation and highlighted block. Frontend tests/build and whitespace check pass.
+
+
+### P05 PDF outline import fallback
+
+- The shared loader now uses PDF bookmarks when text heading detection found no
+  chapters. The new project import no longer collapses these books into one chapter.
+- Outline page ranges are sorted and deduplicated; pages before the first bookmark
+  remain a separate chapter. Same-page bookmarks cannot duplicate page text.
+  Unusable outlines retain the existing full-text single-chapter fallback.
+- Generated a real three-page PDF in a regression test and verified that loader
+  output preserves front matter and both bookmark chapters, including every word.
+  A range test covers reversed, duplicate and out-of-range bookmark destinations.
+- All 336 Rust library tests and strict all-target Clippy passed. No UI changes,
+  real project data writes or native PDF rendering acceptance in this slice.

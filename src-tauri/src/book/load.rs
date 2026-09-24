@@ -66,6 +66,26 @@ pub fn load_book(path: &Path) -> Result<LoadedBook> {
     let decoded = read_book_file(path)?;
     let mut book = load_book_text(&decoded.text, decoded.encoding)?;
     book.encoding_had_errors = decoded.had_errors;
+    if book.chapters.is_empty()
+        && path
+            .extension()
+            .is_some_and(|ext| ext.eq_ignore_ascii_case("pdf"))
+    {
+        if let Some(chapters) = super::pdf::toc_chapters(path) {
+            book.chapters = chapters
+                .into_iter()
+                .enumerate()
+                .map(|(position, (title, body))| Chapter {
+                    index: position + 1,
+                    number: super::fb2::heading_number(&title).map(|(number, _)| number),
+                    title,
+                    body,
+                })
+                .collect();
+            book.report = validate(&book.chapters, &book.meta);
+            book.needs_delimiter = false;
+        }
+    }
     Ok(book)
 }
 
@@ -126,6 +146,73 @@ mod tests {
 <section><title><p>第1章 A</p></title><p>one</p></section>
 <section><title><p>第2章 B</p></title><p>two</p></section>
 </body></FictionBook>"#;
+
+    #[test]
+    fn pdf_outline_fallback_preserves_every_page_in_reading_order() {
+        use lopdf::{
+            content::{Content, Operation},
+            dictionary, Document, Object, Stream,
+        };
+        let mut doc = Document::with_version("1.5");
+        let pages_id = doc.new_object_id();
+        let font = doc.add_object(
+            dictionary! {"Type" => "Font", "Subtype" => "Type1", "BaseFont" => "Helvetica"},
+        );
+        let resources = doc.add_object(dictionary! {"Font" => dictionary! {"F1" => font}});
+        let texts = [
+            "Before the voyage we waited at the harbour with our letters and luggage.",
+            "On arrival we walked through the garden and listened to the quiet birds.",
+            "Returning home we carried the letters and remembered the garden forever.",
+        ];
+        let mut pages = Vec::new();
+        for text in texts {
+            let content = Content {
+                operations: vec![
+                    Operation::new("BT", vec![]),
+                    Operation::new("Tf", vec![Object::Name(b"F1".to_vec()), 12.into()]),
+                    Operation::new("Td", vec![30.into(), 700.into()]),
+                    Operation::new("Tj", vec![Object::string_literal(text)]),
+                    Operation::new("ET", vec![]),
+                ],
+            }
+            .encode()
+            .unwrap();
+            let contents = doc.add_object(Stream::new(dictionary! {}, content));
+            pages.push(doc.add_object(
+                dictionary! {"Type" => "Page", "Parent" => pages_id, "Contents" => contents},
+            ));
+        }
+        doc.objects.insert(pages_id, dictionary! {"Type" => "Pages", "Kids" => pages.iter().copied().map(Object::Reference).collect::<Vec<_>>(), "Count" => 3, "Resources" => resources, "MediaBox" => vec![0.into(), 0.into(), 612.into(), 792.into()]}.into());
+        let outlines = doc.new_object_id();
+        let first = doc.new_object_id();
+        let last = doc.new_object_id();
+        doc.objects.insert(first, dictionary! {"Title" => Object::string_literal("Arrival"), "Parent" => outlines, "Next" => last, "Dest" => vec![Object::Reference(pages[1]), Object::Name(b"Fit".to_vec())]}.into());
+        doc.objects.insert(last, dictionary! {"Title" => Object::string_literal("Return"), "Parent" => outlines, "Prev" => first, "Dest" => vec![Object::Reference(pages[2]), Object::Name(b"Fit".to_vec())]}.into());
+        doc.objects.insert(
+            outlines,
+            dictionary! {"Type" => "Outlines", "First" => first, "Last" => last, "Count" => 2}
+                .into(),
+        );
+        let root = doc.add_object(
+            dictionary! {"Type" => "Catalog", "Pages" => pages_id, "Outlines" => outlines},
+        );
+        doc.trailer.set("Root", root);
+        let path = std::env::temp_dir().join(format!("book-outline-{}.pdf", uuid::Uuid::new_v4()));
+        doc.save(&path).unwrap();
+        let loaded = load_book(&path);
+        std::fs::remove_file(&path).unwrap();
+        let loaded = loaded.unwrap();
+        assert!(!loaded.needs_delimiter);
+        assert_eq!(loaded.chapters.len(), 3);
+        assert_eq!(loaded.chapters[1].title, "Arrival");
+        assert_eq!(loaded.chapters[2].title, "Return");
+        for (chapter, text) in loaded.chapters.iter().zip(texts) {
+            assert_eq!(
+                chapter.body.split_whitespace().collect::<Vec<_>>(),
+                text.split_whitespace().collect::<Vec<_>>()
+            );
+        }
+    }
 
     #[test]
     fn detects_fb2_and_parses() {
