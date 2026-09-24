@@ -2,7 +2,8 @@
 
 > Execution plan and handoff document for another coding agent.
 > Prepared on 2026-09-23 against source HEAD `d636c5d`.
-> Status: planning. None of the implementation phases below is complete.
+> Execution status: P00 and P01 complete; P02 in progress.
+> See [REFACTORING_STATUS.md](REFACTORING_STATUS.md) for current evidence.
 > Breaking changes to code, APIs and project storage are explicitly allowed.
 
 ## 0. Read this first
@@ -404,7 +405,7 @@ report, not a successful export with silently omitted pages.
 Each Pxx needs its own progress record and one or more focused commits. Writing
 files is not completion: execute the acceptance checks below.
 
-### [ ] P00 — Baseline and fixtures
+### [x] P00 — Baseline and fixtures
 
 Dependencies: none.
 
@@ -420,7 +421,7 @@ Dependencies: none.
 Acceptance: reproducible baseline and feature inventory; no data deletion.
 Commit: `test: establish refactoring baseline and fixtures`.
 
-### [ ] P01 — Contracts and boundaries
+### [x] P01 — Contracts and boundaries
 
 Dependencies: P00.
 

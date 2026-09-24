@@ -36,6 +36,23 @@ impl Default for ProjectId {
     }
 }
 
+/// Domain identity types prevent mixing page, chapter and job references in services.
+macro_rules! entity_id {
+    ($name:ident) => {
+        #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize, TS)]
+        pub struct $name(pub String);
+    };
+}
+entity_id!(ChapterId);
+entity_id!(BlockId);
+entity_id!(VolumeId);
+entity_id!(PageId);
+entity_id!(RegionId);
+entity_id!(AssetId);
+entity_id!(JobId);
+entity_id!(ImportId);
+entity_id!(TermId);
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
 #[serde(rename_all = "camelCase")]
 pub struct AppError {
@@ -147,6 +164,7 @@ pub struct ProjectEvent {
     pub project_id: ProjectId,
     pub job_id: Option<String>,
     pub seq: Revision,
+    #[serde(flatten)]
     pub event: EventPayload,
 }
 
@@ -154,6 +172,15 @@ pub fn typescript() -> String {
     let config = ts_rs::Config::default();
     let declarations = [
         ProjectKind::decl(&config),
+        ChapterId::decl(&config),
+        BlockId::decl(&config),
+        VolumeId::decl(&config),
+        PageId::decl(&config),
+        RegionId::decl(&config),
+        AssetId::decl(&config),
+        JobId::decl(&config),
+        ImportId::decl(&config),
+        TermId::decl(&config),
         ProjectId::decl(&config),
         ErrorCode::decl(&config),
         AppError::decl(&config),
@@ -179,6 +206,7 @@ pub fn typescript() -> String {
         output.push_str(&declaration);
         output.push('\n');
     }
+    output.push_str(&super::requests::typescript());
     output
 }
 
@@ -358,5 +386,9 @@ mod tests {
         let json = serde_json::to_string(&value).unwrap();
         assert_eq!(serde_json::from_str::<ProjectEvent>(&json).unwrap(), value);
         assert!(json.contains("job.updated"));
+        let wire: serde_json::Value = serde_json::from_str(&json).unwrap();
+        assert_eq!(wire["type"], "job.updated");
+        assert_eq!(wire["payload"]["state"], "interrupted");
+        assert!(wire.get("event").is_none());
     }
 }

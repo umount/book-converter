@@ -9,7 +9,8 @@
     "preview": "vite preview",
     "tauri": "tauri",
     "contracts:generate": "cargo run --manifest-path src-tauri/Cargo.toml --example export_contracts",
-    "contracts:check": "cargo run --manifest-path src-tauri/Cargo.toml --example export_contracts -- --check"
+    "contracts:check": "cargo run --manifest-path src-tauri/Cargo.toml --example export_contracts -- --check",
+    "test": "node scripts/test-frontend.mjs"
   },
   "dependencies": {
     "@tauri-apps/api": "^2",

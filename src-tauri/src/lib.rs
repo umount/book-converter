@@ -50,6 +50,7 @@ pub fn run() {
     commands::cleanup_legacy_data();
 
     tauri::Builder::default()
+        .manage(app::services::AppContext::default())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
         // Page images are fetched by the webview instead of travelling through

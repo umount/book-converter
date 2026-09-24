@@ -3,8 +3,8 @@
 ## Current phase
 
 P00: completed. Baseline and deterministic fixtures.
-P01: in_progress. Typed contracts and composition boundary.
-P02: foundation prototyped; depends on finishing P01 contracts.
+P01: completed. Typed contracts, composition boundary and frontend test harness.
+P02: in_progress. Schema/asset prototype committed; repositories and protocol remain.
 P03–P13: pending. No production behavior has been replaced yet.
 
 ## Baseline (2026-09-23)
@@ -41,7 +41,7 @@ P03–P13: pending. No production behavior has been replaced yet.
 
 ## Next executable step
 
-Implement P01 shared typed contracts and a working project-manifest validator.
+Continue P02 repositories and asset protocol integration.
 Plan snapshot committed as a45d990. Baseline formatting drift is recorded, not hidden.
 
 ## Evidence rules
@@ -61,8 +61,8 @@ fallback. Keep commits scoped; push only on user request.
 - New app contract tests: 5 passed; manifest tests: 2 passed. Full isolated library
   regression: 252 passed, 0 failed. Strict all-target Clippy: exit 0.
 - `npm run build`: passed with generated contracts.
-- Remaining P01: domain command argument schemas, composition service context and
-  frontend unit harness. Do not mark the entire phase complete yet.
+- The remaining P01 work listed at interruption was completed on 2026-09-24;
+  see the continuation evidence below.
 
 ## P02 prototype
 
@@ -74,3 +74,24 @@ fallback. Keep commits scoped; push only on user request.
   Assets no longer import a constant from commands. No UI/persistence cutover yet.
 - This is deliberately not a completed P02; repositories and protocol integration
   need further work before project lifecycle replacement.
+
+## Recovery and P01 continuation (2026-09-24)
+
+- Recovered the interrupted working tree; no source samples or application data changed.
+- Recovery verification: 253 Rust library tests passed; frontend production build and
+  strict all-target Clippy passed. Saved the P02 prototype as `a77231f`.
+- Added domain ID wrappers and exact project/book/manga request DTOs, page/chapter
+  views, shared glossary/job/assistant/settings requests, and generated TS exports.
+  DTO declaration does not register an IPC command; implementations remain phased.
+- Added a Tauri-independent AppContext/ProjectService composition boundary. The
+  existing manifest command now delegates through managed, injectable services.
+- Event payloads are flattened to the documented top-level type/payload envelope.
+- Stable selections reject unknown/duplicate IDs and reversed ranges, then resolve
+  in source order. Revision parsing rejects noncanonical or overflowing values.
+- Added an injectable frontend invoke/listen boundary and a dependency-free Node
+  test harness using the existing TypeScript compiler. Tests cover structured error
+  propagation, project/version isolation, and disposal during async registration.
+- Final P01 evidence: 257 Rust library tests passed; contract generation/check,
+  npm test, npm run build and strict all-target Clippy passed. ts-rs reports that
+  deny_unknown_fields has no TS representation; serde still enforces it at runtime.
+- P01 is complete as a contract/composition milestone, not a domain/UI cutover.
