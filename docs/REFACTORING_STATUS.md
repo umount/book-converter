@@ -9,7 +9,7 @@ P03: lifecycle wired to the new UI; explicit legacy reset executed. Native accep
 P04: in_progress. Durable execution and structured provider transport implemented.
 P05: in_progress. Translation, context, editing, reference, export and metadata backend implemented.
 P06: in_progress. New shell, wizard, structural editor and supporting screens wired; native acceptance remains.
-P07: pending.
+P07: in_progress. Book assistant, guarded proposals and persisted history implemented.
 P08: partial. Import/read-only page workspace available; model processing not implemented.
 P09–P13: pending.
 
@@ -376,3 +376,27 @@ fallback. Keep commits scoped; push only on user request.
   manual metadata and an embedded FB2 cover. Frontend tests/build passed. Clippy's
   redundant struct-update finding was removed before the final check. Native file
   chooser and packaged app acceptance remain unverified.
+
+### P07 assistant through project services
+
+- Restored a book-scoped assistant with persisted conversation history, current
+  chapter/source/translation context, book instructions and a bounded glossary sample.
+  Provider credentials stay outside the context/history; the assistant role resolves
+  through the same profile mechanism as other services. No real provider request ran.
+- Model replies can propose only book instructions, glossary upserts, literal
+  replacement within the current chapter, or a bounded next-chapters translation.
+  The server constructs project IDs/revisions and uses the same guarded application
+  services as the UI. Unsupported actions/language changes are rejected.
+- Added before/after previews, explicit apply/reject, request cancellation and opt-in
+  automatic application for newly proposed actions. Pending previews expire after
+  30 minutes/restart; history persists. Confirmations are single-use and project-scoped.
+  Declining performs no domain or transcript write. Late source/translation/settings/
+  glossary changes reject the response rather than silently using a stale context.
+- Fake-provider regression covers cross-project rejection, denial, stale prompt
+  proposals, successful application, duplicate application and invalid actions.
+  Browser fixture verified chat → proposed prompt → apply → overview with saved text.
+  Assistant tools are not advertised for the unimplemented manga processing pipeline.
+- A concurrent regression exposed queued Tokio writes surviving an HTTP failure in
+  the model downloader. Fixed separately in d29e438; all nine downloader tests passed.
+- P07 is in progress: broader tool/context coverage, native acceptance and actual
+  provider response-quality testing remain. This does not complete the manga phases.

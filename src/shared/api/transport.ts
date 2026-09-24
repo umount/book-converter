@@ -11,6 +11,14 @@ export function createProjectApi(transport: Transport) {
   const call = <T>(command: string, args: unknown) =>
     transport.invoke<T>(command, { args });
   return {
+    assistantView: (args: C.ProjectArgs) =>
+      call<C.AssistantView>("assistant_project_view", args),
+    assistantSend: (args: C.AssistantSendArgs) =>
+      call<C.AssistantView>("assistant_project_send", args),
+    assistantConfirm: (args: C.AssistantConfirmArgs) =>
+      call<C.JobRef | null>("assistant_project_confirm", args),
+    assistantCancel: (args: C.ProjectArgs) =>
+      call<void>("assistant_project_cancel", args),
     list: () => transport.invoke<C.ProjectSummary[]>("project_list"),
     inspectSource: (args: C.InspectSourceArgs) =>
       call<C.ImportPreview>("project_inspect_source", args),

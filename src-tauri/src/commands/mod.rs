@@ -7,6 +7,8 @@
 //! the UI via `progress` / `done` / `job_error` events.
 
 mod assistant;
+mod assistant_v1;
+pub use assistant_v1::*;
 mod book_v1;
 mod manga_v1;
 mod models;

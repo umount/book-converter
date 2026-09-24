@@ -117,7 +117,10 @@ export function BookOverview({
       {!details ? (
         <p>{t("loading")}</p>
       ) : (
-        <fieldset disabled={busy} style={{ border: 0, padding: 0, margin: 0, display: "grid", gap: 16 }}>
+        <fieldset
+          disabled={busy}
+          style={{ border: 0, padding: 0, margin: 0, display: "grid", gap: 16 }}
+        >
           {details.coverAssetId && (
             <img
               src={assetUrl(project.id, details.coverAssetId)}

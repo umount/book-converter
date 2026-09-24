@@ -132,7 +132,7 @@ pub fn prepare_book_run(
 }
 
 /// Resolve source order first, then cap eligible work, so skipped chapters do not consume the batch.
-fn select_batch(
+pub(crate) fn select_batch(
     db: &rusqlite::Connection,
     selection: &EntitySelection,
     options: &TranslationOptions,

@@ -12,3 +12,5 @@ pub mod runtime;
 mod book_tests;
 
 pub mod book_presentation;
+
+pub mod assistant;

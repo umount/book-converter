@@ -452,7 +452,7 @@ pub struct GlossaryDeleteArgs {
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct AssistantSendArgs {
     pub project_id: ProjectId,
-    pub request_id: String,
+    pub chapter_id: Option<ChapterId>,
     pub message: String,
 }
 
@@ -617,6 +617,9 @@ pub fn typescript() -> String {
         GlossaryPutArgs::decl(&config),
         GlossaryDeleteArgs::decl(&config),
         AssistantSendArgs::decl(&config),
+        AssistantMessage::decl(&config),
+        AssistantProposal::decl(&config),
+        AssistantView::decl(&config),
         AssistantConfirmArgs::decl(&config),
         ProjectSettingsUpdateArgs::decl(&config),
         InspectManifestArgs::decl(&config),
@@ -766,3 +769,13 @@ pub struct SetBookCoverArgs {
     pub path: Option<String>,
     pub expected_revision: Revision,
 }
+
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[serde(rename_all="camelCase")]
+pub struct AssistantMessage {pub id:String,pub role:String,pub text:String}
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[serde(rename_all="camelCase")]
+pub struct AssistantProposal {pub id:String,pub kind:String,pub before:String,pub after:String}
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[serde(rename_all="camelCase")]
+pub struct AssistantView {pub messages:Vec<AssistantMessage>,pub proposals:Vec<AssistantProposal>}

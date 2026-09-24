@@ -771,3 +771,15 @@ button + button {
 .bc-model-actions {
   margin-top: 16px;
 }
+
+.bc-chat-message, .bc-proposal {
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 16px;
+}
+.bc-chat-user { border-left: 3px solid var(--accent); }
+.bc-proposal-diff { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin: 12px 0; }
+.bc-proposal-diff > div { min-width: 0; }
+.bc-proposal pre { white-space: pre-wrap; overflow-wrap: anywhere; font: inherit; max-height: 280px; overflow: auto; }
+.bc-assistant form { display: grid; gap: 12px; }
+@media (max-width: 800px) { .bc-proposal-diff { grid-template-columns: 1fr; } }

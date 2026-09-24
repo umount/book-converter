@@ -80,6 +80,20 @@ const en = {
   translateChapter: "Translate chapter",
   translateBatch: "Translate batch",
   bookTitle: "Book title",
+  assistant: "AI assistant",
+  assistantHint:
+    "Current chapter, book instructions and up to 100 glossary terms. Proposals expire after 30 minutes or an app restart.",
+  you: "You",
+  actionResult: "Action result",
+  before: "Before",
+  after: "After",
+  decline: "Reject",
+  assistantMessage: "Message",
+  assistantExample:
+    "Check the names in this chapter and suggest glossary corrections.",
+  assistantAutoRun: "Automatically apply actions proposed for this request",
+  send: "Send",
+
   cover: "Cover",
   chooseCover: "Choose cover",
   removeCover: "Remove cover",
@@ -258,6 +272,21 @@ const ru: Record<Key, string> = {
   translateChapter: "Перевести главу",
   translateBatch: "Перевести партию",
   bookTitle: "Название книги",
+  assistant: "ИИ-ассистент",
+  assistantHint:
+    "Контекст: текущая глава, общий промпт и до 100 терминов словаря. Предложения действуют 30 минут и до перезапуска приложения.",
+  you: "Вы",
+  actionResult: "Результат действия",
+  before: "До",
+  after: "После",
+  decline: "Отклонить",
+  assistantMessage: "Сообщение",
+  assistantExample:
+    "Проверь имена в этой главе и предложи исправления словаря.",
+  assistantAutoRun:
+    "Автоматически применять предложенные действия для этого запроса",
+  send: "Отправить",
+
   cover: "Обложка",
   chooseCover: "Выбрать обложку",
   removeCover: "Удалить обложку",
@@ -428,6 +457,19 @@ const zh: Record<Key, string> = {
   translateChapter: "翻译章节",
   translateBatch: "翻译本批次",
   bookTitle: "书名",
+  assistant: "AI 助手",
+  assistantHint:
+    "上下文包含当前章节、全书说明和最多 100 个术语。建议在 30 分钟后或应用重启后失效。",
+  you: "你",
+  actionResult: "操作结果",
+  before: "修改前",
+  after: "修改后",
+  decline: "拒绝",
+  assistantMessage: "消息",
+  assistantExample: "检查本章中的人名并建议术语表修改。",
+  assistantAutoRun: "自动应用本次请求的建议操作",
+  send: "发送",
+
   cover: "封面",
   chooseCover: "选择封面",
   removeCover: "移除封面",

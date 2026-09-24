@@ -15,6 +15,8 @@ impl ProjectService for FilesystemProjectService {
 }
 
 pub struct AppContext {
+    pub assistant: Arc<crate::application::assistant::AssistantService>,
+    pub assistant_runs: Arc<crate::application::runtime::BookRuntime>,
     pub models: Arc<crate::models::ModelManager>,
     pub projects: Arc<dyn ProjectService>,
     pub manager: Arc<crate::project::lifecycle::ProjectManager>,
@@ -25,6 +27,8 @@ pub struct AppContext {
 impl Default for AppContext {
     fn default() -> Self {
         Self {
+            assistant: Arc::new(crate::application::assistant::AssistantService::default()),
+            assistant_runs: Arc::new(crate::application::runtime::BookRuntime::default()),
             models: Arc::new(crate::models::ModelManager::new(crate::paths::app_data_dir().join("models"))),
             projects: Arc::new(FilesystemProjectService),
             book_edits: Arc::new(crate::application::book_edit::EditPreviews::default()),

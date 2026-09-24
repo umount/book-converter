@@ -173,6 +173,49 @@ export async function invokePreview<T>(
       result = view.chapter.revision;
       break;
     }
+    case "assistant_project_view":
+      result = previewAssistant;
+      break;
+    case "assistant_project_send":
+      previewAssistant.messages.push(
+        {
+          id: `user-${previewAssistant.messages.length}`,
+          role: "user",
+          text: args.message,
+        },
+        {
+          id: `assistant-${previewAssistant.messages.length}`,
+          role: "assistant",
+          text: "Предлагаю уточнить общий промпт книги. Проверьте изменение перед применением.",
+        },
+      );
+      previewAssistant.proposals.push({
+        id: `proposal-${previewAssistant.messages.length}`,
+        kind: "book_prompt",
+        before: previewPresentation.instructions,
+        after: "Сохраняй имена персонажей и единый стиль повествования.",
+      });
+      result = { ...previewAssistant };
+      break;
+    case "assistant_project_confirm": {
+      const proposal = previewAssistant.proposals.find(
+        (p) => p.id === args.proposalId,
+      );
+      if (args.approved && proposal) {
+        previewPresentation.instructions = proposal.after;
+        previewPresentation.revision = String(
+          Number(previewPresentation.revision) + 1,
+        );
+      }
+      previewAssistant.proposals = previewAssistant.proposals.filter(
+        (p) => p.id !== args.proposalId,
+      );
+      result = null;
+      break;
+    }
+    case "assistant_project_cancel":
+      result = null;
+      break;
     case "book_presentation_get":
       result = previewPresentation;
       break;
@@ -277,3 +320,6 @@ let previewPresentation: import("../shared/contracts/generated").BookPresentatio
     coverAssetId: null,
     revision: "0",
   };
+
+const previewAssistant: import("../shared/contracts/generated").AssistantView =
+  { messages: [], proposals: [] };

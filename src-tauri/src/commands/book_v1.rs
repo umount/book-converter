@@ -91,7 +91,7 @@ pub async fn book_start_translation(
     .map_err(|_| AppError::invalid("task"))??;
     dispatch_created(&context, app, job)
 }
-fn dispatch_created(
+pub(super) fn dispatch_created(
     context: &AppContext,
     app: tauri::AppHandle,
     job: JobRef,

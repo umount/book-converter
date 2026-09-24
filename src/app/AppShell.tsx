@@ -1,3 +1,4 @@
+import { Assistant } from "../features/assistant/Assistant";
 import {
   useCallback,
   useEffect,
@@ -72,9 +73,9 @@ function Shell({
     [library, setLibrary] = useState(true),
     [create, setCreate] = useState(false),
     [settings, setSettings] = useState(false);
-  const [panel, setPanel] = useState<"reader" | "glossary" | BookTool>(
-      "reader",
-    ),
+  const [panel, setPanel] = useState<
+      "reader" | "glossary" | "assistant" | BookTool
+    >("reader"),
     [filter, setFilter] = useState(""),
     [showJobs, setShowJobs] = useState(false),
     [force, setForce] = useState(false),
@@ -264,6 +265,7 @@ function Shell({
       ? ([
           "reader",
           "overview",
+          "assistant",
           "glossary",
           "reference",
           "replace",
@@ -520,6 +522,21 @@ function Shell({
                       t={t}
                     />
                   )
+                ) : panel === "assistant" ? (
+                  <Assistant
+                    key={project.id}
+                    projectId={project.id}
+                    chapterId={state.chapter?.chapter.id ?? null}
+                    t={t}
+                    registerFlush={registerFlush}
+                    refresh={async () => {
+                      await editor?.refresh();
+                    }}
+                    onJob={async (job) => {
+                      await jobs.refresh(job);
+                      setShowJobs(true);
+                    }}
+                  />
                 ) : panel === "reader" ? (
                   editor ? (
                     <BookReader session={editor} t={t} />
