@@ -975,3 +975,23 @@ used fake providers and synthetic local assets; no paid API request was made.
 - Validation: 185 Rust tests, frontend tests/build and Clippy. Browser preview checks
   covered isolated job lists when switching projects, deletion confirmation/cancel,
   glossary colors and live search, menu spacing and chapter progress display.
+
+### P06 book metadata, compact chapters and session restoration
+
+- Chapter lists prefer translated titles and retain original titles for reader/source
+  context and hover hints. Rows are 30 px with small status indicators; glossary rows
+  have reduced padding.
+- Import retains source title, author and annotation independently from manual overrides.
+  Metadata requests receive these fields explicitly and translate the source annotation
+  when supplied. New imports enable AI metadata by default, with an opt-out checkbox.
+  Explicit metadata generation backfills older projects from an available original file.
+- Annotation generation has its own visible action, preserves title/author overrides,
+  and replaces a manual annotation only upon successful revision-checked publication.
+  Completed metadata jobs refresh the overview without discarding unsaved form edits.
+- Cover selection is a placeholder with a plus; the same clickable area shows the loaded
+  image and opens replacement selection. The previous active project and selected book
+  chapter are restored on startup, with separate storage keys for synthetic previews.
+- Validation: 186 Rust tests including source metadata input, translated chapter titles
+  and atomic annotation replacement; frontend tests/build and Clippy. Browser fixture
+  verified third-chapter restoration, translated compact chapter rows, cover placeholder
+  and the annotation-generation action. No live AI request was made during verification.

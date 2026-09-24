@@ -69,7 +69,7 @@ export function createProjectApi(transport: Transport) {
       call<void>("glossary_delete", args),
     extractGlossary: (args: C.StartBookGlossaryArgs) =>
       call<C.JobRef>("book_start_glossary", args),
-    startMetadata: (args: C.ProjectArgs) =>
+    startMetadata: (args: C.StartBookMetadataArgs) =>
       call<C.JobRef>("book_start_metadata", args),
     presentation: (args: C.ProjectArgs) =>
       call<C.BookPresentation>("book_presentation_get", args),

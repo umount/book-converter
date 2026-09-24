@@ -229,10 +229,10 @@ button + button {
   min-height: 0;
 }
 .bc-chapters button {
-  height: 42px;
+  height: 30px;
   display: grid;
-  grid-template-columns: var(--chapter-digits, 1ch) minmax(0, 1fr);
-  grid-template-rows: 18px 15px;
+  grid-template-columns: var(--chapter-digits, 1ch) minmax(0, 1fr) 6px;
+  grid-template-rows: 18px;
   column-gap: 8px;
   align-content: center;
   width: 100%;
@@ -246,7 +246,7 @@ button + button {
   padding: 0 12px;
 }
 .bc-chapters button span {
-  grid-row: 1 / 3;
+  grid-row: 1;
   align-self: center;
   text-align: right;
   color: var(--muted);
@@ -448,10 +448,11 @@ button + button {
 .bc-term-grid {
   display: grid;
   grid-template-columns: 2fr 2fr 1fr 90px;
-  gap: 16px;
+  gap: 10px;
+  align-items: center;
   text-align: left;
   width: 100%;
-  padding: 16px 12px;
+  padding: 8px 12px;
 }
 .bc-term-heading {
   font-size: 11px;
@@ -951,15 +952,32 @@ button + button {
   vertical-align: middle;
 }
 .bc-chapters button small {
-  display: block;
-  grid-column: 2;
-  margin: 0;
-  line-height: 15px;
-  color: var(--muted);
+  grid-column: 3;
+  grid-row: 1;
+  align-self: center;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #686870;
+  font-size: 0;
   overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
+.bc-chapters button small[data-state="done"] {
+  background: #63ad83;
+}
+.bc-chapters button small[data-state="in_progress"] {
+  background: var(--accent);
+}
+.bc-chapters button small[data-state="failed"] {
+  background: #dd7777;
+}
+.bc-chapters button small[data-review] {
+  background: #ceaa62;
+}
+.bc-chapters button:hover:not(:disabled) {
+  background: #ffffff08;
+}
+
 .bc-chapter-search select {
   width: 100%;
   margin: 6px 0;
@@ -1704,4 +1722,48 @@ button + button {
 .bc-job-progress progress::-moz-progress-bar {
   background: var(--accent);
   border-radius: 4px;
+}
+
+.bc-cover-control {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+}
+.bc-cover-picker {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  width: 150px;
+  height: 210px;
+  padding: 0;
+  margin: 0;
+  overflow: hidden;
+  border: 1px dashed #55555f;
+  background: #202023;
+  color: var(--muted);
+}
+.bc-cover-picker > span {
+  font-size: 32px;
+  font-weight: 300;
+}
+.bc-cover-picker img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+.bc-cover-picker:hover {
+  border-color: var(--accent);
+  color: var(--text);
+}
+.bc-cover-remove {
+  font-size: 11px;
+  padding: 3px 0;
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+}
+.bc-summary-generate {
+  justify-self: start;
 }

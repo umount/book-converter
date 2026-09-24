@@ -27,13 +27,14 @@ function Tools({
   refresh,
   registerFlush,
 }: {
+  metadataRevision: string;
   translationControls: import("react").ReactNode;
   tool: BookTool;
   project: ProjectDescriptor;
   chapters: ChapterSummary[];
   session: BookEditorSession | null;
   t: T;
-  run: (kind: "metadata" | "glossary") => Promise<void>;
+  run: (kind: "metadata" | "summary" | "glossary") => Promise<void>;
   refresh: () => Promise<void>;
   registerFlush: (flush: (() => Promise<void>) | null) => void;
 }) {

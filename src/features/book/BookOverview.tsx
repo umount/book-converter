@@ -15,11 +15,13 @@ export function BookOverview({
   run,
   registerFlush,
   translationControls,
+  metadataRevision,
 }: {
+  metadataRevision: string;
   translationControls: import("react").ReactNode;
   project: ProjectDescriptor;
   t: T;
-  run: (kind: "metadata" | "glossary") => Promise<void>;
+  run: (kind: "metadata" | "summary" | "glossary") => Promise<void>;
   registerFlush: (flush: (() => Promise<void>) | null) => void;
 }) {
   const [details, setDetails] = useState<BookPresentation | null>(null);
@@ -28,6 +30,8 @@ export function BookOverview({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<unknown>(null);
   const lock = useRef(false);
+  const dirtyRef = useRef(false);
+  dirtyRef.current = dirty;
   useEffect(() => {
     let alive = true;
     void Promise.all([
@@ -36,7 +40,7 @@ export function BookOverview({
     ])
       .then(([d, m]) => {
         if (alive) {
-          setDetails(d);
+          if (!dirtyRef.current) setDetails(d);
           setMetadata(m);
         }
       })
@@ -46,7 +50,7 @@ export function BookOverview({
     return () => {
       alive = false;
     };
-  }, [project.id]);
+  }, [project.id, metadataRevision]);
   async function flush() {
     if (lock.current) throw new Error(t("processing"));
     if (!dirty || !details) return;
@@ -124,20 +128,11 @@ export function BookOverview({
           disabled={busy}
           style={{ border: 0, padding: 0, margin: 0, display: "grid", gap: 16 }}
         >
-          {details.coverAssetId && (
-            <img
-              src={assetUrl(project.id, details.coverAssetId)}
-              alt={t("cover")}
-              style={{
-                maxWidth: 180,
-                maxHeight: 260,
-                objectFit: "contain",
-                marginBottom: 16,
-              }}
-            />
-          )}
-          <div className="bc-actions">
+          <div className="bc-cover-control">
             <button
+              className="bc-cover-picker"
+              aria-label={t("chooseCover")}
+              title={t("chooseCover")}
               onClick={() =>
                 void act(async () => {
                   const path = await open({
@@ -153,10 +148,23 @@ export function BookOverview({
                 })
               }
             >
-              {t("chooseCover")}
+              {details.coverAssetId ? (
+                <img
+                  src={assetUrl(project.id, details.coverAssetId)}
+                  alt={t("cover")}
+                />
+              ) : (
+                <>
+                  <span aria-hidden="true">+</span>
+                  <small>{t("cover")}</small>
+                </>
+              )}
             </button>
             {details.coverAssetId && (
-              <button onClick={() => void act(() => setCover(null))}>
+              <button
+                className="bc-cover-remove"
+                onClick={() => void act(() => setCover(null))}
+              >
                 {t("removeCover")}
               </button>
             )}
@@ -167,12 +175,23 @@ export function BookOverview({
               {field === "summary" ? (
                 <textarea
                   rows={5}
-                  value={details[field] ?? metadata?.[field] ?? ""}
+                  value={
+                    details.summary ??
+                    (metadata?.summary || details.sourceSummary) ??
+                    ""
+                  }
                   onChange={(e) => change(field, e.target.value)}
                 />
               ) : (
                 <input
-                  value={details[field] ?? metadata?.[field] ?? ""}
+                  value={
+                    details[field] ??
+                    (metadata?.[field] ||
+                      details[
+                        field === "title" ? "sourceTitle" : "sourceAuthor"
+                      ]) ??
+                    ""
+                  }
                   onChange={(e) => change(field, e.target.value)}
                 />
               )}
@@ -183,6 +202,12 @@ export function BookOverview({
               )}
             </label>
           ))}
+          <button
+            className="bc-summary-generate"
+            onClick={() => void act(() => run("summary"))}
+          >
+            {t("generateSummary")}
+          </button>
           {metadata && !metadata.current && (
             <p className="bc-warning">{t("staleMetadata")}</p>
           )}

@@ -26,7 +26,7 @@ export function CreateProject({
   const [name, setName] = useState(""),
     [source, setSource] = useState(""),
     [target, setTarget] = useState(lang === "en" ? "en" : lang);
-  const [metadata, setMetadata] = useState(false),
+  const [metadata, setMetadata] = useState(true),
     [busy, setBusy] = useState(false),
     [error, setError] = useState<unknown>(null);
   const targetTouched = useRef(false);

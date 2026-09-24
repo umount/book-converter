@@ -41,6 +41,12 @@ import { Settings } from "./Settings";
 import { previewMode } from "../shared/api/desktop";
 import { translator, errorText, languageName } from "./strings";
 import { LS_LANG, normalizeLang } from "../i18n";
+const activeProjectKey = previewMode
+  ? "bc.preview.activeProject"
+  : "bc.activeProject";
+const lastChaptersKey = previewMode
+  ? "bc.preview.lastChapters"
+  : "bc.lastChapters";
 type Runtime = {
   workspace: WorkspaceStore;
   jobs: JobStore;
@@ -187,6 +193,9 @@ function Shell({
         if (alive) {
           setCatalog(next);
           for (const p of next) void jobs.watch(p.descriptor.id);
+          const last = localStorage.getItem(activeProjectKey);
+          if (last && next.some((p) => p.descriptor.id === last))
+            void activate(last).catch(setError);
         }
       })
       .catch(setError);
@@ -310,7 +319,30 @@ function Shell({
       }
     });
   }
-  const rememberedChapters = useRef(new Map<string, string>());
+  const rememberedChapters = useRef(
+    new Map<string, string>(
+      (() => {
+        try {
+          const value = JSON.parse(
+            localStorage.getItem(lastChaptersKey) || "{}",
+          );
+          return Object.entries(value).filter(
+            (entry): entry is [string, string] => typeof entry[1] === "string",
+          );
+        } catch {
+          return [];
+        }
+      })(),
+    ),
+  );
+  useEffect(() => {
+    if (!state.project || !state.chapter) return;
+    rememberedChapters.current.set(state.project.id, state.chapter.chapter.id);
+    localStorage.setItem(
+      lastChaptersKey,
+      JSON.stringify(Object.fromEntries(rememberedChapters.current)),
+    );
+  }, [state.project?.id, state.chapter?.chapter.id]);
   async function removeProject(id: string) {
     await act(async () => {
       const item = catalog.find((p) => p.descriptor.id === id)?.descriptor;
@@ -326,6 +358,14 @@ function Shell({
         return;
       await api.delete({ projectId: id });
       rememberedChapters.current.delete(id);
+      {
+        localStorage.setItem(
+          lastChaptersKey,
+          JSON.stringify(Object.fromEntries(rememberedChapters.current)),
+        );
+        if (localStorage.getItem(activeProjectKey) === id)
+          localStorage.removeItem(activeProjectKey);
+      }
       if (workspace.snapshot().project?.id === id) {
         workspace.close();
         setLibrary(true);
@@ -340,16 +380,17 @@ function Shell({
         previous.project.id,
         previous.chapter.chapter.id,
       );
+    const chapter = rememberedChapters.current.get(id);
     await workspace.open(id);
     const opened = workspace.snapshot();
     if (opened.error || opened.project?.id !== id) return;
-    const chapter = rememberedChapters.current.get(id);
     if (
       chapter &&
       opened.chapters.some((c) => c.id === chapter) &&
       opened.chapter?.chapter.id !== chapter
     )
       await workspace.selectChapter(chapter);
+    localStorage.setItem(activeProjectKey, id);
     setLibrary(false);
     setPanel("reader");
     setFilter("");
@@ -357,15 +398,15 @@ function Shell({
     await jobs.watch(id);
   }
   async function run(
-    kind: "metadata" | "glossary",
+    kind: "metadata" | "summary" | "glossary",
     batch?: { maxChapters: number; force: boolean },
   ) {
     if (!state.project) return;
     await editorRef.current?.flush();
     const projectId = state.project.id;
     if (kind === "glossary" && !batch) throw new Error(t("batchCount"));
-    const job = await (kind === "metadata"
-      ? api.startMetadata({ projectId })
+    const job = await (kind !== "glossary"
+      ? api.startMetadata({ projectId, summaryOnly: kind === "summary" })
       : api.extractGlossary({
           projectId,
           selection: { kind: "all" },
@@ -413,7 +454,9 @@ function Shell({
   ).length;
   const visibleChapters = state.chapters.filter(
     (c) =>
-      c.title.toLocaleLowerCase().includes(filter.toLocaleLowerCase()) &&
+      `${c.title} ${c.translatedTitle ?? ""}`
+        .toLocaleLowerCase()
+        .includes(filter.toLocaleLowerCase()) &&
       (chapterState === "all" ||
         (chapterState === "review"
           ? c.needsReview
@@ -728,7 +771,7 @@ function Shell({
                     <VirtualList
                       key={`${project.id}/${filter}/${chapterState}`}
                       items={visibleChapters}
-                      rowHeight={42}
+                      rowHeight={30}
                       className="bc-chapters"
                       renderRow={(c) => (
                         <button
@@ -744,8 +787,14 @@ function Shell({
                           }
                         >
                           <span>{c.position + 1}</span>
-                          <strong>{c.title}</strong>
-                          <small>
+                          <strong title={c.title}>
+                            {c.translatedTitle || c.title}
+                          </strong>
+                          <small
+                            data-state={c.status}
+                            data-review={c.needsReview || undefined}
+                            title={`${t(c.needsReview ? "review" : c.status === "failed" ? "chapterFailed" : c.status === "in_progress" ? "chapterInProgress" : c.status === "done" ? "chapterDone" : "chapterPending")}${c.origin ? ` · ${t(c.origin === "reference" ? "originReference" : c.origin === "manual" ? "originManual" : "originModel")}` : ""}`}
+                          >
                             {t(
                               c.status === "failed"
                                 ? "chapterFailed"
@@ -976,6 +1025,13 @@ function Shell({
                     session={editor}
                     t={t}
                     run={run}
+                    metadataRevision={jobList
+                      .filter(
+                        (j) =>
+                          j.kind === "book_metadata" && j.state === "succeeded",
+                      )
+                      .map((j) => `${j.job.jobId}/${j.revision}`)
+                      .join(",")}
                     refresh={async () => {
                       await editor?.refresh();
                     }}
@@ -1054,7 +1110,10 @@ function Shell({
               await reload();
               await activate(p.id);
               if (metadata) {
-                const job = await api.startMetadata({ projectId: p.id });
+                const job = await api.startMetadata({
+                  projectId: p.id,
+                  summaryOnly: false,
+                });
                 await jobs.refresh(job);
                 setShowJobs(true);
               }

@@ -52,6 +52,9 @@ const chapters = [
   needsReview: false,
   position,
   title,
+  translatedTitle: ["Последний паром", "Сад под дождём", "Письма с побережья"][
+    position
+  ],
   revision: "0",
 }));
 let previewReference: BookReferenceView = {
@@ -595,6 +598,9 @@ export async function invokePreview<T>(
 
 let previewPresentation: import("../shared/contracts/generated").BookPresentation =
   {
+    sourceTitle: "The Garden Beyond the Sea",
+    sourceAuthor: "",
+    sourceSummary: null,
     title: null,
     author: null,
     summary: null,
