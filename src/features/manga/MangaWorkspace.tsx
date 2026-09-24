@@ -1,3 +1,4 @@
+import { ProcessingStatus } from "./ProcessingStatus";
 import { RegionInspector } from "./RegionInspector";
 import { usePageView } from "./usePageView";
 import { PageCanvas } from "./PageCanvas";
@@ -124,7 +125,7 @@ function MangaProjectWorkspace({ projectId, t }: { projectId: string; t: T }) {
         />
       </aside>
       <div className="bc-manga-page">
-        <p className="bc-warning">{t("mangaUnavailable")}</p>
+        <ProcessingStatus projectId={projectId} t={t} />
         {(error != null || pageError != null) && (
           <p role="alert" className="bc-error">
             {errorText(error ?? pageError, t)}

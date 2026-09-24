@@ -209,6 +209,16 @@ export async function invokePreview<T>(
         revision: "1",
       };
       break;
+    case "manga_preflight":
+      result = { requirements: [
+        { stage: "detection", available: false, reasonKey: "mangaRecognitionProfileRequired" },
+        { stage: "recognition", available: false, reasonKey: "mangaRecognitionProfileRequired" },
+        { stage: "translation", available: false, reasonKey: "mangaTranslationProfileRequired" },
+        { stage: "masks", available: false, reasonKey: "mangaMasksUnavailable" },
+        { stage: "inpainting", available: false, reasonKey: "mangaInpaintingUnavailable" },
+        { stage: "lettering", available: false, reasonKey: "mangaLetteringUnavailable" },
+      ] };
+      break;
     case "manga_get_page": {
       const page = mangaPages.find((p) => p.id === args.pageId)!;
       const processed = page.position % 3 !== 2;

@@ -995,3 +995,25 @@ used fake providers and synthetic local assets; no paid API request was made.
   and atomic annotation replacement; frontend tests/build and Clippy. Browser fixture
   verified third-chapter restoration, translated compact chapter rows, cover placeholder
   and the annotation-generation action. No live AI request was made during verification.
+
+## P09 local processing preflight (2026-09-24)
+
+- Added the read-only `manga_preflight` service/IPC and a collapsed readiness panel
+  in the manga workspace. It reports all six stages and distinguishes missing
+  recognition/translation profiles, missing credentials, invalid provider setup
+  and adapters that have not been implemented.
+- Recognition admission and preflight share provider validation. Manga never falls
+  back to the book profile. Local readiness is not a claim that the remote model
+  supports images or passes OCR quality acceptance.
+- No requests, downloads or jobs are started by inspection. Downloaded experimental
+  LaMa weights cannot enable inpainting without its accepted runtime. Full automatic
+  processing remains unavailable while translation/masks/inpainting/lettering are missing.
+- Tests cover wrong-domain rejection, no mutation/job creation, no default-profile
+  fallback, missing/invalid credentials and incomplete capability gates. Synthetic
+  browser verification covered the collapsed panel and specific setup explanations.
+- Next: automatic text-pixel segmentation and cleanup runtime acceptance; then wire
+  dialogue translation and lettering into the durable page pipeline. Preserve the
+  explicit quality/resource gates in MANGA_TOOLING.md.
+- Validation: 190 Rust library tests, strict all-target Clippy, frontend tests/build
+  and generated-contract check passed. Provider checks were exercised with local
+  fakes; no live AI calls or production weight downloads were made.

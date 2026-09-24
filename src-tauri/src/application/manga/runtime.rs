@@ -24,14 +24,7 @@ pub fn prepare(manager: &ProjectManager, args: &StartMangaStageArgs) -> Result<J
             return Err(AppError::invalid("mangaStageUnavailable"));
         }
         let settings = shared::settings(db)?;
-        // Never silently reuse the book model for image uploads.
-        let selected = settings
-            .choices
-            .manga_recognition_profile
-            .as_deref()
-            .ok_or_else(|| AppError::invalid("mangaRecognitionProfile"))?;
-        let (profile, key) = provider_profile(Some(selected))?;
-        ChatCompletions::new(profile.clone(), key)?;
+        let (profile, _) = super::preflight::recognition_provider(&settings.choices)?;
         let id = uuid::Uuid::new_v4().to_string();
         create(
             db,

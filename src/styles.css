@@ -1779,3 +1779,14 @@ button + button {
 .bc-summary-generate {
   justify-self: start;
 }
+
+.bc-manga-preflight {
+  margin: 0 0 8px;
+  padding: 8px 12px;
+  text-align: left;
+  border-bottom: 1px solid var(--line);
+}
+.bc-manga-preflight summary { cursor: pointer; }
+.bc-manga-preflight ul { list-style: none; padding: 0; }
+.bc-manga-preflight li { display: grid; grid-template-columns: 150px minmax(0, 1fr); gap: 12px; padding: 5px 0; }
+.bc-manga-preflight li span { color: var(--muted); }

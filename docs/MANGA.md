@@ -86,3 +86,9 @@ The page workspace can inspect saved recognition results with selectable overlay
 and a collapsible right panel. It distinguishes unrecognized, empty and stale OCR
 and shows preserved manual-text flags. Region text is currently read-only in the UI.
 Opening or selecting a page never starts a paid recognition request.
+
+The workspace now exposes a local processing preflight with stage-specific reasons.
+Opening or refreshing it never uploads pages, downloads models or creates jobs.
+Configured recognition means the local profile validates, not that provider image
+access or OCR quality has been verified. Downloaded weights do not bypass missing
+segmentation, cleanup runtime or lettering capabilities.

@@ -240,3 +240,17 @@ pub async fn manga_get_page(
     .await
     .map_err(|_| AppError::invalid("task"))?
 }
+
+/// Inspect local setup without uploading pages, downloading weights or creating jobs.
+#[tauri::command]
+pub async fn manga_preflight(
+    context: tauri::State<'_, AppContext>,
+    args: ProjectArgs,
+) -> Result<crate::app::contracts::MangaPreflight, AppError> {
+    let manager = context.manager.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        manager.lease(&args.project_id)?.with_connection(|db, _| {
+            crate::application::manga::preflight::inspect(db)
+        })
+    }).await.map_err(|_| AppError::invalid("task"))?
+}
