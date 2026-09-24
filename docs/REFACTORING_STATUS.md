@@ -8,7 +8,8 @@ P02: completed. Versioned repositories, immutable assets and domain result persi
 P03: backend lifecycle implemented; reset execution and UI activation remain.
 P04: in_progress. Durable execution and structured provider transport implemented.
 P05: in_progress. Translation, context, editing, reference, export and metadata backend implemented.
-P06–P13: pending; typed frontend API methods prepared.
+P06: in_progress. Pure workspace/job state prepared; UI cutover remains.
+P07–P13: pending.
 
 ## Baseline (2026-09-23)
 
@@ -44,8 +45,9 @@ P06–P13: pending; typed frontend API methods prepared.
 
 ## Next executable step
 
-Continue P05 independent glossary extraction and shared settings/retarget integration,
-then P06 workspace integration. Close remaining P04 acceptance items before cutover.
+Continue P06 shell/wizard/editor integration using the new workspace/job state.
+Languages are immutable after project creation; do not implement language retarget.
+Close remaining P04/P05 acceptance items before declaring their phases complete.
 Plan snapshot committed as a45d990. Baseline formatting drift is recorded, not hidden.
 
 ## Evidence rules
@@ -239,3 +241,32 @@ fallback. Keep commits scoped; push only on user request.
   frontend tests and production build passed. Clippy's test-module ordering finding
   was corrected before this successful run. No paid request, native GUI smoke test,
   user-data reset or remote push was performed.
+
+
+## Fixed languages, glossary extraction and P06 state (2026-09-24)
+
+- User clarified that a project chooses its source/target languages once during
+  creation. Removed language changes from processing-profile update DTOs; added
+  repository validation and one-way SQL language locks. Staging resolves both
+  languages before publication. Catalog/open/archive import reject unconfirmed
+  language choices. No language-scoped glossary or runtime retarget was retained.
+- Added independent durable glossary extraction in bounded overlapping source
+  chunks. Source terms must occur in the input, output size is bounded, and the
+  result is saved atomically with the successful step. Existing targets/kinds/pins
+  are preserved; occurrences are stored per processed chapter without double-counting
+  on retries. Late source/settings/glossary results conflict instead of overwriting.
+- Added paginated glossary reads and guarded create/update/delete, plus read-only
+  project languages and editable provider roles. Profile updates invalidate derived
+  results without changing languages; identical settings are a no-op.
+- Added pure frontend WorkspaceStore and JobStore for P06. Stable IDs and request
+  generations reject late project/chapter responses. Per-project jobs survive visible
+  workspace switches; decimal revisions use BigInt, stale snapshots are ignored,
+  and events during a read coalesce without polling unchanged work.
+- Evidence: 289-test combined Rust regression passed before the added acceptance
+  tests; subsequently all 19 glossary-filtered tests and the fixed-language test
+  passed. These cover pins, atomic invalidation, stale edits, pagination and durable
+  resume without repeating the first successful chapter. Strict all-target Clippy,
+  generated TS contracts, frontend tests and production build passed.
+- Frontend tests cover rapid project/chapter switching, large revision counters,
+  interleaved background jobs and disposal. Stores are not yet connected to App;
+  the legacy UI remains until P06 cutover. No user data reset or paid AI request ran.
