@@ -538,3 +538,15 @@ fallback. Keep commits scoped; push only on user request.
 - Six book application tests passed, including a fake-provider batch/resume test that
   verifies reference/instruction context, truncation and preservation of a pinned target.
   Strict Clippy passed. Real-provider translation quality remains unmeasured.
+
+### P06 reference mapping for long books
+
+- Replaced one full reference dropdown per source chapter with two searchable,
+  paginated lists (50 rows each). Mapping lookup is indexed; choosing a source and
+  reference updates the draft, and the selected reference excerpt is visible.
+- Added explicit unmapping and retained save/navigation-flush revision checks.
+  Importing a replacement reference first flushes pending mapping edits.
+- Browser fixture with 20,000 reference chapters rendered only 50 target rows;
+  search for chapter 20,000, mapping and save were verified. Frontend tests/build
+  passed. This bounds rendered rows; reference loading still transfers all reference
+  text and needs a separate backend pagination/detail pass for large real books.

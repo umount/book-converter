@@ -1,6 +1,7 @@
 /** Deterministic, memory-only fixture for browser visual QA; never used in native builds. */
 import type {
   BookChapterView,
+  BookReferenceView,
   JobView,
   GlossaryTermView,
   ModelView,
@@ -48,6 +49,16 @@ const chapters = [
   title,
   revision: "0",
 }));
+let previewReference: BookReferenceView = {
+  chapters: Array.from({ length: 20000 }, (_, position) => ({
+    id: `reference-${position}`,
+    position,
+    title: `Глава ${position + 1}`,
+    text: `Пример референса для главы ${position + 1}.`,
+  })),
+  mappings: [],
+  fingerprint: "0",
+};
 const original = [
   "The last ferry left the harbour just before sunset. On the quay, Anna stood with a small suitcase and a letter she had read so often that the paper had softened along the folds.",
   "Beyond the water, the island was little more than a dark line. She could make out the white tower above the trees, and, below it, the garden her grandfather had described.",
@@ -326,7 +337,17 @@ export async function invokePreview<T>(
       };
       break;
     case "book_reference_get":
-      result = { chapters: [], mappings: [], fingerprint: "preview" };
+      result = previewReference;
+      break;
+    case "book_reference_map":
+      if (args.expectedFingerprint !== previewReference.fingerprint)
+        throw { code: "revision_conflict" };
+      previewReference = {
+        ...previewReference,
+        mappings: args.mappings,
+        fingerprint: String(Number(previewReference.fingerprint) + 1),
+      };
+      result = previewReference;
       break;
     case "glossary_list": {
       const matches = glossary.filter(

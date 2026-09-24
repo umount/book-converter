@@ -407,16 +407,6 @@ button + button {
   gap: 20px;
   margin: 20px 0;
 }
-.bc-mappings {
-  display: grid;
-  gap: 16px;
-  margin: 24px 0;
-}
-.bc-mappings label {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  align-items: center;
-}
 .bc-change-list {
   max-height: 45vh;
   overflow: auto;
@@ -710,9 +700,6 @@ button + button {
   .bc-kind-options {
     grid-template-columns: 1fr;
   }
-  .bc-mappings label {
-    grid-template-columns: 1fr;
-  }
   .bc-section-heading button {
     margin: 4px;
   }
@@ -798,3 +785,61 @@ button + button {
 .bc-search-results button { display: grid; gap: 8px; text-align: left; padding: 16px; }
 .bc-search-results span { white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.6; }
 .bc-found-block { outline: 2px solid var(--accent); outline-offset: -2px; }
+
+.bc-reference-columns {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 24px;
+}
+.bc-reference-columns section {
+  min-width: 0;
+}
+.bc-reference-columns label {
+  display: grid;
+  gap: 8px;
+}
+.bc-reference-pager {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin: 12px 0;
+  font-size: 12px;
+}
+.bc-reference-list {
+  max-height: 42vh;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.bc-reference-list button {
+  text-align: left;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+.bc-reference-list small {
+  display: block;
+  margin-top: 4px;
+  color: var(--muted);
+}
+.bc-reference-list button[aria-pressed="true"] {
+  border-color: var(--accent);
+  background: #242428;
+}
+.bc-reference-selection {
+  margin: 16px 0;
+}
+.bc-reference-selection > button {
+  margin-left: 12px;
+}
+.bc-reference-selection .bc-summary {
+  max-height: 160px;
+  overflow: auto;
+  color: var(--muted);
+}
+@media (max-width: 760px) {
+  .bc-reference-columns {
+    grid-template-columns: 1fr;
+  }
+}

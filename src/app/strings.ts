@@ -173,6 +173,9 @@ const en = {
   noMatches: "No matches",
   changes: "Changed blocks",
   referenceImport: "Import reference",
+  mappingHint:
+    "Select an original chapter, then its reference chapter. Save the mappings when finished.",
+  removeMapping: "Remove mapping",
   noReference:
     "Import a reference translation, then map its chapters explicitly.",
   unmapped: "Not mapped",
@@ -397,6 +400,9 @@ const ru: Record<Key, string> = {
   noMatches: "Совпадений нет",
   changes: "Изменяемые блоки",
   referenceImport: "Импортировать референс",
+  mappingHint:
+    "Выберите главу оригинала, затем соответствующую главу референса. После правок сохраните сопоставления.",
+  removeMapping: "Убрать сопоставление",
   noReference:
     "Импортируйте готовый перевод и сопоставьте его главы с оригиналом.",
   unmapped: "Не сопоставлено",
@@ -609,6 +615,8 @@ const zh: Record<Key, string> = {
   noMatches: "没有匹配项",
   changes: "修改的文本块",
   referenceImport: "导入参考译文",
+  mappingHint: "选择原文章节，再选择对应的参考章节。完成后保存对应关系。",
+  removeMapping: "移除对应关系",
   noReference: "导入参考译文并手动对应章节。",
   unmapped: "未对应",
   saveMappings: "保存对应关系",

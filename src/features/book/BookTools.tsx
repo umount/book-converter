@@ -1,3 +1,4 @@
+import { ReferenceMappings } from "./ReferenceMappings";
 import { BookOverview } from "./BookOverview";
 import { useEffect, useState } from "react";
 import { open, save } from "@tauri-apps/plugin-dialog";
@@ -285,6 +286,7 @@ function Tools({
                   ],
                 });
                 if (typeof path === "string") {
+                  await flushTools();
                   setReference(
                     await projectApi.importReference({
                       projectId: project.id,
@@ -302,47 +304,16 @@ function Tools({
             <p className="bc-hint">{t("noReference")}</p>
           ) : (
             <>
-              <div className="bc-mappings">
-                {chapters.map((chapter) => (
-                  <label key={chapter.id}>
-                    {chapter.title}
-                    <select
-                      value={
-                        reference.mappings.find(
-                          (m) => m.chapterId === chapter.id,
-                        )?.referenceId ?? ""
-                      }
-                      disabled={busy}
-                      onChange={(e) => {
-                        setMappingDirty(true);
-                        setReference({
-                          ...reference,
-                          mappings: [
-                            ...reference.mappings.filter(
-                              (m) => m.chapterId !== chapter.id,
-                            ),
-                            ...(e.target.value
-                              ? [
-                                  {
-                                    chapterId: chapter.id,
-                                    referenceId: e.target.value,
-                                  },
-                                ]
-                              : []),
-                          ],
-                        });
-                      }}
-                    >
-                      <option value="">{t("unmapped")}</option>
-                      {reference.chapters.map((c) => (
-                        <option key={c.id} value={c.id}>
-                          {c.title}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                ))}
-              </div>
+              <ReferenceMappings
+                chapters={chapters}
+                reference={reference}
+                disabled={busy}
+                t={t}
+                onChange={(value) => {
+                  setReference(value);
+                  setMappingDirty(true);
+                }}
+              />
               <button
                 className="primary"
                 disabled={busy}
