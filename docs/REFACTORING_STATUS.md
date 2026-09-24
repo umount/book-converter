@@ -5,11 +5,13 @@
 P00: completed. Baseline and deterministic fixtures.
 P01: completed. Typed contracts, composition boundary and frontend test harness.
 P02: completed. Versioned repositories, immutable assets and domain result persistence.
-P03: backend lifecycle implemented; reset execution and UI activation remain.
+P03: lifecycle wired to the new UI; explicit legacy reset executed. Native acceptance remains.
 P04: in_progress. Durable execution and structured provider transport implemented.
 P05: in_progress. Translation, context, editing, reference, export and metadata backend implemented.
-P06: in_progress. Pure workspace/job state prepared; UI cutover remains.
-P07–P13: pending.
+P06: in_progress. New shell, wizard, structural editor and supporting screens wired; native acceptance remains.
+P07: pending.
+P08: partial. Import/read-only page workspace available; model processing not implemented.
+P09–P13: pending.
 
 ## Baseline (2026-09-23)
 
@@ -45,7 +47,9 @@ P07–P13: pending.
 
 ## Next executable step
 
-Continue P06 shell/wizard/editor integration using the new workspace/job state.
+Run the P06 Linux Tauri import → metadata → translation → edit → search → export
+acceptance flow, including structural illustrations and native close/save handling.
+Then continue provider-role UI/streaming acceptance and P07 application-service tools.
 Languages are immutable after project creation; do not implement language retarget.
 Close remaining P04/P05 acceptance items before declaring their phases complete.
 Plan snapshot committed as a45d990. Baseline formatting drift is recorded, not hidden.
@@ -270,3 +274,45 @@ fallback. Keep commits scoped; push only on user request.
 - Frontend tests cover rapid project/chapter switching, large revision counters,
   interleaved background jobs and disposal. Stores are not yet connected to App;
   the legacy UI remains until P06 cutover. No user data reset or paid AI request ran.
+
+
+## P06 frontend cutover and explicit legacy reset (2026-09-24)
+
+- Replaced the old App, components, hooks, string-based reader, API/types and old
+  localization dictionary. No legacy frontend fallback remains. Kept the reusable
+  virtual list under shared/ui; new feature boundaries are projects/book/glossary/manga.
+- New project library and staged wizard choose kind before source and fix languages
+  at creation. Global target default only initializes the wizard. Opening projects
+  does not trigger AI. Optional metadata is explicitly submitted once after create.
+- Structural paired reader preserves image blocks. Serialized autosaves use translation
+  IDs/revisions and fetch the newly saved snapshot before the next block edit. Typing
+  during a request is retained; stale refreshes cannot overwrite a later edit. Conflicts
+  preserve drafts and prevent navigation. Instructions/reference mappings flush on
+  navigation, Ctrl/Cmd+S and native close; expected revisions/fingerprints are retained.
+- Added overview/metadata, glossary editing and extraction, explicit reference mapping,
+  guarded find/replace previews, book exports, archive import/export, provider defaults,
+  English/Russian/Chinese UI and Ctrl/Cmd+K command palette. Jobs remain visible across
+  projects and cancellation is independent of a conflicting editor draft.
+- Manga has a paginated read-only image workspace and shared glossary/archive actions.
+  The UI explicitly states that automatic processing needs configured models; no
+  manual/model-free processing fallback or unimplemented assistant tools are advertised.
+- Bare asset IDs resolve through the project's registered assets table, with safe filename
+  checks. Manga page cursors span volume boundaries and reject another-volume cursors.
+- Added a development-only memory fixture (`npm run dev`, `?preview=1`) for browser QA.
+  It is explicitly labelled and excluded from the production bundle. Browser checks at
+  the native 1100×760 window size covered layout, edit → chapter switch → return,
+  instruction isolation/save across chapters, glossary creation and the command palette.
+- Evidence: all 295 Rust library tests, strict all-target Clippy, generated contract check,
+  frontend transport/state/editor tests and production build passed. New tests cover
+  concurrent typing, conflict retention, stale refreshes, registered asset paths and
+  page pagination. A full native Tauri interaction flow and paid AI calls were not run;
+  P06 is not marked complete on browser fixture evidence alone.
+- At the user's explicit request, inspected and removed exactly two legacy project
+  directories with project/reset.rs through the explicit reset_legacy maintenance
+  example. No Book Converter process was running. The app project directory is empty;
+  settings.db and the existing external source were verified unchanged by SHA-256.
+  A persistent one-shot marker prevents repeat deletion. No startup reset was added.
+  One older manifest already pointed at a missing source before the reset.
+- The maintenance tool is read-only without `--apply --app-stopped`; callers must first
+  stop the application/writers. Legacy Rust handlers remain until application-service
+  extraction/P12 cleanup; the new frontend does not invoke them.
