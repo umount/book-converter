@@ -210,6 +210,45 @@ impl StepExecutor for BookPipeline {
             }
         })
     }
+    fn steps(&self, run: &runs::RunRecord) -> Vec<(String, String)> {
+        let mut steps = Vec::new();
+        if run.kind == "book_translation" && run.snapshot.stages.iter().any(|s| s == "glossary") {
+            steps.extend(
+                run.snapshot
+                    .selected_ids
+                    .iter()
+                    .map(|id| (id.clone(), "glossary".into())),
+            );
+        }
+        for id in &run.snapshot.selected_ids {
+            for stage in &run.snapshot.stages {
+                if run.kind == "book_translation" && stage == "glossary" {
+                    continue;
+                }
+                steps.push((id.clone(), stage.clone()));
+            }
+        }
+        steps
+    }
+    fn after_persist(
+        &self,
+        tx: &Transaction<'_>,
+        run: &runs::RunRecord,
+        stage: &str,
+    ) -> Result<(), AppError> {
+        if run.kind == "book_translation" && stage == "glossary" {
+            let mut snapshot = run.snapshot.clone();
+            snapshot.glossary_revision = shared::glossary_revision(tx)?;
+            let json =
+                serde_json::to_string(&snapshot).map_err(|_| AppError::invalid("jobSnapshot"))?;
+            tx.execute(
+                "UPDATE job_runs SET settings_snapshot=?1,revision=revision+1 WHERE id=?2",
+                rusqlite::params![json, run.id],
+            )
+            .map_err(storage_error)?;
+        }
+        Ok(())
+    }
     fn persist(&self, tx: &Transaction<'_>, output: BookOutput) -> Result<String, AppError> {
         match output {
             BookOutput::Glossary(value) => super::book_glossary::persist(tx, value),

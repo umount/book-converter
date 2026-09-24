@@ -79,6 +79,7 @@ function Shell({
     [filter, setFilter] = useState(""),
     [showJobs, setShowJobs] = useState(false),
     [force, setForce] = useState(false),
+    [extractGlossary, setExtractGlossary] = useState(true),
     [batchSizes, setBatchSizes] = useState<Record<string, string>>(() => {
       try {
         return JSON.parse(localStorage.getItem("bc.batchSizes") || "{}") || {};
@@ -244,6 +245,7 @@ function Shell({
         force,
         instructions: null,
         maxChapters: all ? Number(batchSize) : 1,
+        extractGlossary,
       },
     });
     await jobs.refresh(job);
@@ -495,6 +497,14 @@ function Shell({
                     onChange={(e) => setForce(e.target.checked)}
                   />
                   {t("force")}
+                </label>
+                <label className="bc-check">
+                  <input
+                    type="checkbox"
+                    checked={extractGlossary}
+                    onChange={(e) => setExtractGlossary(e.target.checked)}
+                  />
+                  {t("batchGlossary")}
                 </label>
                 <span className="bc-hint">{t("batchHint")}</span>
               </div>

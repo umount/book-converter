@@ -107,7 +107,11 @@ pub fn prepare_book_run(
             glossary_revision: shared::glossary_revision(db)?,
             selected_ids: selected,
             prompt_version: "book-segments-v1".into(),
-            stages: vec!["translation".into(), "context".into()],
+            stages: if options.extract_glossary {
+                vec!["glossary".into(), "translation".into(), "context".into()]
+            } else {
+                vec!["translation".into(), "context".into()]
+            },
             provider: Some(profile),
             instructions: Some(
                 [
@@ -366,6 +370,7 @@ mod batch_tests {
         db.execute("INSERT INTO book_translations(id,chapter_id,source_revision,status,provenance,target_language,translated_title,context_fingerprint,glossary_revision,revision) VALUES('t','c0',0,'ready','manual','ru','','',0,0)", []).unwrap();
         let mut options = TranslationOptions {
             max_chapters: 2,
+            extract_glossary: true,
             force: false,
             instructions: None,
         };

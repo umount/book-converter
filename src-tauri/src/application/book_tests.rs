@@ -108,6 +108,8 @@ async fn unknown_ids_are_rejected_and_malformed_repairs_are_bounded() {
 
 struct Echo {
     profile: ProviderProfile,
+    glossary_calls: std::sync::atomic::AtomicUsize,
+    fail_context_once: std::sync::atomic::AtomicBool,
 }
 impl Provider for Echo {
     fn profile(&self) -> &ProviderProfile {
@@ -118,16 +120,32 @@ impl Provider for Echo {
         request: Request,
     ) -> Pin<Box<dyn Future<Output = Result<Completion, AppError>> + Send + '_>> {
         Box::pin(async move {
-            let Request::Structured { user, .. } = request else {
+            let Request::Structured { user, system } = request else {
                 panic!("structured request expected")
             };
-            let text = if let Ok(mut payload) = serde_json::from_str::<serde_json::Value>(&user) {
+            let text = if system.starts_with("Extract at most") {
+                self.glossary_calls
+                    .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                let source = if user.contains("Original") {
+                    "Original"
+                } else {
+                    "Before"
+                };
+                serde_json::json!({"terms":[{"source":source,"target":"Термин","kind":"term"}]})
+                    .to_string()
+            } else if let Ok(mut payload) = serde_json::from_str::<serde_json::Value>(&user) {
                 for segment in payload["segments"].as_array_mut().unwrap() {
                     segment["text"] =
                         format!("Translated {}", segment["text"].as_str().unwrap()).into();
                 }
                 payload.to_string()
             } else {
+                if self
+                    .fail_context_once
+                    .swap(false, std::sync::atomic::Ordering::SeqCst)
+                {
+                    return Err(AppError::invalid("testContextFailure"));
+                }
                 r#"{"summary":"Continuity notes"}"#.into()
             };
             Ok(Completion {
@@ -140,7 +158,7 @@ impl Provider for Echo {
     }
 }
 #[tokio::test]
-async fn pipeline_translates_structural_fixture_and_keeps_images_in_place() {
+async fn pipeline_populates_batch_glossary_and_resumes_without_repeating_completed_steps() {
     use crate::{
         app::{
             contracts::ProjectKind,
@@ -177,12 +195,33 @@ async fn pipeline_translates_structural_fixture_and_keeps_images_in_place() {
     manager.lease(&project.id).unwrap().with_connection(|db,_|{
         let selected_ids={let mut query=db.prepare("SELECT id FROM book_chapters WHERE EXISTS(SELECT 1 FROM book_source_blocks WHERE chapter_id=book_chapters.id AND kind IN ('text','caption')) ORDER BY position").unwrap();let rows=query.query_map([],|r|r.get::<_,String>(0)).unwrap();rows.collect::<Result<Vec<_>,_>>().unwrap()};
         let settings=shared::settings(db)?;
-        runs::create_run(db,"run","book_translation",&runs::RunSnapshot{settings:settings.choices,settings_revision:settings.revision,glossary_revision:shared::glossary_revision(db)?,selected_ids,prompt_version:"book-v1".into(),stages:vec!["translation".into(),"context".into()],provider:Some(profile.clone()),instructions:None},"now")
+        runs::create_run(db,"run","book_translation",&runs::RunSnapshot{settings:settings.choices,settings_revision:settings.revision,glossary_revision:shared::glossary_revision(db)?,selected_ids,prompt_version:"book-v1".into(),stages:vec!["glossary".into(),"translation".into(),"context".into()],provider:Some(profile.clone()),instructions:None},"now")
     }).unwrap();
+    let provider = Arc::new(Echo {
+        profile,
+        glossary_calls: std::sync::atomic::AtomicUsize::new(0),
+        fail_context_once: AtomicBool::new(true),
+    });
     let pipeline = BookPipeline {
-        provider: Arc::new(Echo { profile }),
+        provider: provider.clone(),
         instructions: None,
     };
+    assert!(durable::execute(
+        &manager,
+        &project.id,
+        "run",
+        &pipeline,
+        Arc::new(AtomicBool::new(false)),
+        |_| {}
+    )
+    .await
+    .is_err());
+    assert_eq!(
+        provider
+            .glossary_calls
+            .load(std::sync::atomic::Ordering::SeqCst),
+        2
+    );
     durable::execute(
         &manager,
         &project.id,
@@ -193,7 +232,15 @@ async fn pipeline_translates_structural_fixture_and_keeps_images_in_place() {
     )
     .await
     .unwrap();
+    assert_eq!(
+        provider
+            .glossary_calls
+            .load(std::sync::atomic::Ordering::SeqCst),
+        2
+    );
     manager.lease(&project.id).unwrap().with_connection(|db,_|{
+        assert_eq!(shared::glossary(db)?.len(),2);
+        assert_eq!(runs::get_run(db,"run")?.snapshot.glossary_revision,shared::glossary_revision(db)?);
         assert_eq!(db.query_row("SELECT COUNT(*) FROM book_translations",[],|r|r.get::<_,i64>(0)).unwrap(),2);
         assert_eq!(db.query_row("SELECT COUNT(*) FROM book_contexts",[],|r|r.get::<_,i64>(0)).unwrap(),2);
         assert_eq!(db.query_row("SELECT COUNT(*) FROM book_source_blocks WHERE kind='image'",[],|r|r.get::<_,i64>(0)).unwrap(),3);

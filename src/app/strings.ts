@@ -103,6 +103,7 @@ const en = {
     "Applied to the next batch. Earlier translations remain available for review. Stop an active batch before changing its instructions.",
 
   batchCount: "Chapters per batch",
+  batchGlossary: "Extract terms before translating the batch",
   noEligibleChapters: "No untranslated text chapters in this selection.",
   batchHint:
     "Stops after this batch. Review translations and glossary before starting the next one.",
@@ -296,6 +297,7 @@ const ru: Record<Key, string> = {
     "Применяется к следующей партии. Предыдущие переводы сохраняются для проверки. Перед изменением инструкций остановите текущую партию.",
 
   batchCount: "Глав в партии",
+  batchGlossary: "Пополнять словарь перед переводом партии",
   noEligibleChapters: "В выбранной области нет непереведённых текстовых глав.",
   batchHint:
     "После партии перевод остановится. Проверьте перевод и словарь перед следующим запуском.",
@@ -479,6 +481,7 @@ const zh: Record<Key, string> = {
     "应用于下一批次。已有译文将保留供检查。修改说明前请停止当前批次。",
 
   batchCount: "每批章节数",
+  batchGlossary: "翻译本批次前提取术语",
   noEligibleChapters: "所选范围内没有待翻译的文本章节。",
   batchHint: "本批次完成后停止。开始下一批前请检查译文和术语表。",
   force: "替换现有译文",

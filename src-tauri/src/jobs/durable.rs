@@ -33,6 +33,28 @@ pub trait StepExecutor: Send + Sync {
         stage: &'a str,
     ) -> Pin<Box<dyn Future<Output = Result<Self::Output, AppError>> + Send + 'a>>;
     fn persist(&self, tx: &Transaction<'_>, output: Self::Output) -> Result<String, AppError>;
+    /// Domain-specific prerequisite order; each pair is still a durable step.
+    fn steps(&self, run: &runs::RunRecord) -> Vec<(String, String)> {
+        run.snapshot
+            .selected_ids
+            .iter()
+            .flat_map(|entity| {
+                run.snapshot
+                    .stages
+                    .iter()
+                    .map(move |stage| (entity.clone(), stage.clone()))
+            })
+            .collect()
+    }
+    /// Advance dependencies produced by this job in the same publication transaction.
+    fn after_persist(
+        &self,
+        _tx: &Transaction<'_>,
+        _run: &runs::RunRecord,
+        _stage: &str,
+    ) -> Result<(), AppError> {
+        Ok(())
+    }
     fn entity_kind(&self) -> &'static str;
 }
 
@@ -148,60 +170,61 @@ async fn execute_steps<E: StepExecutor>(
     project: &ProjectId,
 ) -> Result<(), AppError> {
     let run = lease.with_connection(|db, _| runs::get_run(db, id))?;
-    for entity in &run.snapshot.selected_ids {
-        for stage in &run.snapshot.stages {
-            if cancel.load(Ordering::Acquire) || lease.cancelled() {
-                return Err(cancelled());
-            }
-            let fingerprint = executor.fingerprint(lease, &run, entity, stage)?;
-            let prior=lease.with_connection(|db,_|db.query_row("SELECT attempt,state,input_fingerprint FROM job_steps WHERE run_id=?1 AND entity_kind=?2 AND entity_id=?3 AND stage=?4 ORDER BY attempt DESC LIMIT 1",params![id,executor.entity_kind(),entity,stage],|r|Ok((r.get::<_,u32>(0)?,r.get::<_,String>(1)?,r.get::<_,String>(2)?))).optional().map_err(storage_error))?;
-            if prior
-                .as_ref()
-                .is_some_and(|(_, state, hash)| state == "succeeded" && hash == &fingerprint)
-            {
-                continue;
-            }
-            let step = runs::StepAttempt {
-                id: uuid::Uuid::new_v4().to_string(),
-                run_id: id.into(),
-                entity_kind: executor.entity_kind().into(),
-                entity_id: entity.clone(),
-                stage: stage.clone(),
-                attempt: prior.map(|p| p.0 + 1).unwrap_or(1),
-                input_fingerprint: fingerprint,
-            };
-            lease.with_connection(|db, _| runs::begin_step(db, &step))?;
-            let start = std::time::Instant::now();
-            let output = tokio::select! {
-                result=executor.compute(lease,&run,entity,stage)=>result?,
-                _=async {while !cancel.load(Ordering::Acquire)&&!lease.cancelled(){tokio::time::sleep(Duration::from_millis(25)).await;}}=>return Err(cancelled()),
-            };
-            if cancel.load(Ordering::Acquire) || lease.cancelled() {
-                return Err(cancelled());
-            }
-            // Reject a result if its source or dependencies changed while the provider was working.
-            if executor.fingerprint(lease, &run, entity, stage)? != step.input_fingerprint {
-                return Err(AppError {
-                    code: ErrorCode::RevisionConflict,
-                    message_key: "errors.revisionConflict".into(),
-                    params: Default::default(),
-                    retryable: false,
-                });
-            }
-            lease.with_connection(|db, _| {
-                let tx = db.transaction().map_err(storage_error)?;
-                let reference = executor.persist(&tx, output)?;
-                runs::finish_step(
-                    &tx,
-                    &step.id,
-                    &reference,
-                    u32::try_from(start.elapsed().as_millis()).unwrap_or(u32::MAX),
-                )?;
-                tx.commit().map_err(storage_error)?;
-                Ok(())
-            })?;
-            emit(lease, project, id, sink)?;
+    for (entity, stage) in executor.steps(&run) {
+        let run = lease.with_connection(|db, _| runs::get_run(db, id))?;
+        let (entity, stage) = (&entity, &stage);
+        if cancel.load(Ordering::Acquire) || lease.cancelled() {
+            return Err(cancelled());
         }
+        let fingerprint = executor.fingerprint(lease, &run, entity, stage)?;
+        let prior=lease.with_connection(|db,_|db.query_row("SELECT attempt,state,input_fingerprint FROM job_steps WHERE run_id=?1 AND entity_kind=?2 AND entity_id=?3 AND stage=?4 ORDER BY attempt DESC LIMIT 1",params![id,executor.entity_kind(),entity,stage],|r|Ok((r.get::<_,u32>(0)?,r.get::<_,String>(1)?,r.get::<_,String>(2)?))).optional().map_err(storage_error))?;
+        if prior
+            .as_ref()
+            .is_some_and(|(_, state, hash)| state == "succeeded" && hash == &fingerprint)
+        {
+            continue;
+        }
+        let step = runs::StepAttempt {
+            id: uuid::Uuid::new_v4().to_string(),
+            run_id: id.into(),
+            entity_kind: executor.entity_kind().into(),
+            entity_id: entity.clone(),
+            stage: stage.clone(),
+            attempt: prior.map(|p| p.0 + 1).unwrap_or(1),
+            input_fingerprint: fingerprint,
+        };
+        lease.with_connection(|db, _| runs::begin_step(db, &step))?;
+        let start = std::time::Instant::now();
+        let output = tokio::select! {
+            result=executor.compute(lease,&run,entity,stage)=>result?,
+            _=async {while !cancel.load(Ordering::Acquire)&&!lease.cancelled(){tokio::time::sleep(Duration::from_millis(25)).await;}}=>return Err(cancelled()),
+        };
+        if cancel.load(Ordering::Acquire) || lease.cancelled() {
+            return Err(cancelled());
+        }
+        // Reject a result if its source or dependencies changed while the provider was working.
+        if executor.fingerprint(lease, &run, entity, stage)? != step.input_fingerprint {
+            return Err(AppError {
+                code: ErrorCode::RevisionConflict,
+                message_key: "errors.revisionConflict".into(),
+                params: Default::default(),
+                retryable: false,
+            });
+        }
+        lease.with_connection(|db, _| {
+            let tx = db.transaction().map_err(storage_error)?;
+            let reference = executor.persist(&tx, output)?;
+            executor.after_persist(&tx, &run, stage)?;
+            runs::finish_step(
+                &tx,
+                &step.id,
+                &reference,
+                u32::try_from(start.elapsed().as_millis()).unwrap_or(u32::MAX),
+            )?;
+            tx.commit().map_err(storage_error)?;
+            Ok(())
+        })?;
+        emit(lease, project, id, sink)?;
     }
     Ok(())
 }

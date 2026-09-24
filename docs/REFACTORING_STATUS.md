@@ -400,3 +400,17 @@ fallback. Keep commits scoped; push only on user request.
   the model downloader. Fixed separately in d29e438; all nine downloader tests passed.
 - P07 is in progress: broader tool/context coverage, native acceptance and actual
   provider response-quality testing remain. This does not complete the manga phases.
+
+### Batch glossary prerequisites
+
+- Translation batches now optionally extract terms from exactly their selected
+  chapters before translating any of them (enabled by default). Existing glossary
+  targets/pins are preserved by the shared extractor. The assistant's bounded batch
+  action uses the same prerequisite flow.
+- The durable executor supports domain-defined step ordering and transactional
+  dependency checkpoints. Only glossary revisions produced by the job are adopted;
+  outside edits still conflict. All extraction completes before translation, so
+  later extraction cannot invalidate completed translation steps during resume.
+- Extended the structural fixture test with glossary creation and an injected context
+  failure. Resume skips all completed extraction and translation work, keeps images,
+  and completes contexts. 307 Rust tests, strict Clippy, frontend tests/build passed.

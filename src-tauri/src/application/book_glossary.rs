@@ -73,6 +73,7 @@ pub async fn compute(
         let tx=db.transaction().map_err(storage_error)?;
         let settings=shared::settings(&tx)?;
         if settings.revision!=run.snapshot.settings_revision{return Err(conflict());}
+        if run.kind=="book_translation" && shared::glossary_revision(&tx)?!=run.snapshot.glossary_revision {return Err(conflict());}
         let source:i64=tx.query_row("SELECT revision FROM book_chapters WHERE id=?1",[chapter],|r|r.get(0)).map_err(storage_error)?;
         let mut q=tx.prepare("SELECT text FROM book_source_blocks WHERE chapter_id=?1 AND kind IN ('text','caption') ORDER BY position").map_err(storage_error)?;
         let rows=q.query_map([chapter],|r|r.get::<_,String>(0)).map_err(storage_error)?.collect::<Result<Vec<_>,_>>().map_err(storage_error)?;

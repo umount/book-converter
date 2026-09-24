@@ -96,6 +96,7 @@ pub struct UpdateChapterInstructionsArgs {
 pub struct TranslationOptions {
     // Maximum eligible chapters in this run; applied after skipping existing translations.
     pub max_chapters: u32,
+    pub extract_glossary: bool,
     pub force: bool,
     pub instructions: Option<String>,
 }

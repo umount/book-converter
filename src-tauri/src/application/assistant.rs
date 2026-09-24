@@ -352,6 +352,7 @@ fn prepare(
         Suggestion::TranslateBatch { count } => {
             let options = TranslationOptions {
                 max_chapters: count,
+                extract_glossary: true,
                 force: false,
                 instructions: None,
             };
