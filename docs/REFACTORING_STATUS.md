@@ -178,3 +178,24 @@ fallback. Keep commits scoped; push only on user request.
 - P04/P05 are not declared complete: streaming/role configuration and broader job
   acceptance remain; P05 metadata/glossary jobs, reference/edit tools and structured
   exports remain. The legacy UI/handlers are still present; reset was not executed.
+
+## P05 structural editing continuation (2026-09-24)
+
+- Added literal, Unicode-aware replacement preview across selected translated
+  chapters. Previews are scoped to a project, expire after 30 minutes, and have
+  explicit count/size bounds. Preview does not write domain data.
+- Apply consumes the preview and saves every chapter in one transaction, checking
+  source/settings/glossary/translation revisions. A conflict in a later chapter
+  rolls back earlier writes. Text resembling regex replacement syntax stays literal.
+- Added typed preview/apply and source-block editing IPC; source edits use the
+  repository's existing revision guard and downstream invalidation.
+- The replacement integration test passes, including stale-second-chapter rollback,
+  project isolation, single-use previews, and literal replacement text.
+- Follow-up evidence: all 4 durable runner tests passed, now including concurrent
+  projects and deletion while a request is pending. Strict Clippy, regenerated
+  contracts, frontend tests and production build passed after editing integration.
+- Provider credentials are now profile-scoped. Resume compares the saved endpoint
+  and profile ID against local configuration before loading its credential into the
+  transport; an imported snapshot cannot redirect the default key. The dedicated
+  credential-destination regression test passed. The legacy default key is used only
+  by the default profile; custom profiles require their own credential setting.

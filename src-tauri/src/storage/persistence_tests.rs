@@ -386,3 +386,78 @@ fn manual_translation_edit_publishes_snapshot_and_rejects_stale_editor() {
         "Translated"
     );
 }
+
+#[test]
+fn replacement_preview_is_literal_project_scoped_and_atomic() {
+    use crate::{
+        app::{
+            contracts::{EntitySelection, ProjectId},
+            requests::BookReplacePreviewArgs,
+        },
+        application::book_edit,
+    };
+    let mut db = book();
+    results::save_translation(&mut db, &translation()).unwrap();
+    db.execute(
+        "INSERT INTO book_chapters(id,position,source_title) VALUES('second',1,'Second')",
+        [],
+    )
+    .unwrap();
+    db.execute("INSERT INTO book_source_blocks(id,chapter_id,position,kind,text) VALUES('second-text','second',0,'text','Source')",[]).unwrap();
+    let mut second = translation();
+    second.id = "second-translation".into();
+    second.chapter_id = "second".into();
+    second.blocks = vec![("second-text".into(), "Translated".into())];
+    results::save_translation(&mut db, &second).unwrap();
+    let args = BookReplacePreviewArgs {
+        project_id: ProjectId::new(),
+        selection: EntitySelection::All,
+        search: "translated".into(),
+        replacement: "$1 literal".into(),
+        case_sensitive: false,
+    };
+    let prepared = book_edit::preview(&mut db, &args).unwrap();
+    assert_eq!(prepared.view.changes.len(), 2);
+    assert!(prepared
+        .view
+        .changes
+        .iter()
+        .all(|c| c.after == "$1 literal"));
+    let cache = book_edit::EditPreviews::default();
+    let view = cache.insert(prepared).unwrap();
+    assert!(cache.take(&ProjectId::new(), &view.preview_id).is_err());
+    let prepared = cache.take(&args.project_id, &view.preview_id).unwrap();
+    assert!(cache.take(&args.project_id, &view.preview_id).is_err());
+    results::edit_translation_block(
+        &mut db,
+        "second-translation",
+        "second-text",
+        &rev(0),
+        "Intervening edit",
+    )
+    .unwrap();
+    assert_eq!(
+        book_edit::apply(&mut db, prepared).unwrap_err().code,
+        ErrorCode::RevisionConflict
+    );
+    // The first chapter would have been written before the second conflict: it must roll back.
+    assert_eq!(count(&db, "book_translations"), 3);
+    let view = super::repository::ProjectRepository::new(&mut db, ProjectKind::Book)
+        .unwrap()
+        .chapter("chapter")
+        .unwrap();
+    assert_eq!(
+        view.blocks[0].translated_text.as_deref(),
+        Some("Translated")
+    );
+    let prepared = book_edit::preview(&mut db, &args).unwrap();
+    assert_eq!(book_edit::apply(&mut db, prepared).unwrap(), 1);
+    let view = super::repository::ProjectRepository::new(&mut db, ProjectKind::Book)
+        .unwrap()
+        .chapter("chapter")
+        .unwrap();
+    assert_eq!(
+        view.blocks[0].translated_text.as_deref(),
+        Some("$1 literal")
+    );
+}

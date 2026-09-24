@@ -21,7 +21,7 @@ pub(crate) fn storage_error(_: rusqlite::Error) -> AppError {
 pub(super) fn not_found() -> AppError {
     failure(ErrorCode::NotFound, "errors.entityNotFound")
 }
-pub(super) fn conflict() -> AppError {
+pub(crate) fn conflict() -> AppError {
     failure(ErrorCode::RevisionConflict, "errors.revisionConflict")
 }
 

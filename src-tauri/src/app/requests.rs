@@ -122,6 +122,21 @@ pub struct BookReplaceApplyArgs {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+pub struct BookReplaceChange {
+    pub chapter_id: ChapterId,
+    pub block_id: BlockId,
+    pub before: String,
+    pub after: String,
+}
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+pub struct BookReplacePreview {
+    pub preview_id: String,
+    pub changes: Vec<BookReplaceChange>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct BookExportArgs {
     pub project_id: ProjectId,
@@ -532,6 +547,8 @@ pub fn typescript() -> String {
         BookReferenceImportArgs::decl(&config),
         BookReplacePreviewArgs::decl(&config),
         BookReplaceApplyArgs::decl(&config),
+        BookReplaceChange::decl(&config),
+        BookReplacePreview::decl(&config),
         BookExportArgs::decl(&config),
         ListMangaPagesArgs::decl(&config),
         GetMangaPageArgs::decl(&config),

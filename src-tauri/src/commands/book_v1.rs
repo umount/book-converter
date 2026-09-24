@@ -235,3 +235,54 @@ pub async fn job_list(
     .await
     .map_err(|_| AppError::invalid("task"))?
 }
+
+#[tauri::command]
+pub async fn book_replace_preview(
+    context: State<'_, AppContext>,
+    args: BookReplacePreviewArgs,
+) -> Result<BookReplacePreview, AppError> {
+    let manager = context.manager.clone();
+    let edits = context.book_edits.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let preview = manager
+            .lease(&args.project_id)?
+            .with_connection(|db, _| crate::application::book_edit::preview(db, &args))?;
+        edits.insert(preview)
+    })
+    .await
+    .map_err(|_| AppError::invalid("task"))?
+}
+#[tauri::command]
+pub async fn book_replace_apply(
+    context: State<'_, AppContext>,
+    args: BookReplaceApplyArgs,
+) -> Result<u32, AppError> {
+    let manager = context.manager.clone();
+    let edits = context.book_edits.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let lease = manager.lease(&args.project_id)?;
+        let preview = edits.take(&args.project_id, &args.preview_id)?;
+        lease.with_connection(|db, _| crate::application::book_edit::apply(db, preview))
+    })
+    .await
+    .map_err(|_| AppError::invalid("task"))?
+}
+
+#[tauri::command]
+pub async fn book_update_block(
+    context: State<'_, AppContext>,
+    args: UpdateBookBlockArgs,
+) -> Result<crate::app::contracts::Revision, AppError> {
+    let manager = context.manager.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        manager.lease(&args.project_id)?.with_connection(|db, _| {
+            crate::storage::repository::ProjectRepository::new(
+                db,
+                crate::app::contracts::ProjectKind::Book,
+            )?
+            .update_book_text(&args.block_id.0, &args.expected_revision, &args.text)
+        })
+    })
+    .await
+    .map_err(|_| AppError::invalid("task"))?
+}
