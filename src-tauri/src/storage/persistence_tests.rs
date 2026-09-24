@@ -738,3 +738,48 @@ fn glossary_api_paginates_and_rejects_a_stale_editor() {
         ErrorCode::RevisionConflict
     );
 }
+
+#[test]
+fn replacement_after_glossary_change_preserves_review_and_rejects_later_changes() {
+    use crate::{app::{contracts::{EntitySelection, ProjectId}, requests::BookReplacePreviewArgs}, application::book_edit};
+    let mut db = book();
+    results::save_translation(&mut db, &translation()).unwrap();
+    let args = BookReplacePreviewArgs {
+        project_id: ProjectId::new(), selection: EntitySelection::All,
+        search: "Translated".into(), replacement: "Corrected".into(), case_sensitive: true,
+    };
+    let old_preview = book_edit::preview(&mut db, &args).unwrap();
+    db.execute("UPDATE glossary_state SET revision=revision+1", []).unwrap();
+    db.execute("UPDATE book_translations SET status='needs_review'", []).unwrap();
+    assert_eq!(book_edit::apply(&mut db, old_preview).unwrap_err().code, ErrorCode::RevisionConflict);
+    let current = book_edit::preview(&mut db, &args).unwrap();
+    assert_eq!(book_edit::apply(&mut db, current).unwrap(), 1);
+    let (status, text): (String, String) = db.query_row(
+        "SELECT status,translated_text FROM book_translations JOIN book_translation_blocks ON translation_id=book_translations.id ORDER BY revision DESC LIMIT 1",
+        [], |r| Ok((r.get(0)?, r.get(1)?))).unwrap();
+    assert_eq!(status, "needs_review");
+    assert_eq!(text, "Corrected");
+    let second = BookReplacePreviewArgs { search: "Corrected".into(), replacement: "Next".into(), ..args };
+    let pending = book_edit::preview(&mut db, &second).unwrap();
+    db.execute("UPDATE project_settings SET revision=revision+1", []).unwrap();
+    assert_eq!(book_edit::apply(&mut db, pending).unwrap_err().code, ErrorCode::RevisionConflict);
+    assert_eq!(count(&db, "book_translations"), 2);
+}
+
+#[test]
+fn manual_editor_can_correct_outdated_translation_without_clearing_review() {
+    let mut db = book();
+    let original = translation();
+    results::save_translation(&mut db, &original).unwrap();
+    db.execute("UPDATE glossary_state SET revision=1", []).unwrap();
+    db.execute("UPDATE project_settings SET revision=1", []).unwrap();
+    db.execute("UPDATE book_chapters SET revision=1", []).unwrap();
+    db.execute("UPDATE book_translations SET status='needs_review'", []).unwrap();
+    assert_eq!(results::edit_translation_block(&mut db, &original.id, "text", &rev(0), "Manual correction").unwrap(), rev(1));
+    let (status, text): (String, String) = db.query_row(
+        "SELECT status,translated_text FROM book_translations JOIN book_translation_blocks ON translation_id=book_translations.id ORDER BY revision DESC LIMIT 1", [],
+        |r| Ok((r.get(0)?,r.get(1)?))).unwrap();
+    assert_eq!(status, "needs_review");
+    assert_eq!(text, "Manual correction");
+    assert_eq!(results::edit_translation_block(&mut db, &original.id, "text", &rev(0), "Late edit").unwrap_err().code, ErrorCode::RevisionConflict);
+}

@@ -252,7 +252,7 @@ pub fn edit_translation_block(
     text: &str,
 ) -> Result<Revision, AppError> {
     let tx = db.transaction().map_err(storage_error)?;
-    let (chapter,title,source,settings_rev,glossary,revision,context):(String,String,i64,i64,i64,i64,String)=tx.query_row("SELECT chapter_id,translated_title,source_revision,settings_revision,glossary_revision,revision,context_fingerprint FROM book_translations WHERE id=?1",[id],|r|Ok((r.get(0)?,r.get(1)?,r.get(2)?,r.get(3)?,r.get(4)?,r.get(5)?,r.get(6)?))).optional().map_err(storage_error)?.ok_or_else(not_found)?;
+    let (chapter,title,source,settings_rev,glossary,revision,context,status):(String,String,i64,i64,i64,i64,String,String)=tx.query_row("SELECT chapter_id,translated_title,source_revision,settings_revision,glossary_revision,revision,context_fingerprint,status FROM book_translations WHERE id=?1",[id],|r|Ok((r.get(0)?,r.get(1)?,r.get(2)?,r.get(3)?,r.get(4)?,r.get(5)?,r.get(6)?,r.get(7)?))).optional().map_err(storage_error)?.ok_or_else(not_found)?;
     if revision != expected.value()? {
         return Err(conflict());
     }
@@ -269,15 +269,29 @@ pub fn edit_translation_block(
         return Err(AppError::invalid("translationBlock"));
     };
     target.1 = text.into();
+    let current_settings = settings(&tx)?;
+    let current_glossary = glossary_revision(&tx)?;
+    let current_source: i64 = tx
+        .query_row(
+            "SELECT revision FROM book_chapters WHERE id=?1",
+            [&chapter],
+            |r| r.get(0),
+        )
+        .map_err(storage_error)?;
+    let needs_review = status != "ready"
+        || source != current_source
+        || settings_rev != current_settings.revision.value()?
+        || glossary != current_glossary.value()?;
+    let new_id = uuid::Uuid::new_v4().to_string();
     let result = save_translation_in(
         &tx,
         &BookTranslation {
-            id: uuid::Uuid::new_v4().to_string(),
+            id: new_id.clone(),
             chapter_id: chapter,
             inputs: InputVersions {
-                source: Revision(source.to_string()),
-                settings: Revision(settings_rev.to_string()),
-                glossary: Revision(glossary.to_string()),
+                source: Revision(current_source.to_string()),
+                settings: current_settings.revision,
+                glossary: current_glossary,
             },
             expected_translation: Some(expected.clone()),
             title,
@@ -286,6 +300,13 @@ pub fn edit_translation_block(
             blocks,
         },
     )?;
+    if needs_review {
+        tx.execute(
+            "UPDATE book_translations SET status='needs_review' WHERE id=?1",
+            [&new_id],
+        )
+        .map_err(storage_error)?;
+    }
     tx.commit().map_err(storage_error)?;
     Ok(result)
 }

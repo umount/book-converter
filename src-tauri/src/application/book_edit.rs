@@ -12,7 +12,7 @@ use crate::{
 };
 use rusqlite::Connection;
 use std::{
-    collections::HashMap,
+    collections::{HashMap, HashSet},
     sync::Mutex,
     time::{Duration, Instant},
 };
@@ -21,6 +21,7 @@ pub struct PreparedReplacement {
     project: ProjectId,
     created: Instant,
     translations: Vec<BookTranslation>,
+    needs_review: HashSet<String>,
     pub view: BookReplacePreview,
 }
 #[derive(Default)]
@@ -78,12 +79,14 @@ pub fn preview(
         rows.collect::<Result<Vec<_>, _>>().map_err(storage_error)?
     };
     let mut translations = Vec::new();
+    let mut needs_review = HashSet::new();
     let mut changes = Vec::new();
     let mut bytes = 0usize;
     for chapter in args.selection.resolve(&ordered)? {
         use rusqlite::OptionalExtension;
-        let row = tx.query_row("SELECT id,revision,translated_title,source_revision,settings_revision,glossary_revision,context_fingerprint FROM book_translations WHERE chapter_id=?1 AND target_language=?2 ORDER BY revision DESC LIMIT 1", rusqlite::params![chapter,settings.choices.target_language], |r| Ok((r.get::<_,String>(0)?,r.get::<_,i64>(1)?,r.get::<_,String>(2)?,r.get::<_,i64>(3)?,r.get::<_,i64>(4)?,r.get::<_,i64>(5)?,r.get::<_,String>(6)?))).optional().map_err(storage_error)?;
-        let Some((id, revision, title, source, setting_rev, glossary_rev, context)) = row else {
+        let row = tx.query_row("SELECT id,revision,translated_title,source_revision,settings_revision,glossary_revision,context_fingerprint,status FROM book_translations WHERE chapter_id=?1 AND target_language=?2 ORDER BY revision DESC LIMIT 1", rusqlite::params![chapter,settings.choices.target_language], |r| Ok((r.get::<_,String>(0)?,r.get::<_,i64>(1)?,r.get::<_,String>(2)?,r.get::<_,i64>(3)?,r.get::<_,i64>(4)?,r.get::<_,i64>(5)?,r.get::<_,String>(6)?,r.get::<_,String>(7)?))).optional().map_err(storage_error)?;
+        let Some((id, revision, title, source, setting_rev, glossary_rev, context, status)) = row
+        else {
             continue;
         };
         let mut q = tx.prepare("SELECT source_block_id,translated_text FROM book_translation_blocks JOIN book_source_blocks ON book_source_blocks.id=source_block_id WHERE translation_id=?1 ORDER BY position").map_err(storage_error)?;
@@ -115,15 +118,27 @@ pub fn preview(
         if changes.len() == before_count {
             continue;
         }
-        if setting_rev.to_string() != settings.revision.0 || glossary_rev.to_string() != glossary.0
+        let current_source: i64 = tx
+            .query_row(
+                "SELECT revision FROM book_chapters WHERE id=?1",
+                [&chapter],
+                |r| r.get(0),
+            )
+            .map_err(storage_error)?;
+        // A reviewed literal edit is allowed on an older translation. It does not
+        // establish that the rest of the chapter meets the updated book inputs.
+        if status != "ready"
+            || source != current_source
+            || setting_rev.to_string() != settings.revision.0
+            || glossary_rev.to_string() != glossary.0
         {
-            return Err(crate::storage::repository::conflict());
+            needs_review.insert(chapter.clone());
         }
         translations.push(BookTranslation {
             id: uuid::Uuid::new_v4().to_string(),
             chapter_id: chapter,
             inputs: InputVersions {
-                source: crate::app::contracts::Revision(source.to_string()),
+                source: crate::app::contracts::Revision(current_source.to_string()),
                 settings: settings.revision.clone(),
                 glossary: glossary.clone(),
             },
@@ -138,6 +153,7 @@ pub fn preview(
         project: args.project_id.clone(),
         created: Instant::now(),
         translations,
+        needs_review,
         view: BookReplacePreview {
             preview_id: uuid::Uuid::new_v4().to_string(),
             changes,
@@ -149,6 +165,13 @@ pub fn apply(db: &mut Connection, preview: PreparedReplacement) -> Result<u32, A
     let tx = db.transaction().map_err(storage_error)?;
     for translation in &preview.translations {
         results::save_translation_in(&tx, translation)?;
+        if preview.needs_review.contains(&translation.chapter_id) {
+            tx.execute(
+                "UPDATE book_translations SET status='needs_review' WHERE id=?1",
+                [&translation.id],
+            )
+            .map_err(storage_error)?;
+        }
     }
     tx.commit().map_err(storage_error)?;
     Ok(preview.view.changes.len() as u32)

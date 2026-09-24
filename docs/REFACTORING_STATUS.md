@@ -514,3 +514,15 @@ fallback. Keep commits scoped; push only on user request.
   contracts and strict all-target Clippy passed.
 - Browser fixture verified searching `остров` returns `the island`, then enabling
   pinned-only returns zero matches. Filtered empty results have their own message.
+
+### P05 manual corrections after glossary/prompt changes
+
+- Fixed literal replacement and reader edits rejecting retained translations after
+  glossary, settings or chapter-instruction revisions changed. Manual corrections
+  capture current inputs and preserve `needs_review` rather than claiming that a
+  local edit revalidated the entire chapter.
+- Preview publication still rejects any input/translation changes after preparation;
+  reader saves still reject an obsolete translation version. Multi-chapter replacement
+  remains atomic. Added regressions for review retention and stale-write rejection.
+- Strict all-target Clippy passed; full library test results recorded below.
+- Full library suite passed: 315 tests.
