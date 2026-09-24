@@ -1,4 +1,9 @@
 //! Project identity and manifest validation, independent of the legacy session.
+mod archive;
+mod import;
+pub mod lifecycle;
+pub mod reset;
+
 use crate::app::contracts::{
     AppError, ProjectDescriptor, ProjectId, ProjectKind, SourceDescriptor,
 };
@@ -14,6 +19,8 @@ pub struct Manifest {
     pub name: String,
     pub created_at: String,
     pub source: SourceDescriptor,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub import_id: Option<String>,
 }
 
 impl Manifest {
@@ -98,3 +105,6 @@ mod tests {
         );
     }
 }
+
+#[cfg(test)]
+mod lifecycle_tests;

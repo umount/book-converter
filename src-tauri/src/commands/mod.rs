@@ -18,7 +18,7 @@ mod settings;
 mod translation;
 mod util;
 
-pub use crate::session::{cleanup_legacy_data, AppState};
+pub use crate::session::AppState;
 // Tauri's command macro generates hidden companion symbols next to each
 // function; wildcard re-exports intentionally carry those symbols to the flat
 // namespace consumed by `generate_handler!`.

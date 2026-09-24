@@ -4,8 +4,10 @@
 
 P00: completed. Baseline and deterministic fixtures.
 P01: completed. Typed contracts, composition boundary and frontend test harness.
-P02: in_progress. Initial domain repositories and AssetStore protocol reads added.
-P03–P13: pending. No production behavior has been replaced yet.
+P02: completed. Versioned repositories, immutable assets and domain result persistence.
+P03: backend lifecycle implemented; reset execution and UI activation remain.
+P04: in_progress. Durable execution is being connected.
+P05–P13: pending; initial source normalization was added for lifecycle tests.
 
 ## Baseline (2026-09-23)
 
@@ -41,8 +43,8 @@ P03–P13: pending. No production behavior has been replaced yet.
 
 ## Next executable step
 
-Implement P03 staged lifecycle and source normalization. At the next major boundary,
-run final P02/P03 regression and Clippy before marking phases complete.
+Continue P04 durable execution and structured AI transport, then connect the P05
+book pipeline. Run combined regression before the next large milestone.
 Plan snapshot committed as a45d990. Baseline formatting drift is recorded, not hidden.
 
 ## Evidence rules
@@ -129,3 +131,23 @@ fallback. Keep commits scoped; push only on user request.
 - Targeted storage run: 13 tests passed. Clippy found one test assertion style issue,
   corrected before commit. Final regression/Clippy is deferred to the next major
   boundary per the user's request to avoid rebuilding every intermediate state.
+
+## P03 lifecycle backend (2026-09-24)
+
+- Added staged source inspection, choice resolution, idempotent creation, validated
+  catalog/open, cancellation and deletion barriers. A project lease covers the
+  lifetime of network work and DB writes; deletion cancels and waits for leases.
+- Added source normalization for existing book parsers and CBZ/ZIP manga fixtures.
+  EPUB short asset IDs are remapped to full content hashes; repeated image occurrences
+  retain separate block/page IDs. No AI call is made by inspect/create/open.
+- Archive export uses VACUUM INTO plus registered immutable assets. Import rejects
+  unsafe/duplicate entries, validates integrity/FKs and image hashes, generates a
+  new project ID, and marks interrupted work explicitly.
+- Added one-shot legacy reset with exact candidate enumeration and a mandatory
+  quiescence callback. Removed automatic legacy cleanup from application startup.
+  The reset is not invoked on actual user data yet; UI-key clearing belongs to cutover.
+- 270 library tests and strict Clippy passed at this boundary, including real fixture
+  import, archive roundtrip, duplicate images, cancellation and deletion waiting.
+  The subsequently added reset test is included in the next combined regression.
+- Commands are registered, but the old UI still uses its old command set until P06.
+  RAR/folder ingestion and EXIF normalization remain P08 work, not claimed here.

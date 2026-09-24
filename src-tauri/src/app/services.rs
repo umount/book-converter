@@ -16,12 +16,16 @@ impl ProjectService for FilesystemProjectService {
 
 pub struct AppContext {
     pub projects: Arc<dyn ProjectService>,
+    pub manager: Arc<crate::project::lifecycle::ProjectManager>,
 }
 
 impl Default for AppContext {
     fn default() -> Self {
         Self {
             projects: Arc::new(FilesystemProjectService),
+            manager: Arc::new(crate::project::lifecycle::ProjectManager::new(
+                crate::paths::app_data_dir(),
+            )),
         }
     }
 }
@@ -50,6 +54,7 @@ mod tests {
     fn injected_service_preserves_structured_errors() {
         let context = AppContext {
             projects: Arc::new(FakeProjects),
+            ..AppContext::default()
         };
         assert_eq!(
             context.inspect_manifest("example/manifest.json"),

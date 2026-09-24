@@ -110,17 +110,6 @@ pub(crate) fn db_path_for_project(id: &str) -> anyhow::Result<String> {
     Ok(dir.join("progress.db").to_string_lossy().into_owned())
 }
 
-/// Remove legacy flat `*.progress.db` files from before the per-project layout.
-pub fn cleanup_legacy_data() {
-    if let Ok(entries) = std::fs::read_dir(app_data_dir()) {
-        for e in entries.flatten() {
-            if e.file_name().to_string_lossy().ends_with(".progress.db") {
-                let _ = std::fs::remove_file(e.path());
-            }
-        }
-    }
-}
-
 /// Project manifest, stored as `project.json` and bundled into an archive so a
 /// project is self-describing.
 #[derive(Serialize, Deserialize, Default)]

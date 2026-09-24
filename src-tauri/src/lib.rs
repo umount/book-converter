@@ -18,7 +18,7 @@ mod dto;
 mod export;
 mod glossary;
 mod i18n;
-mod jobs;
+pub mod jobs;
 mod language;
 mod orchestrator;
 mod paths;
@@ -46,8 +46,6 @@ pub fn run() {
 
     tracing::info!("book-converter starting");
 
-    // Drop legacy flat progress DBs from before the per-project layout.
-    commands::cleanup_legacy_data();
 
     tauri::Builder::default()
         .manage(app::services::AppContext::default())
@@ -80,6 +78,15 @@ pub fn run() {
         .manage(std::sync::Arc::new(assistant::AssistantRuntime::new()))
         .invoke_handler(tauri::generate_handler![
             commands::project_inspect_manifest,
+            commands::project_list,
+            commands::project_inspect_source,
+            commands::project_create,
+            commands::project_cancel_import,
+            commands::project_open,
+            commands::project_delete,
+            commands::project_archive_export,
+            commands::project_archive_import,
+
             commands::load_source,
             commands::open_project,
             commands::set_project_languages,

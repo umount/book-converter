@@ -2,7 +2,7 @@
 
 > Execution plan and handoff document for another coding agent.
 > Prepared on 2026-09-23 against source HEAD `d636c5d`.
-> Execution status: P00 and P01 complete; P02 in progress.
+> Execution status: P00–P02 complete; P03/P04 in progress.
 > See [REFACTORING_STATUS.md](REFACTORING_STATUS.md) for current evidence.
 > Breaking changes to code, APIs and project storage are explicitly allowed.
 
@@ -433,7 +433,7 @@ Dependencies: P00.
 Acceptance: synchronized Rust/TS contract; no Tauri imports in pure models.
 Commit: `refactor(core): define project and execution contracts`.
 
-### [ ] P02 — New schema and AssetStore
+### [x] P02 — New schema and AssetStore
 
 Dependencies: P01.
 
