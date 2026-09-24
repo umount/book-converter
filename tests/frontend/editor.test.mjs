@@ -44,3 +44,57 @@ test("failed title save retains the title draft until explicit discard", async (
  const session=new BookEditorSession({chapter:async()=>view("3"),editTitle:async()=>{throw {code:"revision_conflict"};}},"p",view());
  session.editTitle("Unsaved title");await assert.rejects(session.flush());assert.equal(session.snapshot().drafts.size,1);await session.refresh();assert.equal(session.snapshot().view.translation.revision,"1");await session.discard();assert.equal(session.snapshot().drafts.size,0);session.dispose();
 });
+
+test("out-of-order refresh responses cannot restore an older translation", async () => {
+  const older = deferred(), newer = deferred(); let calls = 0;
+  const session = new BookEditorSession({ chapter: () => ++calls === 1 ? older.promise : newer.promise }, "p", view());
+  const first = session.refresh(), second = session.refresh();
+  newer.resolve(view("3", "newest")); await second;
+  older.resolve(view("2", "older")); await first;
+  assert.equal(session.snapshot().view.translation.revision, "3");
+  assert.equal(session.snapshot().view.blocks[0].translatedText, "newest");
+  session.dispose();
+});
+
+test("discard response preserves edits entered while the chapter is loading", async () => {
+  const loaded = deferred();
+  const session = new BookEditorSession({ chapter: () => loaded.promise, editTranslation: async () => { throw { code: "revision_conflict" }; } }, "p", view());
+  session.edit("b", "old draft"); await assert.rejects(session.flush());
+  const discarding = session.discard();
+  session.edit("b", "new draft"); session.editTitle("new title");
+  loaded.resolve(view("2", "external")); await discarding;
+  assert.equal(session.snapshot().drafts.get("b"), "new draft");
+  assert.equal(session.snapshot().drafts.get("$title"), "new title");
+  assert.equal(session.snapshot().view.translation.revision, "1");
+  assert.equal(session.snapshot().error.code, "revision_conflict");
+  session.dispose();
+});
+
+test("discard cancels scheduled autosave before waiting for the reload", async () => {
+  const loaded = deferred(); let saves = 0;
+  const session = new BookEditorSession({ chapter: () => loaded.promise, editTranslation: async () => { ++saves; return "2"; } }, "p", view());
+  session.edit("b", "discarded draft");
+  const discarding = session.discard();
+  await new Promise(resolve => setTimeout(resolve, 700));
+  assert.equal(saves, 0);
+  loaded.resolve(view("2", "external")); await discarding;
+  assert.equal(session.snapshot().drafts.size, 0);
+  assert.equal(session.snapshot().view.blocks[0].translatedText, "external");
+  session.dispose();
+});
+
+test("a delayed discard cannot replace the result of an explicit save retry", async () => {
+  const loaded = deferred(); let reads = 0, writes = 0;
+  const session = new BookEditorSession({
+    chapter: () => ++reads === 1 ? loaded.promise : Promise.resolve(view("2", "local")),
+    editTranslation: async () => { if (++writes === 1) throw { code: "revision_conflict" }; return "2"; },
+  }, "p", view());
+  session.edit("b", "local"); await assert.rejects(session.flush());
+  const discarding = session.discard();
+  await session.flush();
+  loaded.resolve(view("1", "old")); await discarding;
+  assert.equal(session.snapshot().view.translation.revision, "2");
+  assert.equal(session.snapshot().view.blocks[0].translatedText, "local");
+  assert.equal(session.snapshot().drafts.size, 0);
+  session.dispose();
+});

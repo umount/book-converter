@@ -34,6 +34,7 @@ export class BookEditorSession {
     clearTimeout(this.timer);
     if (this.pending) return this.pending;
     if (!this.state.drafts.size) return Promise.resolve();
+    ++this.generation;
     this.publish({ saving: true, error: null });
     this.pending = (async () => {
       while (this.state.drafts.size) {
@@ -54,15 +55,18 @@ export class BookEditorSession {
   }
   async refresh() {
     if (this.state.drafts.size || this.pending) return;
-    const generation = this.generation;
+    const generation = ++this.generation;
     const view = await this.api.chapter({ projectId: this.projectId, chapterId: this.state.view.chapter.id });
     if (generation === this.generation && !this.state.drafts.size && !this.pending && view.chapter.id === this.state.view.chapter.id) this.publish({ view, error: null });
   }
   async discard() {
-    ++this.generation;
+    const generation = ++this.generation;
+    clearTimeout(this.timer);
     if (this.pending) await this.pending.catch(() => {});
+    if (generation !== this.generation) return;
     const view = await this.api.chapter({ projectId: this.projectId, chapterId: this.state.view.chapter.id });
-    clearTimeout(this.timer); this.publish({ view, drafts: new Map(), error: null });
+    if (generation !== this.generation || view.chapter.id !== this.state.view.chapter.id) return;
+    this.publish({ view, drafts: new Map(), error: null });
   }
   dispose() { clearTimeout(this.timer); this.listeners.clear(); }
 }

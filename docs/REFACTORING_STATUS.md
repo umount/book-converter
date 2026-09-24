@@ -830,3 +830,13 @@ fallback. Keep commits scoped; push only on user request.
 - Removed unused global source/target-language and chunk-size fields from default
   provider configuration and settings responses. Project language choices remain
   immutable; stored user settings/credentials were not erased.
+
+### P06 editor response ordering and discard races
+
+- Latest refresh wins: a delayed earlier chapter response cannot roll back the editor.
+- Discard cancels pending autosave before loading. Edits entered while waiting are
+  retained, and an explicit save retry invalidates the delayed discard response.
+- Added four delayed-response regressions covering refresh ordering, title/body typing
+  during discard, cancelled autosave and successful retry during discard.
+- Frontend tests and production build passed. This verifies the editor state machine;
+  native Tauri close/dialog acceptance remains outstanding. Backend code was unchanged.
