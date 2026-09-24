@@ -94,6 +94,8 @@ pub struct UpdateChapterInstructionsArgs {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct TranslationOptions {
+    // Maximum eligible chapters in this run; applied after skipping existing translations.
+    pub max_chapters: u32,
     pub force: bool,
     pub instructions: Option<String>,
 }

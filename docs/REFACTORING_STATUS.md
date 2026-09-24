@@ -338,3 +338,22 @@ fallback. Keep commits scoped; push only on user request.
   caches and local HTTP servers. Browser fixture checks covered model progress/pause
   and the settings layout; the rendered icon was visually inspected. Native packaged
   installation and actual ONNX inference remain unverified; P09/P10 are not complete.
+
+### Bounded translation batches
+
+- Replaced the unrestricted remaining-chapters action with an explicit positive
+  chapter count (default 10, remembered locally per project). Each run stops at
+  the selected limit; starting the next batch remains a manual action.
+- Admission requires maxChapters, applies it after excluding empty chapters and
+  existing translations, and rejects empty work before constructing a provider.
+  Glossary edits marking translations needs_review do not restart earlier chapters;
+  replacing existing translations remains an explicit option. Job cancellation and
+  resumption remain available in the job panel. A running translation disables a
+  second start in the workspace.
+- Regression coverage checks source order, skipped chapters, changed-glossary review
+  status, explicit replacement, zero limits and empty selections. 305 Rust tests,
+  strict Clippy, frontend tests and production build passed. No paid AI calls were run.
+- Next parity stages: editable global book instructions, manual metadata and cover
+  (including export), then the redesigned assistant using the new domain APIs.
+  The current visual direction is retained per user feedback. Language choices stay
+  fixed at project creation. These remaining stages are not yet implemented.

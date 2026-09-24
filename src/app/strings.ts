@@ -78,7 +78,11 @@ const en = {
   jobs: "Jobs",
   noJobs: "No processing jobs",
   translateChapter: "Translate chapter",
-  translateAll: "Translate remaining",
+  translateBatch: "Translate batch",
+  batchCount: "Chapters per batch",
+  noEligibleChapters: "No untranslated text chapters in this selection.",
+  batchHint:
+    "Stops after this batch. Review translations and glossary before starting the next one.",
   force: "Replace existing translations",
   instructions: "Chapter instructions",
   original: "Original",
@@ -243,7 +247,11 @@ const ru: Record<Key, string> = {
   jobs: "Задания",
   noJobs: "Нет заданий обработки",
   translateChapter: "Перевести главу",
-  translateAll: "Перевести оставшиеся",
+  translateBatch: "Перевести партию",
+  batchCount: "Глав в партии",
+  noEligibleChapters: "В выбранной области нет непереведённых текстовых глав.",
+  batchHint:
+    "После партии перевод остановится. Проверьте перевод и словарь перед следующим запуском.",
   force: "Заменить существующий перевод",
   instructions: "Инструкции главы",
   original: "Оригинал",
@@ -400,7 +408,10 @@ const zh: Record<Key, string> = {
   jobs: "任务",
   noJobs: "暂无处理任务",
   translateChapter: "翻译章节",
-  translateAll: "翻译剩余章节",
+  translateBatch: "翻译本批次",
+  batchCount: "每批章节数",
+  noEligibleChapters: "所选范围内没有待翻译的文本章节。",
+  batchHint: "本批次完成后停止。开始下一批前请检查译文和术语表。",
   force: "替换现有译文",
   instructions: "章节指令",
   original: "原文",
@@ -498,6 +509,7 @@ export function errorText(error: unknown, t: T): string {
   if (e?.code === "unsupported_version") return t("unsupported");
   if (e?.code === "revision_conflict") return t("conflict");
   if (e?.messageKey === "errors.apiKeyRequired") return t("noKey");
+  if (e?.params?.field === "noEligibleChapters") return t("noEligibleChapters");
   if (e?.params?.field === "destinationExists") return t("exists");
   if (e?.params?.field === "incompleteTranslation") return t("incomplete");
   return error instanceof Error

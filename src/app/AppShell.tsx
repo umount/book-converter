@@ -77,7 +77,21 @@ function Shell({
     ),
     [filter, setFilter] = useState(""),
     [showJobs, setShowJobs] = useState(false),
-    [force, setForce] = useState(false);
+    [force, setForce] = useState(false),
+    [batchSizes, setBatchSizes] = useState<Record<string, string>>(() => {
+      try {
+        return JSON.parse(localStorage.getItem("bc.batchSizes") || "{}") || {};
+      } catch {
+        return {};
+      }
+    });
+  const batchSize = state.project
+    ? (batchSizes[state.project.id] ?? "10")
+    : "10";
+  const validBatchSize =
+    /^\d+$/.test(batchSize) &&
+    Number(batchSize) > 0 &&
+    Number(batchSize) <= 4294967295;
   const [busy, setBusy] = useState(false),
     [error, setError] = useState<unknown>(initialError),
     [, redraw] = useState(0);
@@ -216,6 +230,7 @@ function Shell({
   }
   async function translate(all: boolean) {
     if (!state.project) return;
+    if (all && !validBatchSize) return;
     const job = await api.translate({
       projectId: state.project.id,
       selection: all
@@ -224,13 +239,23 @@ function Shell({
             kind: "explicit_ids",
             ids: editor ? [editor.snapshot().view.chapter.id] : [],
           },
-      options: { force, instructions: null },
+      options: {
+        force,
+        instructions: null,
+        maxChapters: all ? Number(batchSize) : 1,
+      },
     });
     await jobs.refresh(job);
     setShowJobs(true);
   }
   const project = state.project,
     jobList = catalog.flatMap((p) => jobs.list(p.descriptor.id));
+  const translationRunning = jobList.some(
+    (job) =>
+      job.job.projectId === project?.id &&
+      job.kind === "book_translation" &&
+      ["queued", "running", "cancelling"].includes(job.state),
+  );
   const visibleChapters = state.chapters.filter((c) =>
     c.title.toLocaleLowerCase().includes(filter.toLocaleLowerCase()),
   );
@@ -423,16 +448,43 @@ function Shell({
               <div className="bc-toolbar">
                 <button
                   className="primary"
-                  disabled={busy || !editor}
+                  disabled={busy || translationRunning || !editor}
                   onClick={() => void act(() => translate(false))}
                 >
                   {t("translateChapter")}
                 </button>
+                <label>
+                  {t("batchCount")}
+                  <input
+                    type="number"
+                    min="1"
+                    max="4294967295"
+                    step="1"
+                    value={batchSize}
+                    style={{ width: "6rem", marginLeft: "0.5rem" }}
+                    onChange={(e) => {
+                      const next = {
+                        ...batchSizes,
+                        [project.id]: e.target.value,
+                      };
+                      setBatchSizes(next);
+                      localStorage.setItem(
+                        "bc.batchSizes",
+                        JSON.stringify(next),
+                      );
+                    }}
+                  />
+                </label>
                 <button
-                  disabled={busy || !state.chapters.length}
+                  disabled={
+                    busy ||
+                    translationRunning ||
+                    !state.chapters.length ||
+                    !validBatchSize
+                  }
                   onClick={() => void act(() => translate(true))}
                 >
-                  {t("translateAll")}
+                  {t("translateBatch")}
                 </button>
                 <label className="bc-check">
                   <input
@@ -442,6 +494,7 @@ function Shell({
                   />
                   {t("force")}
                 </label>
+                <span className="bc-hint">{t("batchHint")}</span>
               </div>
             )}
             <div className="bc-content">

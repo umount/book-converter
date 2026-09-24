@@ -90,19 +90,27 @@ pub fn prepare_book_run(
     selection: &EntitySelection,
     options: &TranslationOptions,
 ) -> Result<JobRef, AppError> {
+    if options.max_chapters == 0 {
+        return Err(AppError::invalid("maxChapters"));
+    }
     let lease = manager.lease(project)?;
-    let snapshot=lease.with_connection(|db,_|{
-        ProjectRepository::new(db,crate::app::contracts::ProjectKind::Book)?;
-        let settings=shared::settings(db)?;
-        let ordered={let mut query=db.prepare("SELECT id FROM book_chapters ORDER BY position").map_err(storage_error)?;let rows=query.query_map([],|r|r.get::<_,String>(0)).map_err(storage_error)?;rows.collect::<Result<Vec<_>,_>>().map_err(storage_error)?};
-        let mut selected=selection.resolve(&ordered)?;
-        let mut text_chapters=Vec::new();
-        for id in selected {if db.query_row("SELECT EXISTS(SELECT 1 FROM book_source_blocks WHERE chapter_id=?1 AND kind IN ('text','caption') AND length(trim(text))>0)",[&id],|r|r.get::<_,bool>(0)).map_err(storage_error)?{text_chapters.push(id);}}
-        selected=text_chapters;
-        if !options.force {let mut eligible=Vec::new();for id in selected{let ready=db.query_row("SELECT EXISTS(SELECT 1 FROM book_translations WHERE chapter_id=?1 AND status='ready' AND target_language=?2 AND source_revision=(SELECT revision FROM book_chapters WHERE id=?1))",rusqlite::params![id,settings.choices.target_language],|r|r.get::<_,bool>(0)).map_err(storage_error)?;if !ready{eligible.push(id);}}selected=eligible;}
-        let (profile,key)=provider_profile(settings.choices.book_translation_profile.as_deref())?;
-        ChatCompletions::new(profile.clone(),key)?;
-        Ok(runs::RunSnapshot{settings:settings.choices,settings_revision:settings.revision,glossary_revision:shared::glossary_revision(db)?,selected_ids:selected,prompt_version:"book-segments-v1".into(),stages:vec!["translation".into(),"context".into()],provider:Some(profile),instructions:options.instructions.clone()})
+    let snapshot = lease.with_connection(|db, _| {
+        ProjectRepository::new(db, crate::app::contracts::ProjectKind::Book)?;
+        let settings = shared::settings(db)?;
+        let selected = select_batch(db, selection, options, &settings.choices.target_language)?;
+        let (profile, key) =
+            provider_profile(settings.choices.book_translation_profile.as_deref())?;
+        ChatCompletions::new(profile.clone(), key)?;
+        Ok(runs::RunSnapshot {
+            settings: settings.choices,
+            settings_revision: settings.revision,
+            glossary_revision: shared::glossary_revision(db)?,
+            selected_ids: selected,
+            prompt_version: "book-segments-v1".into(),
+            stages: vec!["translation".into(), "context".into()],
+            provider: Some(profile),
+            instructions: options.instructions.clone(),
+        })
     })?;
     let job_id = uuid::Uuid::new_v4().to_string();
     lease.with_connection(|db, _| {
@@ -112,6 +120,55 @@ pub fn prepare_book_run(
         project_id: project.clone(),
         job_id,
     })
+}
+
+/// Resolve source order first, then cap eligible work, so skipped chapters do not consume the batch.
+fn select_batch(
+    db: &rusqlite::Connection,
+    selection: &EntitySelection,
+    options: &TranslationOptions,
+    target: &str,
+) -> Result<Vec<String>, AppError> {
+    if options.max_chapters == 0 {
+        return Err(AppError::invalid("maxChapters"));
+    }
+    let mut query = db
+        .prepare(
+            "SELECT c.id,
+        EXISTS(SELECT 1 FROM book_source_blocks b WHERE b.chapter_id=c.id
+            AND b.kind IN ('text','caption') AND length(trim(b.text))>0),
+        EXISTS(SELECT 1 FROM book_translations t WHERE t.chapter_id=c.id
+            AND t.status IN ('ready','needs_review') AND t.target_language=?1 AND t.source_revision=c.revision)
+        FROM book_chapters c ORDER BY c.position",
+        )
+        .map_err(storage_error)?;
+    let rows = query
+        .query_map([target], |r| {
+            Ok((
+                r.get::<_, String>(0)?,
+                r.get::<_, bool>(1)?,
+                r.get::<_, bool>(2)?,
+            ))
+        })
+        .map_err(storage_error)?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(storage_error)?;
+    let ordered = rows.iter().map(|r| r.0.clone()).collect::<Vec<_>>();
+    let eligible = rows
+        .into_iter()
+        .filter(|r| r.1 && (options.force || !r.2))
+        .map(|r| r.0)
+        .collect::<std::collections::HashSet<_>>();
+    let selected = selection
+        .resolve(&ordered)?
+        .into_iter()
+        .filter(|id| eligible.contains(id))
+        .take(options.max_chapters as usize)
+        .collect::<Vec<_>>();
+    if selected.is_empty() {
+        return Err(AppError::invalid("noEligibleChapters"));
+    }
+    Ok(selected)
 }
 
 pub fn resume_provider(
@@ -270,5 +327,68 @@ mod credential_tests {
         saved = configured.clone();
         saved.id = "other-profile".into();
         assert!(validate_credential_destination(&saved, &configured).is_err());
+    }
+}
+
+#[cfg(test)]
+mod batch_tests {
+    use super::*;
+    #[test]
+    fn batches_skip_ready_and_empty_chapters_before_limiting() {
+        let directory = std::env::temp_dir().join(format!("batch-test-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&directory).unwrap();
+        let db = crate::storage::create(
+            &directory.join("project.db"),
+            crate::app::contracts::ProjectKind::Book,
+            "ru",
+        )
+        .unwrap();
+        for i in 0..6 {
+            let id = format!("c{i}");
+            db.execute(
+                "INSERT INTO book_chapters(id,position,source_title) VALUES(?1,?2,'Chapter')",
+                rusqlite::params![id, i],
+            )
+            .unwrap();
+            if i != 1 {
+                db.execute("INSERT INTO book_source_blocks(id,chapter_id,position,kind,text) VALUES(?1,?1,0,'text','Text')", [&id]).unwrap();
+            }
+        }
+        db.execute("INSERT INTO book_translations(id,chapter_id,source_revision,status,provenance,target_language,translated_title,context_fingerprint,glossary_revision,revision) VALUES('t','c0',0,'ready','manual','ru','','',0,0)", []).unwrap();
+        let mut options = TranslationOptions {
+            max_chapters: 2,
+            force: false,
+            instructions: None,
+        };
+        assert_eq!(
+            select_batch(&db, &EntitySelection::All, &options, "ru").unwrap(),
+            ["c2", "c3"]
+        );
+        db.execute("UPDATE book_translations SET status='needs_review'", [])
+            .unwrap();
+        assert_eq!(
+            select_batch(&db, &EntitySelection::All, &options, "ru").unwrap(),
+            ["c2", "c3"]
+        );
+        options.force = true;
+        assert_eq!(
+            select_batch(&db, &EntitySelection::All, &options, "ru").unwrap(),
+            ["c0", "c2"]
+        );
+        options.max_chapters = 0;
+        assert!(select_batch(&db, &EntitySelection::All, &options, "ru").is_err());
+        options.max_chapters = 10;
+        options.force = false;
+        assert!(select_batch(
+            &db,
+            &EntitySelection::ExplicitIds {
+                ids: vec!["c0".into(), "c1".into()]
+            },
+            &options,
+            "ru"
+        )
+        .is_err());
+        drop(db);
+        std::fs::remove_dir_all(directory).unwrap();
     }
 }
