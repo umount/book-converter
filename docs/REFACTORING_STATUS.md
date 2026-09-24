@@ -470,3 +470,16 @@ fallback. Keep commits scoped; push only on user request.
   passed. Tests cover Unicode, literal metacharacters, pagination and translation scope.
 - These checks also close the outdated schema-fixture failure noted in the preceding
   thumbnail milestone; native performance and automatic manga acceptance remain open.
+
+### P05 FB2 cover import and P13 workflow documentation
+
+- FB2 loading now resolves the image referenced by `coverpage`, rather than treating
+  the first binary illustration as a cover. Base64 data is bounded and decoded before
+  the shared cover publication path validates and registers the image.
+- Added regressions for the declared reference, missing references, malformed base64
+  and propagation through the format-agnostic book loader. Inline FB2 illustrations
+  remain a separate, unfinished fidelity task.
+- Replaced obsolete README workflow claims (mutable languages, unlimited runs and
+  legacy reference/retarget UI) with the current project, batch and assistant flow.
+  Automatic manga processing and native acceptance are explicitly marked incomplete.
+- Validation: all 52 book-module tests and strict all-target Clippy passed.

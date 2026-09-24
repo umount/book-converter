@@ -37,7 +37,7 @@ pub struct LoadedBook {
     /// The decode produced replacement characters — the encoding guess is likely
     /// wrong (garbled text). Only set by `load_book` (which owns the raw bytes).
     pub encoding_had_errors: bool,
-    /// Embedded cover (EPUB), if the package declared one.
+    /// Embedded cover (EPUB or FB2), if the package declared one.
     pub cover: Option<(String, Vec<u8>)>,
     /// Typed content for the chapters that have any (EPUB). A chapter absent
     /// here is plain prose, and `Chapter::body` is all there is to it.
@@ -82,7 +82,7 @@ pub fn load_book_text(text: &str, encoding: &str) -> Result<LoadedBook> {
                 report,
                 needs_delimiter: false,
                 encoding_had_errors: false,
-                cover: None,
+                cover: super::fb2::embedded_cover(text)?,
                 blocks: Vec::new(),
                 assets: Vec::new(),
             }
@@ -126,6 +126,22 @@ mod tests {
     fn detects_fb2_and_parses() {
         let book = load_book_text(FB2, "UTF-8").unwrap();
         assert_eq!(book.format, InputFormat::Fb2);
+        assert_eq!(book.chapters.len(), 2);
+    }
+
+    #[test]
+    fn retains_declared_fb2_cover() {
+        let xml = FB2
+            .replace(
+                "</title-info>",
+                "<coverpage><image href=\"#cover\"/></coverpage></title-info>",
+            )
+            .replace(
+                "</FictionBook>",
+                "<binary id=\"cover\" content-type=\"image/png\">aGVsbG8=</binary></FictionBook>",
+            );
+        let book = load_book_text(&xml, "UTF-8").unwrap();
+        assert_eq!(book.cover, Some(("image/png".into(), b"hello".to_vec())));
         assert_eq!(book.chapters.len(), 2);
     }
 

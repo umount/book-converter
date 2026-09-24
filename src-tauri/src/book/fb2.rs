@@ -255,3 +255,92 @@ mod tests {
         assert_eq!(chapters[1].number, Some(2));
     }
 }
+
+/// Resolve the declared cover, never an arbitrary inline illustration.
+pub fn embedded_cover(xml: &str) -> Result<Option<(String, Vec<u8>)>> {
+    use base64::Engine as _;
+    let mut reader = Reader::from_str(xml);
+    let mut in_cover = false;
+    let mut reference = None;
+    loop {
+        match reader
+            .read_event()
+            .context("reading FB2 cover declaration")?
+        {
+            Event::Start(e) if e.local_name().as_ref() == b"coverpage" => in_cover = true,
+            Event::End(e) if e.local_name().as_ref() == b"coverpage" => in_cover = false,
+            Event::Start(e) | Event::Empty(e)
+                if in_cover && e.local_name().as_ref() == b"image" =>
+            {
+                for attribute in e.attributes() {
+                    let attribute = attribute?;
+                    if attribute.key.local_name().as_ref() == b"href" {
+                        let value = attribute.unescape_value()?;
+                        reference = value.strip_prefix('#').map(str::to_owned);
+                    }
+                }
+            }
+            Event::Eof => break,
+            _ => {}
+        }
+    }
+    let Some(reference) = reference else {
+        return Ok(None);
+    };
+    let mut reader = Reader::from_str(xml);
+    loop {
+        match reader.read_event().context("reading FB2 cover binary")? {
+            Event::Start(e) if e.local_name().as_ref() == b"binary" => {
+                let mut id = None;
+                let mut mime = None;
+                for attribute in e.attributes() {
+                    let attribute = attribute?;
+                    match attribute.key.as_ref() {
+                        b"id" => id = Some(attribute.unescape_value()?.into_owned()),
+                        b"content-type" => mime = Some(attribute.unescape_value()?.into_owned()),
+                        _ => {}
+                    }
+                }
+                if id.as_deref() == Some(&reference) {
+                    let encoded = reader.read_text(e.name())?;
+                    anyhow::ensure!(encoded.len() <= 32 * 1024 * 1024, "FB2 cover is too large");
+                    let encoded: String = encoded.chars().filter(|c| !c.is_whitespace()).collect();
+                    let bytes = base64::engine::general_purpose::STANDARD
+                        .decode(encoded)
+                        .context("decoding FB2 cover")?;
+                    anyhow::ensure!(bytes.len() <= 20 * 1024 * 1024, "FB2 cover is too large");
+                    return Ok(Some((mime.unwrap_or_default(), bytes)));
+                }
+            }
+            Event::Eof => return Ok(None),
+            _ => {}
+        }
+    }
+}
+
+#[cfg(test)]
+mod cover_tests {
+    use super::embedded_cover;
+
+    #[test]
+    fn resolves_declared_cover_instead_of_first_image() {
+        let xml = r##"<FictionBook xmlns:l="http://www.w3.org/1999/xlink">
+        <description><title-info><coverpage><image l:href="#cover"/></coverpage></title-info></description>
+        <binary id="illustration" content-type="image/png">YmFk</binary>
+        <binary id="cover" content-type="image/jpeg"> aGVs
+bG8= </binary></FictionBook>"##;
+        assert_eq!(
+            embedded_cover(xml).unwrap(),
+            Some(("image/jpeg".into(), b"hello".to_vec()))
+        );
+        assert!(embedded_cover(&xml.replace("#cover", "#missing"))
+            .unwrap()
+            .is_none());
+        assert!(embedded_cover(&xml.replace("aGVs\nbG8=", "invalid!")).is_err());
+        assert!(
+            embedded_cover("<FictionBook><binary id='image'>YmFk</binary></FictionBook>")
+                .unwrap()
+                .is_none()
+        );
+    }
+}
