@@ -459,3 +459,14 @@ fallback. Keep commits scoped; push only on user request.
   an outdated hand-built schema fixture and was switched to the shared current fixture.
   Native process memory/latency budgets remain unmeasured; decoder limits are not a
   substitute for those platform acceptance measurements.
+
+### P05 book-wide search
+
+- Added bounded, cursor-paginated literal search across source text or the latest
+  chapter translations. Unicode queries and optional case sensitivity are supported.
+- Search results open the matching chapter and scroll to the highlighted block.
+  Browser fixture verified a translated-text search and navigation to chapter 3.
+- All 311 Rust tests, frontend tests/build, generated contract check and strict Clippy
+  passed. Tests cover Unicode, literal metacharacters, pagination and translation scope.
+- These checks also close the outdated schema-fixture failure noted in the preceding
+  thumbnail milestone; native performance and automatic manga acceptance remain open.

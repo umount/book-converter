@@ -45,6 +45,8 @@ export function createProjectApi(transport: Transport) {
       call<C.BookChapterView>("book_get_chapter", args),
     translate: (args: C.StartBookTranslationArgs) =>
       call<C.JobRef>("book_start_translation", args),
+    searchBook: (args: C.BookSearchArgs) =>
+      call<C.BookSearchPage>("book_search", args),
     previewReplace: (args: C.BookReplacePreviewArgs) =>
       call<C.BookReplacePreview>("book_replace_preview", args),
     applyReplace: (args: C.BookReplaceApplyArgs) =>

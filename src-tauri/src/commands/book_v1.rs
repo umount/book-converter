@@ -444,3 +444,9 @@ pub async fn book_cover_set(context: State<'_, AppContext>, args: SetBookCoverAr
     let manager=context.manager.clone();
     tauri::async_runtime::spawn_blocking(move || manager.lease(&args.project_id)?.with_connection(|db,directory| crate::application::book_presentation::cover(db,directory,args.path.as_deref(),&args.expected_revision))).await.map_err(|_|AppError::invalid("task"))?
 }
+
+#[tauri::command]
+pub async fn book_search(context:State<'_,AppContext>,args:BookSearchArgs)->Result<BookSearchPage,AppError>{
+    let manager=context.manager.clone();
+    tauri::async_runtime::spawn_blocking(move||manager.lease(&args.project_id)?.with_connection(|db,_|crate::application::book_search::search(db,&args))).await.map_err(|_|AppError::invalid("task"))?
+}

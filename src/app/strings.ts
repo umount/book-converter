@@ -111,6 +111,10 @@ const en = {
   missingProfile: "Profile unavailable",
   newProfile: "New profile",
   profileName: "Profile name",
+  bookSearch: "Search book",
+  searchText: "Text to find",
+  moreResults: "More results",
+
   saveProfile: "Save profile",
   applyRoles: "Save project models",
   bookTranslationProfile: "Book translation",
@@ -327,6 +331,10 @@ const ru: Record<Key, string> = {
   missingProfile: "Профиль недоступен",
   newProfile: "Новый профиль",
   profileName: "Название профиля",
+  bookSearch: "Поиск по книге",
+  searchText: "Найти текст",
+  moreResults: "Ещё результаты",
+
   saveProfile: "Сохранить профиль",
   applyRoles: "Сохранить модели проекта",
   bookTranslationProfile: "Перевод книги",
@@ -533,6 +541,10 @@ const zh: Record<Key, string> = {
   missingProfile: "配置不可用",
   newProfile: "新建配置",
   profileName: "配置名称",
+  bookSearch: "搜索书籍",
+  searchText: "查找文本",
+  moreResults: "更多结果",
+
   saveProfile: "保存配置",
   applyRoles: "保存项目模型",
   bookTranslationProfile: "书籍翻译",

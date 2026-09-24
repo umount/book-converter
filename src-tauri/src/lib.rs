@@ -108,6 +108,7 @@ pub fn run() {
             commands::book_replace_preview,
             commands::book_replace_apply,
             commands::book_get_chapter,
+            commands::book_search,
             commands::book_list_chapters,
             commands::book_start_translation,
             commands::job_cancel,

@@ -624,6 +624,10 @@ pub fn typescript() -> String {
         AssistantView::decl(&config),
         ProviderEntry::decl(&config),
         SaveProviderArgs::decl(&config),
+        BookSearchSide::decl(&config),
+        BookSearchArgs::decl(&config),
+        BookSearchMatch::decl(&config),
+        BookSearchPage::decl(&config),
         AssistantConfirmArgs::decl(&config),
         ProjectSettingsUpdateArgs::decl(&config),
         InspectManifestArgs::decl(&config),
@@ -794,3 +798,16 @@ pub struct ProviderEntry {
 #[derive(Clone, Serialize, Deserialize, TS)]
 #[serde(rename_all="camelCase",deny_unknown_fields)]
 pub struct SaveProviderArgs {pub profile:ProviderEntry,pub credential:Option<String>,pub expected_revision:Option<Revision>}
+
+#[derive(Clone, Copy, Serialize, Deserialize, TS)]
+#[serde(rename_all="snake_case")]
+pub enum BookSearchSide {Source,Translation}
+#[derive(Clone, Serialize, Deserialize, TS)]
+#[serde(rename_all="camelCase",deny_unknown_fields)]
+pub struct BookSearchArgs {pub project_id:ProjectId,pub query:String,pub side:BookSearchSide,pub case_sensitive:bool,pub cursor:Option<String>,pub limit:u32}
+#[derive(Clone, Serialize, Deserialize, TS)]
+#[serde(rename_all="camelCase")]
+pub struct BookSearchMatch {pub chapter_id:ChapterId,pub block_id:BlockId,pub title:String,pub snippet:String}
+#[derive(Clone, Serialize, Deserialize, TS)]
+#[serde(rename_all="camelCase")]
+pub struct BookSearchPage {pub matches:Vec<BookSearchMatch>,pub next_cursor:Option<String>}

@@ -16,3 +16,5 @@ pub mod book_presentation;
 pub mod assistant;
 
 pub mod profiles;
+
+pub mod book_search;

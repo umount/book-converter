@@ -1,3 +1,4 @@
+import { BookSearch } from "../features/book/BookSearch";
 import { Assistant } from "../features/assistant/Assistant";
 import {
   useCallback,
@@ -74,7 +75,7 @@ function Shell({
     [create, setCreate] = useState(false),
     [settings, setSettings] = useState(false);
   const [panel, setPanel] = useState<
-      "reader" | "glossary" | "assistant" | BookTool
+      "reader" | "glossary" | "assistant" | "bookSearch" | BookTool
     >("reader"),
     [filter, setFilter] = useState(""),
     [showJobs, setShowJobs] = useState(false),
@@ -94,6 +95,7 @@ function Shell({
     /^\d+$/.test(batchSize) &&
     Number(batchSize) > 0 &&
     Number(batchSize) <= 4294967295;
+  const [focusBlock, setFocusBlock] = useState<string | null>(null);
   const [busy, setBusy] = useState(false),
     [error, setError] = useState<unknown>(initialError),
     [, redraw] = useState(0);
@@ -270,6 +272,7 @@ function Shell({
           "assistant",
           "glossary",
           "reference",
+          "bookSearch",
           "replace",
           "instructions",
           "export",
@@ -532,6 +535,19 @@ function Shell({
                       t={t}
                     />
                   )
+                ) : panel === "bookSearch" ? (
+                  <BookSearch
+                    key={project.id}
+                    projectId={project.id}
+                    t={t}
+                    open={(chapter, block) =>
+                      void act(async () => {
+                        setFocusBlock(block);
+                        await workspace.selectChapter(chapter);
+                        setPanel("reader");
+                      })
+                    }
+                  />
                 ) : panel === "assistant" ? (
                   <Assistant
                     key={project.id}
@@ -549,7 +565,11 @@ function Shell({
                   />
                 ) : panel === "reader" ? (
                   editor ? (
-                    <BookReader session={editor} t={t} />
+                    <BookReader
+                      session={editor}
+                      t={t}
+                      focusBlock={focusBlock}
+                    />
                   ) : (
                     <p className="bc-empty">{t("noChapter")}</p>
                   )

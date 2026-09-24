@@ -71,7 +71,7 @@ pub fn open(path: &Path) -> anyhow::Result<Connection> {
 #[cfg(test)]
 pub(super) mod tests {
     use super::*;
-    pub(super) fn database(kind: ProjectKind) -> Connection {
+    pub(crate) fn database(kind: ProjectKind) -> Connection {
         let connection = Connection::open_in_memory().unwrap();
         configure(&connection).unwrap();
         connection

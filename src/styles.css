@@ -793,3 +793,8 @@ button + button {
 .bc-provider-profiles { border-top: 1px solid var(--line); padding-top: 16px; }
 .bc-provider-profiles summary { cursor: pointer; font-weight: 600; }
 .bc-provider-profiles fieldset { border: 0; margin: 12px 0 0; padding: 0; display: grid; gap: 12px; }
+.bc-search-form { display: grid; gap: 12px; }
+.bc-search-results { display: grid; gap: 8px; }
+.bc-search-results button { display: grid; gap: 8px; text-align: left; padding: 16px; }
+.bc-search-results span { white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.6; }
+.bc-found-block { outline: 2px solid var(--accent); outline-offset: -2px; }

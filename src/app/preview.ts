@@ -200,6 +200,35 @@ export async function invokePreview<T>(
     case "book_list_chapters":
       result = { items: chapters, nextCursor: null };
       break;
+    case "book_search": {
+      const normalize = (s: string) =>
+        args.caseSensitive ? s : s.toLocaleLowerCase();
+      const matches = views.flatMap((v) =>
+        v.blocks
+          .filter((b) =>
+            normalize(
+              args.side === "source"
+                ? b.content.kind !== "image"
+                  ? b.content.text
+                  : ""
+                : (b.translatedText ?? ""),
+            ).includes(normalize(args.query)),
+          )
+          .map((b) => ({
+            chapterId: v.chapter.id,
+            blockId: b.id,
+            title: v.chapter.title,
+            snippet:
+              args.side === "source"
+                ? b.content.kind !== "image"
+                  ? b.content.text
+                  : ""
+                : (b.translatedText ?? ""),
+          })),
+      );
+      result = { matches, nextCursor: null };
+      break;
+    }
     case "book_get_chapter":
       result = views.find((v) => v.chapter.id === args.chapterId);
       break;

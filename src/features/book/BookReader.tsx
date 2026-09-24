@@ -44,12 +44,20 @@ function AutoText({
 export function BookReader({
   session,
   t,
+  focusBlock,
 }: {
   session: BookEditorSession;
+  focusBlock?: string | null;
   t: T;
 }) {
   const state = useSyncExternalStore(session.subscribe, session.snapshot),
     { view } = state;
+  useLayoutEffect(() => {
+    if (focusBlock)
+      document
+        .getElementById(`book-block-${focusBlock}`)
+        ?.scrollIntoView({ block: "center" });
+  }, [focusBlock, view.chapter.id]);
   return (
     <div className="bc-reader">
       <div className="bc-reader-titles">
@@ -89,7 +97,11 @@ export function BookReader({
         </div>
       )}
       {view.blocks.map((block, index) => (
-        <section className="bc-block-pair" key={block.id}>
+        <section
+          id={`book-block-${block.id}`}
+          className={`bc-block-pair ${focusBlock === block.id ? "bc-found-block" : ""}`}
+          key={block.id}
+        >
           <div className="bc-source-block">
             <span className="bc-block-number" aria-hidden="true">
               {index + 1}
