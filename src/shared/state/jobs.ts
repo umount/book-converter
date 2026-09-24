@@ -33,6 +33,8 @@ export class JobStore {
       const jobs = await this.api.jobs({ projectId, cursor: null, limit: 100 });
       for (const job of jobs) this.accept(job, { projectId, jobId: job.job.jobId });
     } catch (error) {
+      subscription.dispose();
+      this.subscriptions.delete(projectId);
       if (!this.closed) this.onError(error);
     }
   }
