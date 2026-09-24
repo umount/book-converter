@@ -606,3 +606,21 @@ fallback. Keep commits scoped; push only on user request.
 - Final full library suite: 321 passed. Strict all-target Clippy passed. Frontend
   tests/build and contract checks passed earlier in this change; subsequent changes
   only affect backend correction semantics and regression coverage.
+
+### P05 restore bounded language repair
+
+- Ported the legacy maximum-two-pass, affected-line repair behavior to the new
+  provider and structural translation pipeline. A title-only problem sends only
+  the title. Every repair request includes the current project glossary.
+- Repair runs before translation/context publication. Correct blocks, blank lines,
+  indentation and image positions remain unchanged. Responses with duplicate or
+  unsolicited line IDs, empty/shortened content or new line breaks are rejected.
+  A correction must reduce detected foreign-language fragments before replacing text.
+- Network failures or exhausted repairs retain the successful translation; remaining
+  language issues are still visible through the restored reader flags. Importing a
+  reference and manual saves do not invoke automatic model repair.
+- Tests cover title-only requests with glossary, line/block preservation, malformed
+  responses, two-pass limits, no-op/unsupported languages and network failure.
+- Validation: full library suite passed 326 tests; strict all-target Clippy passed.
+  This slice changes no frontend or IPC contract. Real-provider translation quality
+  remains a separate acceptance check.

@@ -141,6 +141,9 @@ impl Provider for Echo {
                 };
                 serde_json::json!({"terms":[{"source":source,"target":"Термин","kind":"term"}]})
                     .to_string()
+            } else if system.starts_with("Repair only") {
+                // Leave the fake English output unchanged; language repair has its own tests.
+                r#"{"lines":[]}"#.into()
             } else if system.starts_with("Translate every") {
                 let mut payload: serde_json::Value = serde_json::from_str(&user).unwrap();
                 if payload["segments"].as_array().unwrap().iter().any(|s|s["text"].as_str().is_some_and(|t|t.contains("Before"))) {

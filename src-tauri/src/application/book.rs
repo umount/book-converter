@@ -324,13 +324,13 @@ impl BookPipeline {
         for batch in segments.chunks(4) {
             translated.extend(translate_segments(self.provider.as_ref(), &system, batch).await?);
         }
-        let title = segments
+        let mut title = segments
             .iter()
             .take_while(|s| s.id.starts_with(&format!("{entity}:title:")))
             .map(|s| translated.get(&s.id).cloned().ok_or_else(invalid_output))
             .collect::<Result<Vec<_>, _>>()?
             .join("");
-        let blocks = layout
+        let mut blocks = layout
             .into_iter()
             .map(|(id, parts)| {
                 Ok((
@@ -343,6 +343,11 @@ impl BookPipeline {
                 ))
             })
             .collect::<Result<Vec<_>, AppError>>()?;
+        let source_text = segments.iter().map(|s| s.text.as_str()).collect::<Vec<_>>().join("\n");
+        super::book_language::repair(
+            self.provider.as_ref(), target, &source_text, &mut title, &mut blocks,
+            &serde_json::to_string(&glossary).map_err(|_| invalid_output())?,
+        ).await;
         Ok(BookOutput::Translation(results::BookTranslation {
             id: uuid::Uuid::new_v4().to_string(),
             chapter_id: entity.into(),
