@@ -199,21 +199,6 @@ pub async fn open_project(
     ))
 }
 
-/// Persist the language pair chosen in the new-book setup modal.
-#[tauri::command]
-pub async fn set_project_languages(
-    project_id: String,
-    source_lang: String,
-    target_lang: String,
-    state: State<'_, AppState>,
-) -> Result<(), String> {
-    let source = crate::language::canonical_lang(&source_lang).ok_or("bad_lang")?;
-    let target = crate::language::canonical_lang(&target_lang).ok_or("bad_lang")?;
-    let store = super::ops::project_store(&state, &project_id)?;
-    store.set_translation_langs(source, target).map_err(err)?;
-    Ok(())
-}
-
 /// Repair title/author/简介 on already-imported TXT projects that were parsed
 /// before plain (non-`《》`) titles and blurbs were extracted.
 fn backfill_txt_meta(store: &Store, project_id: &str) {

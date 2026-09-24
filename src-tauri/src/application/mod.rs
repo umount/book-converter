@@ -22,3 +22,6 @@ pub mod profiles;
 pub mod book_search;
 
 pub mod book_retarget;
+
+#[cfg(test)]
+mod book_workflow_tests;

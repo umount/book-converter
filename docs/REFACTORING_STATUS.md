@@ -781,3 +781,20 @@ fallback. Keep commits scoped; push only on user request.
   job and explicit launch. No paid-provider or native Tauri acceptance performed.
 - The offer is retained while the glossary component stays open; persistent correction
   history/reopening old offers after navigating away is not part of this slice.
+
+### P05 book workflow acceptance before legacy removal
+
+- Added a cross-service offline acceptance test using a real structural EPUB import:
+  save book metadata/instructions, execute one eligible chapter through durable
+  translation/context stages, edit its translation, drop/recreate ProjectManager,
+  search the persisted edit and select the next bounded batch without overwriting it.
+- Export rejects incomplete books without publishing a partial file. Explicit original
+  fallback exports the book; importing that EPUB again verifies the newest manual
+  text and all three image occurrences. Re-export cannot overwrite the existing file.
+- This exercises application services and SQLite/filesystem boundaries with a fake
+  provider, not native GUI interaction or actual translation quality.
+- Removed the unused legacy `set_project_languages` IPC handler and implementation.
+  Language choices belong to project creation; the new project API has no language
+  mutation command. Remaining legacy commands/runtime still need staged removal.
+- Verification: all 340 Rust library tests and strict all-target Clippy passed;
+  whitespace check passed. Frontend code/contracts were unchanged in this slice.
