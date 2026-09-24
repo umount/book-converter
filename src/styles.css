@@ -231,7 +231,7 @@ button + button {
 .bc-chapters button {
   height: 30px;
   display: grid;
-  grid-template-columns: var(--chapter-digits, 1ch) minmax(0, 1fr) 6px;
+  grid-template-columns: var(--chapter-digits, 1ch) minmax(0, 1fr) auto;
   grid-template-rows: 18px;
   column-gap: 8px;
   align-content: center;
@@ -952,27 +952,46 @@ button + button {
   vertical-align: middle;
 }
 .bc-chapters button small {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--muted);
   grid-column: 3;
   grid-row: 1;
   align-self: center;
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: #686870;
-  font-size: 0;
-  overflow: hidden;
 }
 .bc-chapters button small[data-state="done"] {
-  background: #63ad83;
-}
-.bc-chapters button small[data-state="in_progress"] {
-  background: var(--accent);
-}
-.bc-chapters button small[data-state="failed"] {
-  background: #dd7777;
+  color: #63ad83;
 }
 .bc-chapters button small[data-review] {
-  background: #ceaa62;
+  color: #ceaa62;
+}
+.bc-chapters button small[data-state="failed"] {
+  color: #dd7777;
+}
+.bc-chapters button small[data-state="in_progress"] {
+  color: var(--accent);
+}
+.bc-chapter-status-label {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+}
+.bc-chapter-spinner {
+  width: 14px;
+  height: 14px;
+  border: 1.5px solid var(--line);
+  border-top-color: currentColor;
+  border-radius: 50%;
+  animation: bc-chapter-spin 0.8s linear infinite;
+}
+@keyframes bc-chapter-spin {
+  to { transform: rotate(360deg); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .bc-chapter-spinner { animation: none; }
 }
 .bc-chapters button:hover:not(:disabled) {
   background: #ffffff08;

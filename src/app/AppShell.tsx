@@ -795,6 +795,12 @@ function Shell({
                             data-review={c.needsReview || undefined}
                             title={`${t(c.needsReview ? "review" : c.status === "failed" ? "chapterFailed" : c.status === "in_progress" ? "chapterInProgress" : c.status === "done" ? "chapterDone" : "chapterPending")}${c.origin ? ` · ${t(c.origin === "reference" ? "originReference" : c.origin === "manual" ? "originManual" : "originModel")}` : ""}`}
                           >
+                            {c.status === "in_progress" ? (
+                              <span className="bc-chapter-spinner" aria-hidden="true" />
+                            ) : c.origin ? (
+                              <ToolbarIcon name={c.origin === "reference" ? "reference" : c.origin === "manual" ? "manual" : "model"} />
+                            ) : null}
+                            <span className="bc-chapter-status-label">
                             {t(
                               c.status === "failed"
                                 ? "chapterFailed"
@@ -810,6 +816,7 @@ function Shell({
                               ? ` · ${t(c.origin === "reference" ? "originReference" : c.origin === "manual" ? "originManual" : "originModel")}`
                               : ""}
                             {c.needsReview ? ` · ${t("review")}` : ""}
+                            </span>
                           </small>
                         </button>
                       )}
