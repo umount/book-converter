@@ -957,3 +957,21 @@ used fake providers and synthetic local assets; no paid API request was made.
   preview/apply, book export options and switching to manga formats.
 - Source licensing is proprietary; official compiled releases are free to use.
   Third-party license notices are preserved.
+
+### P06 project navigation and chapter-oriented progress
+
+- Restored the left project list, active-project selection, background activity dots
+  and delete-on-hover crosses. Deletion uses a project-styled confirmation. Switching
+  books restores the last chapter selected during the session.
+- Job panels are scoped to the selected project. Chapter jobs show the actual chapter
+  number/title, current stage, completed chapter count, percentage and full-width
+  progress bar. Step-start events carry a new revision so the active chapter appears
+  before a provider response; technical step counts are no longer labelled as chapters.
+- Chapter number gutters use the book's number of digits. Menu items have consistent
+  spacing. Glossary types use the legacy colors and localized labels, including
+  character/place aliases; search filters after typing without a separate Find button.
+- Project deletion, term deletion and discard-edit confirmations use shared in-app
+  dialogs. File pickers remain native.
+- Validation: 185 Rust tests, frontend tests/build and Clippy. Browser preview checks
+  covered isolated job lists when switching projects, deletion confirmation/cancel,
+  glossary colors and live search, menu spacing and chapter progress display.

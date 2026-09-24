@@ -534,20 +534,43 @@ export async function invokePreview<T>(
     case "book_start_metadata":
     case "book_start_glossary": {
       const job = { projectId: project.id, jobId: `job-${jobs.length}` };
+      const selected = views
+        .filter((v) =>
+          args.chapterId
+            ? v.chapter.id === args.chapterId
+            : args.selection?.kind === "explicit_ids"
+              ? args.selection.ids.includes(v.chapter.id)
+              : true,
+        )
+        .slice(
+          0,
+          args.maxChapters ??
+            (command === "book_start_metadata" ? 1 : views.length),
+        );
+      const last = selected[selected.length - 1];
+      const steps =
+        selected.length *
+        (command === "book_start_translation"
+          ? args.extractGlossary
+            ? 3
+            : 2
+          : 1);
       jobs.push({
         job,
         kind: command.replace("book_start_", "book_"),
         state: "succeeded",
         revision: "1",
-        totalSteps:
-          command === "book_start_retarget" || command === "book_start_glossary"
-            ? Math.min(views.length, args.maxChapters)
-            : 3,
+        totalSteps: steps,
+        completedSteps: steps,
+        totalChapters: selected.length,
+        completedChapters: selected.length,
+        currentChapterNumber: last ? last.chapter.position + 1 : null,
+        currentChapterTitle: last?.chapter.title ?? null,
+        currentStage:
+          command === "book_start_translation"
+            ? "context"
+            : command.replace("book_start_", ""),
         remainingSeconds: null,
-        completedSteps:
-          command === "book_start_retarget" || command === "book_start_glossary"
-            ? Math.min(views.length, args.maxChapters)
-            : 3,
         error: null,
       });
       result = job;

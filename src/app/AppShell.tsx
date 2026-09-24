@@ -1,3 +1,4 @@
+import { useConfirm } from "../shared/ui/useConfirm";
 import { ResizablePanel } from "../shared/ui/ResizablePanel";
 import { ToolbarIcon } from "../shared/ui/ToolbarIcon";
 import { BookSearch } from "../features/book/BookSearch";
@@ -9,10 +10,11 @@ import {
   useRef,
   useState,
   useSyncExternalStore,
+  type CSSProperties,
 } from "react";
 import { isTauri } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import { open, confirm } from "@tauri-apps/plugin-dialog";
+import { open } from "@tauri-apps/plugin-dialog";
 import { projectApi as api } from "../shared/api/projects";
 import { WorkspaceStore } from "../shared/state/workspace";
 import { JobStore } from "../shared/state/jobs";
@@ -79,6 +81,7 @@ function Shell({
       normalizeLang(previewMode ? "ru" : localStorage.getItem(LS_LANG)),
     ),
     t = translator(lang);
+  const confirmation = useConfirm(t);
   const [catalog, setCatalog] = useState<ProjectSummary[]>([]),
     [library, setLibrary] = useState(true),
     [create, setCreate] = useState(false),
@@ -307,8 +310,46 @@ function Shell({
       }
     });
   }
+  const rememberedChapters = useRef(new Map<string, string>());
+  async function removeProject(id: string) {
+    await act(async () => {
+      const item = catalog.find((p) => p.descriptor.id === id)?.descriptor;
+      if (
+        !item ||
+        !(await confirmation.confirm({
+          message: `${item.name}\n\n${t("deleteConfirm")}`,
+          title: t("delete"),
+          action: t("delete"),
+          danger: true,
+        }))
+      )
+        return;
+      await api.delete({ projectId: id });
+      rememberedChapters.current.delete(id);
+      if (workspace.snapshot().project?.id === id) {
+        workspace.close();
+        setLibrary(true);
+      }
+      await reload();
+    });
+  }
   async function activate(id: string) {
+    const previous = workspace.snapshot();
+    if (previous.project && previous.chapter)
+      rememberedChapters.current.set(
+        previous.project.id,
+        previous.chapter.chapter.id,
+      );
     await workspace.open(id);
+    const opened = workspace.snapshot();
+    if (opened.error || opened.project?.id !== id) return;
+    const chapter = rememberedChapters.current.get(id);
+    if (
+      chapter &&
+      opened.chapters.some((c) => c.id === chapter) &&
+      opened.chapter?.chapter.id !== chapter
+    )
+      await workspace.selectChapter(chapter);
     setLibrary(false);
     setPanel("reader");
     setFilter("");
@@ -356,7 +397,7 @@ function Shell({
     setShowJobs(true);
   }
   const project = state.project,
-    jobList = catalog.flatMap((p) => jobs.list(p.descriptor.id));
+    jobList = project && !library ? jobs.list(project.id) : [];
   const translationRunning = jobList.some(
     (job) =>
       job.job.projectId === project?.id &&
@@ -484,6 +525,7 @@ function Shell({
         <button onClick={() => setSettings(true)}>{t("settings")}</button>
         <button
           className="bc-jobs-toggle"
+          disabled={library || !project}
           onClick={() => setShowJobs(!showJobs)}
           aria-pressed={showJobs}
         >
@@ -534,161 +576,198 @@ function Shell({
           create={() => setCreate(true)}
           open={(id) => void act(() => activate(id))}
           importArchive={() => void importProject()}
-          remove={(id) =>
-            void act(async () => {
-              const p = catalog.find((p) => p.descriptor.id === id)?.descriptor;
-              if (
-                !p ||
-                !(await confirm(`${p.name}\n\n${t("deleteConfirm")}`, {
-                  title: t("delete"),
-                  kind: "warning",
-                }))
-              )
-                return;
-              await api.delete({ projectId: id });
-              if (project?.id === id) workspace.close();
-              await reload();
-            })
-          }
+          remove={(id) => void removeProject(id)}
         />
       ) : (
         <div className="bc-workspace">
-          {project?.kind === "book" && (
+          {project && (
             <ResizablePanel
               className="bc-sidebar"
               label={t("chapters")}
               edge="right"
             >
-              <div className="bc-sidebar-heading">
-                <h2>{project.name}</h2>
-                <button
-                  className="bc-icon-button"
-                  aria-label={t("bookSearch")}
-                  title={`${t("bookSearch")} (Ctrl+F)`}
-                  aria-pressed={showSearch}
-                  onClick={() => setShowSearch((v) => !v)}
-                >
-                  <ToolbarIcon name="search" />
-                </button>
-              </div>
-              <p className="bc-hint">
-                {state.settings &&
-                  `${languageName(state.settings.languages.source ?? "und", lang)} → ${languageName(state.settings.languages.target, lang)}`}
-              </p>
-              <BookSearch
-                key={project.id}
-                projectId={project.id}
-                t={t}
-                active={showSearch}
-                mode={searchMode}
-                setMode={setSearchMode}
-                chapters={state.chapters}
-                chapterId={state.chapter?.chapter.id ?? null}
-                registerFlush={registerSearchFlush}
-                beforeWork={async () => {
-                  await editorRef.current?.flush();
-                  await toolFlush.current?.();
-                  await assistantFlush.current?.();
-                }}
-                refresh={async () => {
-                  await editorRef.current?.refresh();
-                  await workspace.refreshChapters();
-                }}
-                close={() => setShowSearch(false)}
-                open={(chapter, block) =>
-                  void act(async () => {
-                    setFocusBlock(block);
-                    await workspace.selectChapter(chapter);
-                    setPanel("reader");
-                  })
-                }
-              />
-              <div className="bc-chapter-navigation" hidden={showSearch}>
-                <details className="bc-chapter-filters" key={project.id}>
-                  <summary title={t("chapterFilter")}>
-                    <span>
-                      {t("chapters")} ·{" "}
-                      {filter || chapterState !== "all"
-                        ? `${visibleChapters.length} / ${state.chapters.length} ●`
-                        : state.chapters.length}
-                    </span>
-                    <svg
-                      aria-hidden="true"
-                      width="16"
-                      height="16"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="1.6"
-                    >
-                      <path d="M4 5h16M7 12h10M10 19h4" />
-                    </svg>
-                  </summary>
-                  <label className="bc-chapter-search">
-                    <span className="bc-sr-only">{t("chapterFilter")}</span>
-                    <input
-                      aria-label={t("chapterFilter")}
-                      placeholder={t("chapterFilter")}
-                      value={filter}
-                      onChange={(e) => setFilter(e.target.value)}
-                    />
-                  </label>
-                  <label className="bc-chapter-search">
-                    {t("chapterStatusFilter")}
-                    <select
-                      value={chapterState}
-                      onChange={(e) => setChapterState(e.target.value)}
-                    >
-                      <option value="all">{t("allChapters")}</option>
-                      <option value="pending">{t("chapterPending")}</option>
-                      <option value="failed">{t("chapterFailed")}</option>
-                      <option value="review">{t("review")}</option>
-                      <option value="done">{t("chapterDone")}</option>
-                      <option value="reference">{t("originReference")}</option>
-                    </select>
-                  </label>
-                </details>
-                <VirtualList
-                  key={`${project.id}/${filter}/${chapterState}`}
-                  items={visibleChapters}
-                  rowHeight={42}
-                  className="bc-chapters"
-                  renderRow={(c) => (
+              <nav className="bc-project-tree" aria-label={t("library")}>
+                <div className="bc-project-tree-heading">{t("library")}</div>
+                {catalog.map(({ descriptor: item }) => (
+                  <div className="bc-project-node" key={item.id}>
                     <button
-                      key={c.id}
                       disabled={busy}
-                      aria-current={
-                        editor?.snapshot().view.chapter.id === c.id
-                          ? "page"
-                          : undefined
-                      }
-                      onClick={() =>
-                        void act(() => workspace.selectChapter(c.id))
-                      }
+                      aria-current={item.id === project.id ? "page" : undefined}
+                      title={item.name}
+                      onClick={() => {
+                        if (item.id !== project.id)
+                          void act(() => activate(item.id));
+                      }}
                     >
-                      <span>{c.position + 1}</span>
-                      <strong>{c.title}</strong>
-                      <small>
-                        {t(
-                          c.status === "failed"
-                            ? "chapterFailed"
-                            : c.status === "in_progress"
-                              ? "chapterInProgress"
-                              : c.status === "done"
-                                ? "chapterDone"
-                                : c.status === "skipped"
-                                  ? "chapterSkipped"
-                                  : "chapterPending",
-                        )}
-                        {c.origin
-                          ? ` · ${t(c.origin === "reference" ? "originReference" : c.origin === "manual" ? "originManual" : "originModel")}`
-                          : ""}
-                        {c.needsReview ? ` · ${t("review")}` : ""}
-                      </small>
+                      <span
+                        className={
+                          jobs
+                            .list(item.id)
+                            .some((j) =>
+                              ["running", "queued"].includes(j.state),
+                            )
+                            ? "bc-project-dot running"
+                            : "bc-project-dot"
+                        }
+                      />
+                      <span>{item.name}</span>
                     </button>
-                  )}
-                />
-              </div>
+                    <button
+                      className="bc-project-remove"
+                      disabled={busy}
+                      aria-label={`${t("delete")}: ${item.name}`}
+                      title={t("delete")}
+                      onClick={() => void removeProject(item.id)}
+                    >
+                      ×
+                    </button>
+                  </div>
+                ))}
+              </nav>
+              {project.kind === "book" && (
+                <>
+                  <div className="bc-sidebar-heading">
+                    <h2>{project.name}</h2>
+                    <button
+                      className="bc-icon-button"
+                      aria-label={t("bookSearch")}
+                      title={`${t("bookSearch")} (Ctrl+F)`}
+                      aria-pressed={showSearch}
+                      onClick={() => setShowSearch((v) => !v)}
+                    >
+                      <ToolbarIcon name="search" />
+                    </button>
+                  </div>
+                  <p className="bc-hint">
+                    {state.settings &&
+                      `${languageName(state.settings.languages.source ?? "und", lang)} → ${languageName(state.settings.languages.target, lang)}`}
+                  </p>
+                  <BookSearch
+                    key={project.id}
+                    projectId={project.id}
+                    t={t}
+                    active={showSearch}
+                    mode={searchMode}
+                    setMode={setSearchMode}
+                    chapters={state.chapters}
+                    chapterId={state.chapter?.chapter.id ?? null}
+                    registerFlush={registerSearchFlush}
+                    beforeWork={async () => {
+                      await editorRef.current?.flush();
+                      await toolFlush.current?.();
+                      await assistantFlush.current?.();
+                    }}
+                    refresh={async () => {
+                      await editorRef.current?.refresh();
+                      await workspace.refreshChapters();
+                    }}
+                    close={() => setShowSearch(false)}
+                    open={(chapter, block) =>
+                      void act(async () => {
+                        setFocusBlock(block);
+                        await workspace.selectChapter(chapter);
+                        setPanel("reader");
+                      })
+                    }
+                  />
+                  <div
+                    style={
+                      {
+                        "--chapter-digits": `${Math.max(1, String(state.chapters.reduce((max, c) => Math.max(max, c.position + 1), 0)).length)}ch`,
+                      } as CSSProperties
+                    }
+                    className="bc-chapter-navigation"
+                    hidden={showSearch}
+                  >
+                    <details className="bc-chapter-filters" key={project.id}>
+                      <summary title={t("chapterFilter")}>
+                        <span>
+                          {t("chapters")} ·{" "}
+                          {filter || chapterState !== "all"
+                            ? `${visibleChapters.length} / ${state.chapters.length} ●`
+                            : state.chapters.length}
+                        </span>
+                        <svg
+                          aria-hidden="true"
+                          width="16"
+                          height="16"
+                          viewBox="0 0 24 24"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="1.6"
+                        >
+                          <path d="M4 5h16M7 12h10M10 19h4" />
+                        </svg>
+                      </summary>
+                      <label className="bc-chapter-search">
+                        <span className="bc-sr-only">{t("chapterFilter")}</span>
+                        <input
+                          aria-label={t("chapterFilter")}
+                          placeholder={t("chapterFilter")}
+                          value={filter}
+                          onChange={(e) => setFilter(e.target.value)}
+                        />
+                      </label>
+                      <label className="bc-chapter-search">
+                        {t("chapterStatusFilter")}
+                        <select
+                          value={chapterState}
+                          onChange={(e) => setChapterState(e.target.value)}
+                        >
+                          <option value="all">{t("allChapters")}</option>
+                          <option value="pending">{t("chapterPending")}</option>
+                          <option value="failed">{t("chapterFailed")}</option>
+                          <option value="review">{t("review")}</option>
+                          <option value="done">{t("chapterDone")}</option>
+                          <option value="reference">
+                            {t("originReference")}
+                          </option>
+                        </select>
+                      </label>
+                    </details>
+                    <VirtualList
+                      key={`${project.id}/${filter}/${chapterState}`}
+                      items={visibleChapters}
+                      rowHeight={42}
+                      className="bc-chapters"
+                      renderRow={(c) => (
+                        <button
+                          key={c.id}
+                          disabled={busy}
+                          aria-current={
+                            editor?.snapshot().view.chapter.id === c.id
+                              ? "page"
+                              : undefined
+                          }
+                          onClick={() =>
+                            void act(() => workspace.selectChapter(c.id))
+                          }
+                        >
+                          <span>{c.position + 1}</span>
+                          <strong>{c.title}</strong>
+                          <small>
+                            {t(
+                              c.status === "failed"
+                                ? "chapterFailed"
+                                : c.status === "in_progress"
+                                  ? "chapterInProgress"
+                                  : c.status === "done"
+                                    ? "chapterDone"
+                                    : c.status === "skipped"
+                                      ? "chapterSkipped"
+                                      : "chapterPending",
+                            )}
+                            {c.origin
+                              ? ` · ${t(c.origin === "reference" ? "originReference" : c.origin === "manual" ? "originManual" : "originModel")}`
+                              : ""}
+                            {c.needsReview ? ` · ${t("review")}` : ""}
+                          </small>
+                        </button>
+                      )}
+                    />
+                  </div>
+                </>
+              )}
             </ResizablePanel>
           )}
           <main className="bc-main">
@@ -939,7 +1018,7 @@ function Shell({
           )}
         </div>
       )}
-      {showJobs && (
+      {showJobs && !library && project && (
         <JobPanel
           jobs={jobList}
           catalog={catalog}
@@ -990,6 +1069,7 @@ function Shell({
           t={t}
         />
       )}
+      {confirmation.dialog}
       {about && <About t={t} close={() => setAbout(false)} />}
       {showInstructions && editor && (
         <ChapterInstructions

@@ -1,3 +1,4 @@
+import { useConfirm } from "../../shared/ui/useConfirm";
 import { useLayoutEffect, useRef, useSyncExternalStore } from "react";
 import { assetUrl } from "../../shared/api/assets";
 import { TITLE_DRAFT, type BookEditorSession } from "../../shared/state/editor";
@@ -54,6 +55,7 @@ export function BookReader({
   busy: boolean;
   t: T;
 }) {
+  const confirmation = useConfirm(t);
   const state = useSyncExternalStore(session.subscribe, session.snapshot),
     { view } = state;
   useLayoutEffect(() => {
@@ -64,6 +66,7 @@ export function BookReader({
   }, [focusBlock, view.chapter.id]);
   return (
     <div className="bc-reader">
+      {confirmation.dialog}
       <div className="bc-reader-titles">
         <div>
           <h2>{view.chapter.title}</h2>
@@ -136,8 +139,15 @@ export function BookReader({
             {t("retry")}
           </button>
           <button
-            onClick={() => {
-              if (window.confirm(t("reload")))
+            onClick={async () => {
+              if (
+                await confirmation.confirm({
+                  title: t("reload"),
+                  message: t("discardConfirm"),
+                  action: t("reload"),
+                  danger: true,
+                })
+              )
                 void session.discard().catch(() => {});
             }}
           >

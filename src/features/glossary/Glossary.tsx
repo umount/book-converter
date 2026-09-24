@@ -1,3 +1,4 @@
+import { useConfirm } from "../../shared/ui/useConfirm";
 import { useEffect, useState } from "react";
 import { projectApi } from "../../shared/api/projects";
 import type {
@@ -21,6 +22,7 @@ export function Glossary({
   extract: (maxChapters: number, force: boolean) => Promise<void>;
   canExtract: boolean;
 }) {
+  const confirmation = useConfirm(t);
   const [page, setPage] = useState<GlossaryPage | null>(null),
     [error, setError] = useState<unknown>(null),
     [busy, setBusy] = useState(false),
@@ -77,6 +79,34 @@ export function Glossary({
     };
   }, [offer, showOffer, retargetCount, validCount, projectId]);
   const [filter, setFilter] = useState({ query: "", pinnedOnly: false });
+  useEffect(() => {
+    const timer = setTimeout(
+      () =>
+        setFilter((previous) =>
+          previous.query === query && previous.pinnedOnly === pinnedOnly
+            ? previous
+            : { query, pinnedOnly },
+        ),
+      250,
+    );
+    return () => clearTimeout(timer);
+  }, [query, pinnedOnly]);
+  const kindLabel = (kind: string) => {
+    switch (kind) {
+      case "character":
+      case "person":
+        return t("kindPerson");
+      case "place":
+      case "location":
+        return t("kindLocation");
+      case "organization":
+        return t("kindOrganization");
+      case "term":
+        return t("kindTerm");
+      default:
+        return kind;
+    }
+  };
   async function load(more = false) {
     setBusy(true);
     setError(null);
@@ -162,6 +192,7 @@ export function Glossary({
   }
   return (
     <div className="bc-tool bc-glossary">
+      {confirmation.dialog}
       <header className="bc-section-heading">
         <h2>{t("glossary")}</h2>
         <div>
@@ -209,17 +240,20 @@ export function Glossary({
         </button>
       )}
       <form
-        className="bc-fields"
+        className="bc-glossary-search"
+        role="search"
         onSubmit={(e) => {
           e.preventDefault();
           setFilter({ query, pinnedOnly });
         }}
       >
         <label>
-          {t("glossarySearch")}
+          <span className="bc-sr-only">{t("glossarySearch")}</span>
           <input
+            type="search"
+            placeholder={t("glossarySearchShort")}
+            title={t("glossarySearch")}
             value={query}
-            disabled={busy}
             onChange={(e) => setQuery(e.target.value)}
             maxLength={1024}
           />
@@ -233,7 +267,6 @@ export function Glossary({
           />
           {t("pinnedOnly")}
         </label>
-        <button disabled={busy}>{t("find")}</button>
       </form>
       {page && (
         <p className="bc-hint" role="status">
@@ -261,7 +294,9 @@ export function Glossary({
             {term.pinned ? " ◆" : ""}
           </strong>
           <span>{term.target}</span>
-          <span>{term.kind}</span>
+          <span className="bc-kind-badge" data-kind={term.kind}>
+            {kindLabel(term.kind)}
+          </span>
           <span>{term.frequency}</span>
         </button>
       ))}
@@ -333,8 +368,16 @@ export function Glossary({
               <button
                 className="danger"
                 disabled={busy}
-                onClick={() => {
-                  if (!confirm(`${t("remove")}: ${edit.source}?`)) return;
+                onClick={async () => {
+                  if (
+                    !(await confirmation.confirm({
+                      title: t("remove"),
+                      message: `${t("remove")}: ${edit.source}?`,
+                      action: t("remove"),
+                      danger: true,
+                    }))
+                  )
+                    return;
                   setBusy(true);
                   void projectApi
                     .deleteTerm({

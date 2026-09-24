@@ -231,7 +231,7 @@ button + button {
 .bc-chapters button {
   height: 42px;
   display: grid;
-  grid-template-columns: 6ch minmax(0, 1fr);
+  grid-template-columns: var(--chapter-digits, 1ch) minmax(0, 1fr);
   grid-template-rows: 18px 15px;
   column-gap: 8px;
   align-content: center;
@@ -1526,4 +1526,182 @@ button + button {
 .bc-panel-resizer:focus-visible {
   background: #4c8bf555;
   outline: none;
+}
+
+.bc-topbar .bc-menu-popup > button,
+.bc-topbar .bc-export-options > button,
+.bc-export-menu > summary {
+  min-height: 30px;
+  line-height: 20px;
+  padding: 5px 12px;
+  white-space: nowrap;
+}
+.bc-menu-popup,
+.bc-export-options {
+  padding: 6px;
+}
+.bc-job-chapter {
+  max-width: min(520px, 100%);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.bc-glossary-search {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin: 12px 0;
+}
+.bc-glossary-search > label:first-child {
+  width: min(320px, 100%);
+}
+.bc-glossary-search input[type="search"] {
+  padding: 6px 9px;
+}
+.bc-glossary-search .bc-check {
+  margin: 0;
+}
+.bc-kind-badge {
+  justify-self: start;
+  font-size: 11px;
+  border-radius: 4px;
+  padding: 2px 7px;
+  color: #e3b341;
+  background: #e3b34118;
+}
+.bc-kind-badge[data-kind="character"],
+.bc-kind-badge[data-kind="person"] {
+  color: #79aaff;
+  background: #4c8bf51c;
+}
+.bc-kind-badge[data-kind="place"],
+.bc-kind-badge[data-kind="location"] {
+  color: #63cd74;
+  background: #3fb9501c;
+}
+.bc-kind-badge[data-kind="organization"] {
+  color: #bd96ff;
+  background: #a371f71c;
+}
+
+.bc-project-tree {
+  flex-shrink: 0;
+  max-height: 28vh;
+  overflow-y: auto;
+  padding: 0 0 10px;
+  margin-bottom: 12px;
+  border-bottom: 1px solid var(--line);
+}
+.bc-project-tree-heading {
+  color: var(--muted);
+  font-size: 11px;
+  padding: 0 12px 6px;
+}
+.bc-project-node {
+  display: flex;
+  position: relative;
+}
+.bc-project-node > button:first-child {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  width: 100%;
+  min-width: 0;
+  padding: 6px 30px 6px 12px;
+  margin: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  text-align: left;
+}
+.bc-project-node > button:first-child > span:last-child {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.bc-project-node > button[aria-current] {
+  background: #283449;
+  color: #b4cfff;
+}
+.bc-project-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  background: #696971;
+}
+.bc-project-dot.running {
+  background: var(--accent);
+}
+.bc-project-node .bc-project-remove {
+  position: absolute;
+  right: 5px;
+  top: 3px;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  margin: 0;
+  border: 0;
+  background: transparent;
+  opacity: 0;
+}
+.bc-project-node:hover .bc-project-remove,
+.bc-project-node:focus-within .bc-project-remove {
+  opacity: 1;
+}
+.bc-project-node .bc-project-remove:hover {
+  background: #f36d6d22;
+  color: #f08d8d;
+}
+
+.bc-confirm-message {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.bc-job {
+  display: block;
+  padding: 7px 0;
+  border-top: 1px solid var(--line);
+}
+.bc-job-heading,
+.bc-job-progress {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+.bc-job-heading {
+  margin-bottom: 5px;
+}
+.bc-job-chapter {
+  flex: 1;
+  max-width: none;
+}
+.bc-job-progress > span {
+  white-space: nowrap;
+}
+.bc-job-progress progress {
+  flex: 1;
+  min-width: 80px;
+  width: auto;
+  height: 8px;
+  appearance: none;
+  border: none;
+  border-radius: 4px;
+  overflow: hidden;
+  background: #34343b;
+}
+.bc-job-progress progress::-webkit-progress-bar {
+  background: #34343b;
+  border-radius: 4px;
+}
+.bc-job-progress progress::-webkit-progress-value {
+  background: var(--accent);
+  border-radius: 4px;
+}
+.bc-job-progress progress::-moz-progress-bar {
+  background: var(--accent);
+  border-radius: 4px;
 }
