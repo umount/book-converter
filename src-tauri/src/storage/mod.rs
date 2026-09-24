@@ -1,5 +1,9 @@
 //! Explicit versioned connections. Old progress databases are never migrated here.
+pub mod edits;
 pub mod repository;
+pub mod results;
+pub mod runs;
+pub mod shared;
 
 use crate::app::contracts::ProjectKind;
 use rusqlite::{Connection, OpenFlags};
@@ -57,9 +61,9 @@ pub fn open(path: &Path) -> anyhow::Result<Connection> {
 }
 
 #[cfg(test)]
-mod tests {
+pub(super) mod tests {
     use super::*;
-    fn database(kind: ProjectKind) -> Connection {
+    pub(super) fn database(kind: ProjectKind) -> Connection {
         let connection = Connection::open_in_memory().unwrap();
         configure(&connection).unwrap();
         connection
@@ -194,3 +198,6 @@ mod tests {
             .is_err());
     }
 }
+
+#[cfg(test)]
+mod persistence_tests;

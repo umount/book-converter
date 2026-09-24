@@ -5,7 +5,7 @@ use crate::app::contracts::{
 use crate::app::requests::{BookChapterView, ChapterSummary, PageSummary};
 use rusqlite::{params, Connection, OptionalExtension};
 
-fn failure(code: ErrorCode, key: &str) -> AppError {
+pub(super) fn failure(code: ErrorCode, key: &str) -> AppError {
     AppError {
         code,
         message_key: key.into(),
@@ -18,10 +18,10 @@ pub(super) fn storage_error(_: rusqlite::Error) -> AppError {
     failure(ErrorCode::Storage, "errors.storage")
 }
 
-fn not_found() -> AppError {
+pub(super) fn not_found() -> AppError {
     failure(ErrorCode::NotFound, "errors.entityNotFound")
 }
-fn conflict() -> AppError {
+pub(super) fn conflict() -> AppError {
     failure(ErrorCode::RevisionConflict, "errors.revisionConflict")
 }
 
@@ -189,6 +189,7 @@ impl<'a> ProjectRepository<'a> {
             [&chapter],
         )
         .map_err(storage_error)?;
+        tx.execute("UPDATE book_translations SET status='needs_review' WHERE status='ready' AND chapter_id IN (SELECT id FROM book_chapters WHERE position > (SELECT position FROM book_chapters WHERE id=?1))",[&chapter]).map_err(storage_error)?;
         tx.commit().map_err(storage_error)?;
         Ok(Revision(next.to_string()))
     }

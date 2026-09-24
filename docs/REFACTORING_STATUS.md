@@ -41,8 +41,8 @@ P03–P13: pending. No production behavior has been replaced yet.
 
 ## Next executable step
 
-Continue P02 shared settings/glossary/job repositories, translation/result persistence
-and full schema invariants before starting the P03 lifecycle cutover.
+Implement P03 staged lifecycle and source normalization. At the next major boundary,
+run final P02/P03 regression and Clippy before marking phases complete.
 Plan snapshot committed as a45d990. Baseline formatting drift is recorded, not hidden.
 
 ## Evidence rules
@@ -114,3 +114,18 @@ fallback. Keep commits scoped; push only on user request.
 - P02 remains in progress. Shared settings/glossary/job repositories, translation
   and manga result persistence, and complete schema invariant coverage remain.
 - No user data reset, GUI cutover, paid model call or remote push was performed.
+
+## P02 persistence completion (2026-09-24)
+
+- Added revision-checked settings, glossary, assistant transcript and durable job
+  repositories; job snapshots contain profile IDs and resolved choices, not credentials.
+- Book translation publication validates the exact text block set, source/settings/
+  glossary revisions and prior translation revision in one transaction. Images stay
+  structural. Contexts belong to a specific translation revision.
+- Manga result publication validates input versions and immutable asset references;
+  edits preserve manual flags, invalidate dependent results and reject stale updates.
+  Added region, mask, review and explicit reference-mapping persistence.
+- Strengthened integer revision constraints, source-block guards and indexes.
+- Targeted storage run: 13 tests passed. Clippy found one test assertion style issue,
+  corrected before commit. Final regression/Clippy is deferred to the next major
+  boundary per the user's request to avoid rebuilding every intermediate state.
