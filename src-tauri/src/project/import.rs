@@ -115,6 +115,12 @@ fn book(
     }
 
     let mut assets = HashMap::new();
+    for (id, bytes) in &loaded.embedded_assets {
+        assets.insert(
+            id.clone(),
+            store.publish(db, bytes, extension(bytes)?).map_err(fail)?,
+        );
+    }
     if !loaded.assets.is_empty() {
         let mut archive =
             zip::ZipArchive::new(std::fs::File::open(path).map_err(fail)?).map_err(fail)?;

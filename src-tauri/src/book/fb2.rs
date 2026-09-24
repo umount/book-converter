@@ -7,9 +7,8 @@
 //!
 //! Chapter numbering is read from the heading with a generic pattern
 //! (`<int>` optionally `.<part>`, plus Chinese `第N章`), so "Глава 1.1", "第1章",
-//! "Chapter 1", "1.1 …" all work without hardcoding a language. Sections with no
-//! number (title page, contents, glossary) are treated as front matter and left
-//! out of the chapter list.
+//! "Chapter 1", "1.1 …" all work without hardcoding a language. Structural import
+//! lives in `fb2_content` and preserves unnumbered sections.
 //!
 //! Self-contained (only `quick-xml` + `regex` + std), so it is testable without
 //! the Tauri crate.
@@ -19,7 +18,7 @@ use quick_xml::events::Event;
 use quick_xml::reader::Reader;
 use regex::Regex;
 
-use super::parser::{parse_chapter_number, BookMeta, Chapter};
+use super::parser::{parse_chapter_number, BookMeta};
 
 /// A raw FB2 section: its heading text and concatenated paragraph text.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -158,45 +157,6 @@ fn generic_number() -> Regex {
     Regex::new(r"(\d+)(?:[.\-–](\d+))?").expect("valid regex")
 }
 
-/// Convert FB2 sections into whole chapters.
-///
-/// Sections that share a chapter number (e.g. professional translations split a
-/// chapter into parts 1.1, 1.2, …) are merged in reading order into one chapter.
-/// Front-matter sections (no number) are dropped.
-pub fn fb2_to_chapters(doc: &Fb2Doc) -> Vec<Chapter> {
-    let mut chapters: Vec<Chapter> = Vec::new();
-    let mut current_number: Option<usize> = None;
-
-    for sec in &doc.sections {
-        let Some((number, _part)) = heading_number(&sec.title) else {
-            continue; // front matter
-        };
-
-        if current_number == Some(number) {
-            // Same chapter, next part → append.
-            if let Some(last) = chapters.last_mut() {
-                if !sec.body.is_empty() {
-                    if !last.body.is_empty() {
-                        last.body.push_str("\n\n");
-                    }
-                    last.body.push_str(&sec.body);
-                }
-                continue;
-            }
-        }
-
-        current_number = Some(number);
-        chapters.push(Chapter {
-            index: chapters.len() + 1,
-            number: Some(number),
-            title: sec.title.clone(),
-            body: sec.body.clone(),
-        });
-    }
-
-    chapters
-}
-
 /// Collapse runs of whitespace to single spaces and trim.
 fn normalize_ws(s: &str) -> String {
     s.split_whitespace().collect::<Vec<_>>().join(" ")
@@ -241,18 +201,6 @@ mod tests {
         assert_eq!(heading_number("第九百八十四章 X"), Some((984, None)));
         assert_eq!(heading_number("Chapter 7"), Some((7, None)));
         assert_eq!(heading_number("Глоссарий"), None);
-    }
-
-    #[test]
-    fn merges_parts_into_whole_chapters() {
-        let doc = parse_fb2(FB2).unwrap();
-        let chapters = fb2_to_chapters(&doc);
-        // Glossary dropped; parts 1.1 + 1.2 merged; chapter 2 separate.
-        assert_eq!(chapters.len(), 2);
-        assert_eq!(chapters[0].number, Some(1));
-        assert!(chapters[0].body.contains("Он открыл глаза."));
-        assert!(chapters[0].body.contains("Гриф кружил вдалеке."));
-        assert_eq!(chapters[1].number, Some(2));
     }
 }
 

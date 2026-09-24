@@ -4,6 +4,7 @@ pub(crate) mod blocks;
 pub(crate) mod chunker;
 pub(crate) mod epub;
 pub(crate) mod fb2;
+mod fb2_content;
 pub(crate) mod load;
 pub(crate) mod parser;
 pub(crate) mod pdf;

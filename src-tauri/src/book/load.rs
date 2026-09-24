@@ -11,7 +11,7 @@ use std::path::Path;
 use anyhow::Result;
 
 use super::blocks::{AssetRef, ChapterBlocks};
-use super::fb2::{fb2_to_chapters, parse_fb2};
+use super::fb2::parse_fb2;
 use super::parser::{parse_book_meta, parse_chapters, validate, BookMeta, Chapter, ParseReport};
 use super::source::{is_epub, read_book_file};
 
@@ -44,6 +44,8 @@ pub struct LoadedBook {
     pub blocks: Vec<ChapterBlocks>,
     /// Images the blocks refer to, still inside the source container.
     pub assets: Vec<AssetRef>,
+    /// Decoded images carried directly by a text container (FB2).
+    pub embedded_assets: Vec<(String, Vec<u8>)>,
 }
 
 /// Detect the input format from the decoded text (content-based, not extension).
@@ -72,7 +74,8 @@ pub fn load_book_text(text: &str, encoding: &str) -> Result<LoadedBook> {
     let book = match detect_format(text) {
         InputFormat::Fb2 => {
             let doc = parse_fb2(text)?;
-            let chapters = fb2_to_chapters(&doc);
+            let content = super::fb2_content::parse(text)?;
+            let chapters = content.chapters;
             let report = validate(&chapters, &doc.meta);
             LoadedBook {
                 format: InputFormat::Fb2,
@@ -83,8 +86,9 @@ pub fn load_book_text(text: &str, encoding: &str) -> Result<LoadedBook> {
                 needs_delimiter: false,
                 encoding_had_errors: false,
                 cover: super::fb2::embedded_cover(text)?,
-                blocks: Vec::new(),
+                blocks: content.blocks,
                 assets: Vec::new(),
+                embedded_assets: content.images,
             }
         }
         InputFormat::Txt => {
@@ -103,6 +107,7 @@ pub fn load_book_text(text: &str, encoding: &str) -> Result<LoadedBook> {
                 cover: None,
                 blocks: Vec::new(),
                 assets: Vec::new(),
+                embedded_assets: Vec::new(),
             }
         }
         InputFormat::Epub => anyhow::bail!("epub is loaded from a zip, not decoded text"),

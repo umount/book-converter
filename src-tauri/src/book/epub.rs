@@ -123,6 +123,7 @@ fn load_archive<R: Read + Seek>(mut zip: ZipArchive<R>) -> Result<LoadedBook> {
         cover,
         blocks: chapter_blocks,
         assets,
+        embedded_assets: Vec::new(),
     })
 }
 

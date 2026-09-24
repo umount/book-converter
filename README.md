@@ -28,8 +28,8 @@ tracked in [REFACTORING](docs/REFACTORING.md).
 7. Save a portable `.bcproj` archive or export the book as TXT, FB2, EPUB or PDF.
 
 Book import supports TXT, FB2, EPUB, PDF and supported books inside ZIP archives.
-Format fidelity is still being improved; FB2 inline illustrations are not yet carried
-through the new importer.
+FB2 and EPUB illustrations are stored as structural image blocks, including repeated
+occurrences. FB2 sections without numbered headings are preserved.
 
 Manga currently supports CBZ and image-folder import, natural page ordering,
 orientation normalization, stored thumbnails, a virtualized page list, zoom and

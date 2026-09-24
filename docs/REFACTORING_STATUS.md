@@ -489,3 +489,17 @@ fallback. Keep commits scoped; push only on user request.
   legacy reference/retarget UI) with the current project, batch and assistant flow.
   Automatic manga processing and native acceptance are explicitly marked incomplete.
 - Validation: all 52 book-module tests and strict all-target Clippy passed.
+
+### P05 structural FB2 import
+
+- Added structural FB2 parsing with embedded binary registration. Repeated image
+  occurrences retain their positions while the asset store deduplicates bytes.
+  Unnumbered and image-only sections are retained; nested content stays in reading
+  order. External/missing image references fail explicitly instead of silently losing
+  illustrations. Per-image and aggregate decoded-byte limits bound image imports.
+- Removed the superseded numbered-section converter that discarded front matter.
+- Export/import/export regression verifies three image occurrences, one image binary
+  and identical structural blocks. Parser regression covers unnumbered/nested sections,
+  mixed inline text, CDATA, repeated images and invalid references.
+- Full suite passed 314 tests before deleting the obsolete converter and its test;
+  strict all-target Clippy passed after that deletion. No manga feature changes.

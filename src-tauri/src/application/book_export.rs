@@ -330,6 +330,44 @@ mod tests {
         let text = std::fs::read_to_string(&args.destination).unwrap();
         assert_eq!(text.matches("<image ").count(), 3);
         assert_eq!(text.matches("<binary ").count(), 1);
+        let imported = manager
+            .inspect_source(ProjectKind::Book, Path::new(&args.destination))
+            .unwrap();
+        let imported = manager
+            .create(
+                &imported.import_id.0,
+                &ProjectChoices {
+                    name: "FB2 roundtrip".into(),
+                    languages: LanguagePair {
+                        source: Some("en".into()),
+                        target: "ru".into(),
+                    },
+                    processing_profile_id: None,
+                },
+            )
+            .unwrap();
+        let roundtrip_path = temp.0.join("roundtrip.fb2");
+        export_book(
+            &manager,
+            &BookExportArgs {
+                project_id: imported.id,
+                selection: EntitySelection::All,
+                destination: roundtrip_path.to_string_lossy().into_owned(),
+                format: BookExportFormat::Fb2,
+                incomplete_policy: IncompletePolicy::Originals,
+            },
+        )
+        .unwrap();
+        let roundtrip = std::fs::read_to_string(roundtrip_path).unwrap();
+        assert_eq!(roundtrip.matches("<image ").count(), 3);
+        assert_eq!(roundtrip.matches("<binary ").count(), 1);
+        let before = crate::book::load::load_book_text(&text, "UTF-8").unwrap();
+        let after = crate::book::load::load_book_text(&roundtrip, "UTF-8").unwrap();
+        assert_eq!(before.chapters.len(), after.chapters.len());
+        assert_eq!(
+            before.blocks.iter().map(|c| &c.blocks).collect::<Vec<_>>(),
+            after.blocks.iter().map(|c| &c.blocks).collect::<Vec<_>>()
+        );
         let cover_path = temp.0.join("cover.png");
         image::RgbImage::new(3, 4).save(&cover_path).unwrap();
         manager
