@@ -8,7 +8,7 @@ use crate::{
         requests::{ChapterSummary, PageSummary},
     },
     assets::store::AssetStore,
-    storage::repository::ProjectRepository,
+    storage::repository::{ProjectRepository, storage_error},
 };
 use rusqlite::Connection;
 use std::{collections::HashMap, io::Read, path::Path};
@@ -181,13 +181,14 @@ fn book(
             .collect::<Vec<_>>();
         ProjectRepository::new(db, ProjectKind::Book)?.insert_chapter(
             &ChapterSummary {
-                id: ChapterId(chapter_id),
+                id: ChapterId(chapter_id.clone()),
                 position: position as u32,
                 title: chapter.title.clone(),
                 revision: Revision("0".into()),
             },
             &blocks,
         )?;
+        db.execute("UPDATE book_chapters SET display_number=?1 WHERE id=?2", rusqlite::params![chapter.number.map(|n| n as i64),chapter_id]).map_err(storage_error)?;
     }
     Ok((language, warnings))
 }

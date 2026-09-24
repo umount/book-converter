@@ -143,10 +143,10 @@ pub fn leftover_foreign(target_lang: &str, title: &str, body: &str, source: &str
 /// languages this check cannot judge (mixed writing systems such as Japanese).
 pub fn expected_script(lang: &str) -> Option<Script> {
     match lang.trim().to_ascii_lowercase().as_str() {
-        "russian" | "ukrainian" | "belarusian" | "bulgarian" | "serbian" => Some(Script::Cyrillic),
-        "english" | "german" | "french" | "spanish" | "italian" | "portuguese" | "dutch"
+        "ru" | "russian" | "ukrainian" | "belarusian" | "bulgarian" | "serbian" => Some(Script::Cyrillic),
+        "en" | "english" | "de" | "german" | "fr" | "french" | "es" | "spanish" | "it" | "italian" | "pt" | "portuguese" | "dutch"
         | "polish" | "czech" | "turkish" | "vietnamese" | "indonesian" => Some(Script::Latin),
-        "chinese" => Some(Script::Han),
+        "zh" | "chinese" => Some(Script::Han),
         // Japanese and Korean mix scripts (kana + kanji, hangul + hanja); Arabic,
         // Hebrew, Greek and friends are simply not modelled here.
         _ => None,

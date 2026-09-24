@@ -54,7 +54,7 @@ pub fn update(
         )
         .map_err(storage_error)?;
         tx.execute(
-            "UPDATE book_translations SET status='needs_review' WHERE status='ready'",
+            "UPDATE book_translations SET status='needs_review' WHERE status='ready' AND provenance!='reference'",
             [],
         )
         .map_err(storage_error)?;

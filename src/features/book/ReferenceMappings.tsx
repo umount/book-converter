@@ -1,22 +1,18 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import type {
   BookReferenceView,
-  BookReferenceExcerpt,
   ChapterSummary,
 } from "../../shared/contracts/generated";
-import { errorText, type T } from "../../app/strings";
-import { projectApi } from "../../shared/api/projects";
+import { type T } from "../../app/strings";
 
 const PAGE_SIZE = 50;
 export function ReferenceMappings({
-  projectId,
   chapters,
   reference,
   disabled,
   onChange,
   t,
 }: {
-  projectId: string;
   chapters: ChapterSummary[];
   reference: BookReferenceView;
   disabled: boolean;
@@ -56,26 +52,6 @@ export function ReferenceMappings({
   );
   const active = chapters.find((c) => c.id === selected);
   const mapped = active ? byId.get(mappings.get(active.id) ?? "") : undefined;
-  const [excerpt, setExcerpt] = useState<BookReferenceExcerpt | null>(null);
-  const [excerptError, setExcerptError] = useState<unknown>(null);
-  const mappedId = mapped?.id;
-  useEffect(() => {
-    let alive = true;
-    setExcerpt(null);
-    setExcerptError(null);
-    if (mappedId)
-      void projectApi
-        .referenceExcerpt({ projectId, referenceId: mappedId })
-        .then((value) => {
-          if (alive) setExcerpt(value);
-        })
-        .catch((error) => {
-          if (alive) setExcerptError(error);
-        });
-    return () => {
-      alive = false;
-    };
-  }, [projectId, mappedId]);
   function assign(referenceId: string | null) {
     if (!active) return;
     onChange({
@@ -174,7 +150,6 @@ export function ReferenceMappings({
           </div>
         </section>
       </div>
-      {excerptError != null && <p role="alert">{errorText(excerptError, t)}</p>}
       {active ? (
         <div className="bc-reference-selection">
           <strong>{active.title}</strong>
@@ -182,12 +157,6 @@ export function ReferenceMappings({
           <button disabled={disabled || !mapped} onClick={() => assign(null)}>
             {t("removeMapping")}
           </button>
-          {mapped && excerptError == null && (
-            <p className="bc-summary">
-              {excerpt?.text ?? t("loading")}
-              {excerpt?.truncated ? "…" : ""}
-            </p>
-          )}
         </div>
       ) : (
         <p className="bc-hint">{t("selectChapter")}</p>

@@ -116,7 +116,7 @@ fn snapshot(
                 |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
             )
             .map_err(storage_error)?;
-        let translation: Option<(String,String)> = tx.query_row("SELECT id,translated_title FROM book_translations WHERE chapter_id=?1 AND target_language=?2 AND status='ready' AND source_revision=?3 AND settings_revision=?4 AND glossary_revision=?5 ORDER BY revision DESC LIMIT 1", rusqlite::params![id, settings.choices.target_language, source_revision, settings.revision.value()?, glossary.value()?], |r| Ok((r.get(0)?,r.get(1)?))).optional().map_err(storage_error)?;
+        let translation: Option<(String,String)> = tx.query_row("SELECT id,translated_title FROM book_translations WHERE chapter_id=?1 AND target_language=?2 AND status='ready' AND (provenance='reference' OR (source_revision=?3 AND settings_revision=?4 AND glossary_revision=?5)) ORDER BY revision DESC LIMIT 1", rusqlite::params![id, settings.choices.target_language, source_revision, settings.revision.value()?, glossary.value()?], |r| Ok((r.get(0)?,r.get(1)?))).optional().map_err(storage_error)?;
         let mut translated = HashMap::<String, String>::new();
         if let Some((translation_id, _)) = &translation {
             let mut q = tx.prepare("SELECT source_block_id,translated_text FROM book_translation_blocks WHERE translation_id=?1").map_err(storage_error)?;
@@ -415,6 +415,29 @@ mod tests {
             .to_string_lossy()
             .into_owned();
         assert!(export_book(&manager, &args).is_err());
+    }
+
+    #[test]
+    fn adopted_reference_exports_full_body_after_glossary_and_prompt_changes() {
+        let temp=Scratch(std::env::temp_dir().join(format!("reference-export-{}",uuid::Uuid::new_v4())));
+        std::fs::create_dir(&temp.0).unwrap();
+        let manager=ProjectManager::new(temp.0.join("app"));
+        let preview=manager.inspect_source(ProjectKind::Book,&Path::new(env!("CARGO_MANIFEST_DIR")).join("../tests/fixtures/structural.epub")).unwrap();
+        let project=manager.create(&preview.import_id.0,&ProjectChoices{name:"Reference".into(),languages:LanguagePair{source:Some("en".into()),target:"ru".into()},processing_profile_id:None}).unwrap();
+        let reference=temp.0.join("reference.fb2");
+        let full=format!("{}КОНЕЦ ПОЛНОГО ПЕРЕВОДА", "Готовый перевод. ".repeat(2000));
+        std::fs::write(&reference,format!(r#"<?xml version="1.0" encoding="utf-8"?><FictionBook xmlns="http://www.gribuser.ru/xml/fictionbook/2.0"><description><title-info><book-title>Reference</book-title><lang>ru</lang></title-info></description><body><section><title><p>Chapter 1</p></title><p>{full}</p></section><section><title><p>Chapter 3</p></title><p>Последняя глава.</p></section></body></FictionBook>"#)).unwrap();
+        super::super::book_reference::import(&manager,&crate::app::requests::BookReferenceImportArgs{project_id:project.id.clone(),path:reference.to_string_lossy().into_owned()}).unwrap();
+        manager.lease(&project.id).unwrap().with_connection(|db,_|{
+            db.execute("UPDATE glossary_state SET revision=revision+1",[]).unwrap();
+            db.execute("UPDATE project_settings SET revision=revision+1",[]).unwrap();
+            db.execute("UPDATE book_chapters SET instructions='New prompt',revision=revision+1",[]).unwrap();
+            Ok(())
+        }).unwrap();
+        let destination=temp.0.join("translated.txt");
+        export_book(&manager,&BookExportArgs{project_id:project.id,selection:EntitySelection::All,destination:destination.to_string_lossy().into_owned(),format:BookExportFormat::Txt,incomplete_policy:IncompletePolicy::Reject}).unwrap();
+        let output=std::fs::read_to_string(destination).unwrap();
+        assert!(output.contains(&full));assert!(output.contains("Последняя глава."));assert!(!output.contains("Original text."));
     }
 
     #[test]

@@ -121,7 +121,7 @@ impl<'a> ProjectRepository<'a> {
             .optional()
             .map_err(storage_error)?
             .ok_or_else(not_found)?;
-        let translation=tx.query_row("SELECT id,revision,translated_title,status FROM book_translations WHERE chapter_id=?1 AND target_language=(SELECT target_language FROM project_settings WHERE singleton=1) ORDER BY revision DESC LIMIT 1",[id],|r|Ok(TranslationSummary{id:r.get(0)?,revision:Revision(r.get::<_,i64>(1)?.to_string()),title:r.get(2)?,status:r.get(3)?})).optional().map_err(storage_error)?;
+        let translation=tx.query_row("SELECT id,revision,translated_title,status,CASE WHEN provenance IN ('reference','manual') THEN provenance ELSE 'model' END FROM book_translations WHERE chapter_id=?1 AND target_language=(SELECT target_language FROM project_settings WHERE singleton=1) ORDER BY revision DESC LIMIT 1",[id],|r|Ok(TranslationSummary{id:r.get(0)?,revision:Revision(r.get::<_,i64>(1)?.to_string()),title:r.get(2)?,status:r.get(3)?,origin:r.get(4)?})).optional().map_err(storage_error)?;
         let translated: std::collections::HashMap<String, String> = if let Some(translation) =
             &translation
         {
@@ -166,8 +166,22 @@ impl<'a> ProjectRepository<'a> {
                 |r| r.get::<_, String>(0),
             )
             .map_err(storage_error)?;
+        let target: String = tx.query_row("SELECT target_language FROM project_settings WHERE singleton=1", [], |r|r.get(0)).map_err(storage_error)?;
+        let source = blocks.iter().filter_map(|b| match &b.content {BookBlockContent::Text{text}|BookBlockContent::Caption{text}=>Some(text.as_str()), _=>None}).collect::<Vec<_>>().join("\n\n");
+        let body = blocks.iter().filter_map(|b|b.translated_text.as_deref()).collect::<Vec<_>>().join("\n\n");
+        let lang_issues = translation.as_ref().map(|t|crate::textutil::leftover_foreign(&target,&t.title,&body,&source)).unwrap_or_default();
+        let step: Option<(String,Option<String>)> = tx.query_row("SELECT state,error FROM job_steps WHERE entity_kind='chapter' AND entity_id=?1 AND stage IN ('translation','glossary','context') ORDER BY rowid DESC LIMIT 1",[id],|r|Ok((r.get(0)?,r.get(1)?))).optional().map_err(storage_error)?;
+        let translation_error = step.as_ref().and_then(|(_,error)|error.as_ref()).map(|error|serde_json::from_str::<AppError>(error).map_err(|_|AppError::invalid("jobError"))).transpose()?;
+        let status = match step.as_ref().map(|s|s.0.as_str()) {
+            Some("running"|"cancelling") => "in_progress",
+            Some("failed") => "failed",
+            _ if translation.is_some() => "done",
+            _ if source.trim().is_empty() => "skipped",
+            _ => "pending",
+        }.to_owned();
         tx.commit().map_err(storage_error)?;
         Ok(BookChapterView {
+            status, lang_issues, translation_error,
             instructions,
             chapter,
             blocks,
@@ -200,7 +214,7 @@ impl<'a> ProjectRepository<'a> {
                 id,
             )?);
         }
-        tx.execute("UPDATE book_translations SET status='needs_review' WHERE status='ready' AND chapter_id IN (SELECT id FROM book_chapters WHERE position >= (SELECT position FROM book_chapters WHERE id=?1))",[id]).map_err(storage_error)?;
+        tx.execute("UPDATE book_translations SET status='needs_review' WHERE status='ready' AND provenance!='reference' AND chapter_id IN (SELECT id FROM book_chapters WHERE position >= (SELECT position FROM book_chapters WHERE id=?1))",[id]).map_err(storage_error)?;
         tx.commit().map_err(storage_error)?;
         Ok(Revision(revision.to_string()))
     }
@@ -243,7 +257,7 @@ impl<'a> ProjectRepository<'a> {
             [&chapter],
         )
         .map_err(storage_error)?;
-        tx.execute("UPDATE book_translations SET status='needs_review' WHERE status='ready' AND chapter_id IN (SELECT id FROM book_chapters WHERE position > (SELECT position FROM book_chapters WHERE id=?1))",[&chapter]).map_err(storage_error)?;
+        tx.execute("UPDATE book_translations SET status='needs_review' WHERE status='ready' AND provenance!='reference' AND chapter_id IN (SELECT id FROM book_chapters WHERE position > (SELECT position FROM book_chapters WHERE id=?1))",[&chapter]).map_err(storage_error)?;
         tx.commit().map_err(storage_error)?;
         Ok(Revision(next.to_string()))
     }

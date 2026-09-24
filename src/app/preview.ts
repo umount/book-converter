@@ -69,6 +69,9 @@ const translated = [
   "«Здесь всегда что-нибудь цветёт, — писал он. — Даже когда кажется, что всё остальное замерло».",
 ];
 const views: BookChapterView[] = chapters.map((chapter) => ({
+  status: "done",
+  langIssues: [],
+  translationError: null,
   chapter,
   instructions: "",
   translation: {
@@ -78,6 +81,7 @@ const views: BookChapterView[] = chapters.map((chapter) => ({
       chapter.position
     ],
     status: "ready",
+    origin: "model",
   },
   blocks: original.map((text, position) => ({
     id: `${chapter.id}-block-${position}`,
@@ -254,6 +258,7 @@ export async function invokePreview<T>(
         args.text;
       view.translation = {
         ...view.translation,
+        origin: "manual",
         revision,
         id: `${view.chapter.id}-translation-${revision}`,
       };
@@ -335,17 +340,6 @@ export async function invokePreview<T>(
         current: true,
       };
       break;
-    case "book_reference_excerpt": {
-      const chapter = previewReference.chapters.find(
-        (c) => c.id === args.referenceId,
-      );
-      if (!chapter) throw { code: "not_found" };
-      result = {
-        text: `Пример референса для главы ${chapter.position + 1}.`,
-        truncated: false,
-      };
-      break;
-    }
     case "book_reference_get":
       result = previewReference;
       break;

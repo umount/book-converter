@@ -559,10 +559,24 @@ fallback. Keep commits scoped; push only on user request.
 - Indexed structural-block lookup removes quadratic scans during book/reference
   import. Full library suite passed 316 tests; Clippy, frontend tests/build and
   generated contracts passed. Browser fixture verified the chapter-20,000 excerpt.
-- User correction: preserve the legacy reference-as-base behavior. Verified in
-  commands/reference.rs and commands/util.rs: importing a reference automatically
-  copies complete translations into pending chapters, preferring chapter-number
-  correspondence and falling back to reading order. Existing translations are kept.
-  This behavior is still missing from the new service and is the next required
-  book task. Do not replace it with context-only use or a new opt-in workflow.
-  The 1,500-character limit applies only to the UI preview, never adopted translations.
+- The excerpt UI/API described above was rejected by the user and has now been
+  removed. Reference adoption, rather than preview, is the required behavior.
+
+### P05 restore reference adoption and legacy flags
+
+- Reference import now copies whole translated chapters automatically into chapters
+  without translations, matching chapter numbers and falling back to reading order.
+  Source chapter numbers are retained on import; existing chapter titles provide a
+  compatibility fallback. Existing translations are preserved. No provider call is
+  made to adopt a reference. The complete body is stored intact in the first text
+  block, without fabricating correspondence between source/reference paragraphs.
+- Restored reader flags: origin `model` / `reference` / `manual`, chapter status
+  `pending` / `in_progress` / `done` / `failed` / `skipped`, and `lang_issues` using
+  the existing foreign-fragment scanner (including language-code aliases).
+  Provider/step errors are exposed separately from detected foreign-language text.
+  Manual body corrections change origin to `manual` and rescan language issues.
+- Reference translations survive model-setting, glossary and prompt changes, remain
+  exportable, and are skipped by ordinary bounded batches. Explicit forced model
+  translation still replaces them and reports model origin.
+- The excerpt command, DTOs, client method, selection effect and preview UI are gone;
+  metadata-only reference lists remain bounded in rendered rows.

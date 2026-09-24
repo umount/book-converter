@@ -833,11 +833,6 @@ button + button {
 .bc-reference-selection > button {
   margin-left: 12px;
 }
-.bc-reference-selection .bc-summary {
-  max-height: 160px;
-  overflow: auto;
-  color: var(--muted);
-}
 @media (max-width: 760px) {
   .bc-reference-columns {
     grid-template-columns: 1fr;

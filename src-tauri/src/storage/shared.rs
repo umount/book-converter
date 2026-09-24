@@ -163,7 +163,7 @@ pub(super) fn next(value: i64) -> Result<i64, AppError> {
 /// Conservative invalidation; stage-specific dependency narrowing belongs to P04/P05.
 pub(super) fn invalidate(tx: &Transaction<'_>) -> Result<(), AppError> {
     tx.execute(
-        "UPDATE book_translations SET status='needs_review' WHERE status='ready'",
+        "UPDATE book_translations SET status='needs_review' WHERE status='ready' AND provenance!='reference'",
         [],
     )
     .map_err(storage_error)?;

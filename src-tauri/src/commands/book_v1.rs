@@ -450,11 +450,3 @@ pub async fn book_search(context:State<'_,AppContext>,args:BookSearchArgs)->Resu
     let manager=context.manager.clone();
     tauri::async_runtime::spawn_blocking(move||manager.lease(&args.project_id)?.with_connection(|db,_|crate::application::book_search::search(db,&args))).await.map_err(|_|AppError::invalid("task"))?
 }
-
-#[tauri::command]
-pub async fn book_reference_excerpt(context: State<'_, AppContext>, args: BookReferenceExcerptArgs) -> Result<BookReferenceExcerpt, AppError> {
-    let manager = context.manager.clone();
-    tauri::async_runtime::spawn_blocking(move || {
-        manager.lease(&args.project_id)?.with_connection(|db, _| crate::application::book_reference::excerpt(db, &args.reference_id))
-    }).await.map_err(|_| AppError::invalid("task"))?
-}

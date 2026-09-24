@@ -66,7 +66,12 @@ export function BookReader({
           <h2>{view.chapter.title}</h2>
         </div>
         <div>
-          <span>{t("translation")}</span>
+          <span>
+            {t("translation")}
+            {view.translation
+              ? ` · ${t(view.translation.origin === "reference" ? "originReference" : view.translation.origin === "manual" ? "originManual" : "originModel")}`
+              : ""}
+          </span>
           <h2>{view.translation?.title ?? "—"}</h2>
           <small role="status">
             {state.saving
@@ -80,6 +85,27 @@ export function BookReader({
           </small>
         </div>
       </div>
+      <p role="status">
+        {t(
+          view.status === "failed"
+            ? "chapterFailed"
+            : view.status === "in_progress"
+              ? "chapterInProgress"
+              : view.status === "done"
+                ? "chapterDone"
+                : view.status === "skipped"
+                  ? "chapterSkipped"
+                  : "chapterPending",
+        )}
+      </p>
+      {view.translationError && (
+        <p role="alert">{errorText(view.translationError, t)}</p>
+      )}
+      {view.langIssues.length > 0 && (
+        <p role="status">
+          {t("languageIssues")}: {view.langIssues.join(", ")}
+        </p>
+      )}
       {state.error != null && (
         <div role="alert" className="bc-error bc-editor-error">
           <p>{errorText(state.error, t)}</p>

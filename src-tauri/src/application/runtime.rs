@@ -151,7 +151,7 @@ pub(crate) fn select_batch(
         EXISTS(SELECT 1 FROM book_source_blocks b WHERE b.chapter_id=c.id
             AND b.kind IN ('text','caption') AND length(trim(b.text))>0),
         EXISTS(SELECT 1 FROM book_translations t WHERE t.chapter_id=c.id
-            AND t.status IN ('ready','needs_review') AND t.target_language=?1 AND t.source_revision=c.revision)
+            AND t.status IN ('ready','needs_review') AND t.target_language=?1 AND (t.provenance='reference' OR t.source_revision=c.revision))
         FROM book_chapters c ORDER BY c.position",
         )
         .map_err(storage_error)?;

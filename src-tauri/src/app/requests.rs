@@ -135,18 +135,6 @@ pub struct ReferenceChapterView {
 }
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct BookReferenceExcerptArgs {
-    pub project_id: ProjectId,
-    pub reference_id: String,
-}
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
-#[serde(rename_all = "camelCase")]
-pub struct BookReferenceExcerpt {
-    pub text: String,
-    pub truncated: bool,
-}
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ReferenceMapping {
     pub chapter_id: ChapterId,
     pub reference_id: String,
@@ -512,6 +500,9 @@ pub struct ChapterPage {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct BookChapterView {
+    pub status: String,
+    pub lang_issues: Vec<String>,
+    pub translation_error: Option<AppError>,
     pub instructions: String,
     pub chapter: ChapterSummary,
     pub blocks: Vec<BookBlockView>,
@@ -592,6 +583,7 @@ pub enum DomainProgress {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
 #[serde(rename_all = "camelCase")]
 pub struct TranslationSummary {
+    pub origin: String,
     pub id: String,
     pub revision: Revision,
     pub title: String,
@@ -675,8 +667,6 @@ pub fn typescript() -> String {
         BookReferenceImportArgs::decl(&config),
         BookMetadataView::decl(&config),
         ReferenceChapterView::decl(&config),
-        BookReferenceExcerptArgs::decl(&config),
-        BookReferenceExcerpt::decl(&config),
         ReferenceMapping::decl(&config),
         BookReferenceView::decl(&config),
         BookReferenceMapArgs::decl(&config),

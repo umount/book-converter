@@ -1,4 +1,4 @@
-//! Explicit reference correspondence, independent of legacy numeric chapter matching.
+//! Full reference translations seed untranslated chapters, preserving legacy origin semantics.
 use crate::{
     app::{
         contracts::{AppError, ChapterId, ProjectKind},
@@ -14,26 +14,9 @@ use std::path::Path;
 struct ImportedChapter {
     id: String,
     position: u32,
+    number: Option<usize>,
     title: String,
     text: String,
-}
-
-pub fn excerpt(db: &mut Connection, id: &str) -> Result<BookReferenceExcerpt, AppError> {
-    ProjectRepository::new(db, ProjectKind::Book)?;
-    use rusqlite::OptionalExtension;
-    let text: String = db
-        .query_row(
-            "SELECT substr(text,1,1501) FROM book_reference_chapters WHERE id=?1",
-            [id],
-            |r| r.get(0),
-        )
-        .optional()
-        .map_err(storage_error)?
-        .ok_or_else(crate::storage::repository::not_found)?;
-    Ok(BookReferenceExcerpt {
-        truncated: text.chars().count() > 1500,
-        text: text.chars().take(1500).collect(),
-    })
 }
 
 pub fn read(db: &Connection) -> Result<BookReferenceView, AppError> {
@@ -85,12 +68,12 @@ pub fn read(db: &Connection) -> Result<BookReferenceView, AppError> {
     })
 }
 fn invalidate(tx: &Transaction<'_>) -> Result<(), AppError> {
-    // Reference data is an input to every chapter translation. Incrementing chapter
-    // revisions also rejects a response already in flight at the time of the edit.
+    // Reject in-flight responses to the previous reference. Existing authored
+    // translations remain finished; reference import never replaces them.
     tx.execute("UPDATE book_chapters SET revision=revision+1", [])
         .map_err(storage_error)?;
     tx.execute(
-        "UPDATE book_translations SET status='needs_review' WHERE status='ready'",
+        "UPDATE book_translations SET source_revision=source_revision+1 WHERE status IN ('ready','needs_review')",
         [],
     )
     .map_err(storage_error)?;
@@ -146,6 +129,7 @@ pub fn import(
             ImportedChapter {
                 id: uuid::Uuid::new_v4().to_string(),
                 position: position as u32,
+                number: chapter.number,
                 title: chapter.title.clone(),
                 text,
             }
@@ -168,6 +152,8 @@ pub fn import(
             .map_err(storage_error)?;
         }
         invalidate(&tx)?;
+        auto_map(&tx, &chapters)?;
+        adopt(&tx)?;
         let view = read(&tx)?;
         tx.commit().map_err(storage_error)?;
         Ok(view)
@@ -194,7 +180,237 @@ pub fn map(
     let view = read(&tx)?;
     if view.fingerprint != args.expected_fingerprint {
         invalidate(&tx)?;
+        adopt(&tx)?;
     }
     tx.commit().map_err(storage_error)?;
     Ok(view)
+}
+
+fn auto_map(tx: &Transaction<'_>, references: &[ImportedChapter]) -> Result<(), AppError> {
+    let mut q = tx
+        .prepare("SELECT id,display_number,source_title FROM book_chapters ORDER BY position")
+        .map_err(storage_error)?;
+    let sources = q
+        .query_map([], |r| {
+            Ok((
+                r.get::<_, String>(0)?,
+                r.get::<_, Option<usize>>(1)?,
+                r.get::<_, String>(2)?,
+            ))
+        })
+        .map_err(storage_error)?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(storage_error)?;
+    let numbered: std::collections::HashMap<_, _> = sources
+        .iter()
+        .filter_map(|(id, number, title)| {
+            number
+                .or_else(|| crate::book::fb2::heading_number(title).map(|v| v.0))
+                .map(|n| (n, id))
+        })
+        .collect();
+    let matches: Vec<_> = references
+        .iter()
+        .filter_map(|r| r.number.and_then(|n| numbered.get(&n)).map(|id| (*id, r)))
+        .collect();
+    let pairs = if matches.is_empty() {
+        sources
+            .iter()
+            .zip(references)
+            .map(|(s, r)| (&s.0, r))
+            .collect()
+    } else {
+        matches
+    };
+    for (id, r) in pairs {
+        tx.execute(
+            "INSERT OR IGNORE INTO book_reference_mappings(chapter_id,reference_id) VALUES(?1,?2)",
+            rusqlite::params![id, r.id],
+        )
+        .map_err(storage_error)?;
+    }
+    Ok(())
+}
+
+// A reference is a complete authored chapter, not a model prompt or an excerpt.
+// Keep its body intact in the first text block; no invented paragraph alignment.
+fn adopt(tx: &Transaction<'_>) -> Result<(), AppError> {
+    use crate::{
+        app::contracts::Revision,
+        storage::{results, shared},
+    };
+    let settings = shared::settings(tx)?;
+    let mut q = tx.prepare("SELECT c.id,c.revision,r.title,r.text FROM book_reference_mappings m JOIN book_chapters c ON c.id=m.chapter_id JOIN book_reference_chapters r ON r.id=m.reference_id WHERE NOT EXISTS(SELECT 1 FROM book_translations t WHERE t.chapter_id=c.id AND t.target_language=?1) ORDER BY c.position DESC").map_err(storage_error)?;
+    let rows = q
+        .query_map([&settings.choices.target_language], |r| {
+            Ok((
+                r.get::<_, String>(0)?,
+                r.get::<_, i64>(1)?,
+                r.get::<_, String>(2)?,
+                r.get::<_, String>(3)?,
+            ))
+        })
+        .map_err(storage_error)?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(storage_error)?;
+    let fingerprint = read(tx)?.fingerprint;
+    for (chapter, revision, title, text) in rows {
+        if text.trim().is_empty() {
+            continue;
+        }
+        let mut q=tx.prepare("SELECT id FROM book_source_blocks WHERE chapter_id=?1 AND kind IN ('text','caption') ORDER BY position").map_err(storage_error)?;
+        let ids = q
+            .query_map([&chapter], |r| r.get::<_, String>(0))
+            .map_err(storage_error)?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(storage_error)?;
+        if ids.is_empty() {
+            continue;
+        }
+        let tail = text
+            .chars()
+            .rev()
+            .take(1200)
+            .collect::<String>()
+            .chars()
+            .rev()
+            .collect::<String>();
+        let blocks = ids
+            .into_iter()
+            .enumerate()
+            .map(|(i, id)| (id, if i == 0 { text.clone() } else { String::new() }))
+            .collect();
+        let id = uuid::Uuid::new_v4().to_string();
+        results::save_translation_in(
+            tx,
+            &results::BookTranslation {
+                id: id.clone(),
+                chapter_id: chapter,
+                inputs: results::InputVersions {
+                    source: Revision(revision.to_string()),
+                    settings: settings.revision.clone(),
+                    glossary: shared::glossary_revision(tx)?,
+                },
+                expected_translation: None,
+                title,
+                provenance: "reference".into(),
+                context_fingerprint: fingerprint.clone(),
+                blocks,
+            },
+        )?;
+        results::save_context(
+            tx,
+            &results::BookContext {
+                id: uuid::Uuid::new_v4().to_string(),
+                translation_id: id,
+                translation_revision: Revision("0".into()),
+                summary: String::new(),
+                previous_tail: tail,
+                predecessor_id: None,
+            },
+        )?;
+    }
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::storage::{repository::ProjectRepository, results, shared, tests::database};
+    #[test]
+    fn seeds_full_reference_by_number_and_preserves_existing_translation() {
+        let mut db = database(ProjectKind::Book);
+        for (id, position, number) in [("a", 0, 3), ("b", 1, 7)] {
+            db.execute("INSERT INTO book_chapters(id,position,display_number,source_title) VALUES(?1,?2,?3,'Chapter')",rusqlite::params![id,position,number]).unwrap();
+            db.execute("INSERT INTO book_source_blocks(id,chapter_id,position,kind,text) VALUES(?1,?1,0,'text','Source')",[id]).unwrap();
+        }
+        let full = format!(
+            "{}\n\nFINAL REFERENCE PARAGRAPH",
+            "Полный перевод. ".repeat(1000)
+        );
+        let refs = vec![ImportedChapter {
+            id: "r".into(),
+            position: 0,
+            number: Some(7),
+            title: "Глава 7".into(),
+            text: full.clone(),
+        }];
+        db.execute(
+            "INSERT INTO book_reference_chapters VALUES('r',0,'Глава 7',?1)",
+            [&full],
+        )
+        .unwrap();
+        let tx = db.transaction().unwrap();
+        auto_map(&tx, &refs).unwrap();
+        adopt(&tx).unwrap();
+        tx.commit().unwrap();
+        let view = ProjectRepository::new(&mut db, ProjectKind::Book)
+            .unwrap()
+            .chapter("b")
+            .unwrap();
+        assert_eq!(view.status, "done");
+        assert_eq!(view.translation.unwrap().origin, "reference");
+        assert_eq!(
+            view.blocks[0].translated_text.as_deref(),
+            Some(full.as_str())
+        );
+        assert!(ProjectRepository::new(&mut db, ProjectKind::Book)
+            .unwrap()
+            .chapter("a")
+            .unwrap()
+            .translation
+            .is_none());
+        db.execute("UPDATE book_reference_chapters SET text='Replacement'", [])
+            .unwrap();
+        let tx = db.transaction().unwrap();
+        invalidate(&tx).unwrap();
+        adopt(&tx).unwrap();
+        tx.commit().unwrap();
+        let view = ProjectRepository::new(&mut db, ProjectKind::Book)
+            .unwrap()
+            .chapter("b")
+            .unwrap();
+        assert_eq!(
+            view.blocks[0].translated_text.as_deref(),
+            Some(full.as_str())
+        );
+        let options = crate::app::requests::TranslationOptions {
+            max_chapters: 10,
+            extract_glossary: false,
+            force: false,
+            instructions: None,
+        };
+        let target = shared::settings(&db).unwrap().choices.target_language;
+        assert_eq!(
+            crate::application::runtime::select_batch(
+                &db,
+                &crate::app::contracts::EntitySelection::All,
+                &options,
+                &target
+            )
+            .unwrap(),
+            vec!["a"]
+        );
+        let mut choices = shared::settings(&db).unwrap().choices;
+        choices.book_translation_profile = Some("changed".into());
+        shared::update_settings(
+            &mut db,
+            &crate::app::contracts::Revision("0".into()),
+            &choices,
+        )
+        .unwrap();
+        let view = ProjectRepository::new(&mut db, ProjectKind::Book)
+            .unwrap()
+            .chapter("b")
+            .unwrap();
+        let t = view.translation.unwrap();
+        assert_eq!(t.status, "ready");
+        results::edit_translation_block(&mut db, &t.id, "b", &t.revision, "Исправленный перевод")
+            .unwrap();
+        let view = ProjectRepository::new(&mut db, ProjectKind::Book)
+            .unwrap()
+            .chapter("b")
+            .unwrap();
+        assert_eq!(view.translation.unwrap().origin, "manual");
+    }
 }

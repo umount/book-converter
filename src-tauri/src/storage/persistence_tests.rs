@@ -785,24 +785,32 @@ fn manual_editor_can_correct_outdated_translation_without_clearing_review() {
 }
 
 #[test]
-fn reference_lists_omit_bodies_and_excerpt_is_bounded_unicode_text() {
+fn reference_lists_omit_bodies_and_fingerprint_includes_full_text() {
     use crate::application::book_reference;
-    let mut db = book();
+    let db = book();
     let text = "🙂正文".repeat(10000);
     db.execute("INSERT INTO book_reference_chapters(id,position,title,text) VALUES('large',0,'Long reference',?1)", [&text]).unwrap();
     let view = book_reference::read(&db).unwrap();
     let json = serde_json::to_string(&view).unwrap();
     assert!(json.len() < 1024);
     assert!(!json.contains("正文"));
-    let excerpt = book_reference::excerpt(&mut db, "large").unwrap();
-    assert!(excerpt.truncated);
-    assert_eq!(excerpt.text.chars().count(), 1500);
-    assert!(text.starts_with(&excerpt.text));
-    assert!(book_reference::excerpt(&mut db, "missing").is_err());
     db.execute("UPDATE book_reference_chapters SET text='Updated' WHERE id='large'", []).unwrap();
     assert_ne!(book_reference::read(&db).unwrap().fingerprint, view.fingerprint);
-    let excerpt = book_reference::excerpt(&mut db, "large").unwrap();
-    assert_eq!(excerpt.text, "Updated");
-    assert!(!excerpt.truncated);
-    assert!(book_reference::excerpt(&mut manga(), "large").is_err());
+
+}
+
+#[test]
+fn legacy_origin_and_language_flags_follow_manual_corrections() {
+    use super::repository::ProjectRepository;
+    let mut db=book();
+    db.execute("UPDATE project_settings SET target_language='ru'",[]).unwrap();
+    let mut value=translation();
+    value.title="Глава".into();value.blocks[0].1="Перевод 未翻译 foreignword".into();
+    results::save_translation(&mut db,&value).unwrap();
+    let view=ProjectRepository::new(&mut db,ProjectKind::Book).unwrap().chapter("chapter").unwrap();
+    assert_eq!(view.status,"done"); assert_eq!(view.translation.unwrap().origin,"model");
+    assert!(view.lang_issues.contains(&"未翻译".into()));assert!(view.lang_issues.contains(&"foreignword".into()));
+    results::edit_translation_block(&mut db,&value.id,"text",&rev(0),"Исправленный перевод").unwrap();
+    let view=ProjectRepository::new(&mut db,ProjectKind::Book).unwrap().chapter("chapter").unwrap();
+    assert_eq!(view.translation.unwrap().origin,"manual");assert!(view.lang_issues.is_empty());
 }
