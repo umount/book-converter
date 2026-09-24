@@ -194,6 +194,7 @@ async fn execute_steps<E: StepExecutor>(
             input_fingerprint: fingerprint,
         };
         lease.with_connection(|db, _| runs::begin_step(db, &step))?;
+        emit(lease, project, id, sink)?;
         let start = std::time::Instant::now();
         let output = tokio::select! {
             result=executor.compute(lease,&run,entity,stage)=>result?,

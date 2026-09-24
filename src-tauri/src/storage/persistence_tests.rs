@@ -309,8 +309,8 @@ fn run_recovery_keeps_successful_steps_and_excludes_concurrent_mutators() {
             .unwrap(),
         "succeeded"
     );
-    runs::transition(&mut db, "run", &rev(3), JobState::Queued, None, "resume").unwrap();
-    runs::transition(&mut db, "run", &rev(4), JobState::Running, None, "resume").unwrap();
+    runs::transition(&mut db, "run", &rev(4), JobState::Queued, None, "resume").unwrap();
+    runs::transition(&mut db, "run", &rev(5), JobState::Running, None, "resume").unwrap();
     assert!(runs::begin_step(
         &mut db,
         &runs::StepAttempt {
@@ -320,7 +320,7 @@ fn run_recovery_keeps_successful_steps_and_excludes_concurrent_mutators() {
         }
     )
     .is_err());
-    runs::transition(&mut db, "run", &rev(5), JobState::Succeeded, None, "done").unwrap();
+    runs::transition(&mut db, "run", &rev(6), JobState::Succeeded, None, "done").unwrap();
 }
 
 #[test]

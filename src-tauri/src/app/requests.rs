@@ -624,6 +624,11 @@ pub struct JobView {
     pub revision: Revision,
     pub total_steps: u32,
     pub completed_steps: u32,
+    pub total_chapters: Option<u32>,
+    pub completed_chapters: Option<u32>,
+    pub current_chapter_number: Option<u32>,
+    pub current_chapter_title: Option<String>,
+    pub current_stage: Option<String>,
     pub remaining_seconds: Option<u32>,
     pub error: Option<AppError>,
 }

@@ -183,6 +183,14 @@ fn job_view(db: &rusqlite::Connection, project: &ProjectId, id: &str) -> Result<
     let run = runs::get_run(db, id)?;
     let completed=db.query_row("SELECT COUNT(*) FROM job_steps AS step WHERE run_id=?1 AND state='succeeded' AND NOT EXISTS(SELECT 1 FROM job_steps AS newer WHERE newer.run_id=step.run_id AND newer.entity_kind=step.entity_kind AND newer.entity_id=step.entity_id AND newer.stage=step.stage AND newer.attempt>step.attempt)",[id],|r|r.get::<_,u32>(0)).map_err(storage_error)?;
     let remaining_seconds = runs::remaining_seconds(db, &run)?;
+    let is_book = run.kind.starts_with("book_");
+    let (completed_chapters, current) = if is_book {
+        use rusqlite::OptionalExtension;
+        let completed_chapters = db.query_row("SELECT COUNT(*) FROM (SELECT entity_id FROM job_steps s WHERE run_id=?1 AND entity_kind='chapter' AND state='succeeded' AND NOT EXISTS(SELECT 1 FROM job_steps n WHERE n.run_id=s.run_id AND n.entity_kind=s.entity_kind AND n.entity_id=s.entity_id AND n.stage=s.stage AND n.attempt>s.attempt) GROUP BY entity_id HAVING COUNT(*)=?2)", rusqlite::params![id, run.snapshot.stages.len()], |r| r.get::<_,u32>(0)).map_err(storage_error)?;
+        let current = db.query_row("SELECT COALESCE(c.display_number,c.position+1),c.source_title,s.stage FROM job_steps s JOIN book_chapters c ON c.id=s.entity_id WHERE s.run_id=?1 AND s.entity_kind='chapter' ORDER BY s.rowid DESC LIMIT 1", [id], |r| Ok((r.get::<_,u32>(0)?,r.get::<_,String>(1)?,r.get::<_,String>(2)?))).optional().map_err(storage_error)?;
+        (Some(completed_chapters), current)
+    } else { (None, None) };
+
     Ok(JobView {
         job: JobRef {
             project_id: project.clone(),
@@ -194,6 +202,11 @@ fn job_view(db: &rusqlite::Connection, project: &ProjectId, id: &str) -> Result<
         total_steps: u32::try_from(run.snapshot.selected_ids.len() * run.snapshot.stages.len())
             .map_err(|_| AppError::invalid("jobSize"))?,
         completed_steps: completed,
+        total_chapters: is_book.then_some(run.snapshot.selected_ids.len() as u32),
+        completed_chapters,
+        current_chapter_number: current.as_ref().map(|c| c.0),
+        current_chapter_title: current.as_ref().map(|c| c.1.clone()),
+        current_stage: current.map(|c| c.2),
         remaining_seconds,
         error: run.terminal_error,
     })
@@ -475,4 +488,31 @@ pub async fn book_start_retarget(context: State<'_, AppContext>, app: tauri::App
 pub async fn book_retarget_preview(context: State<'_, AppContext>,args: StartBookRetargetArgs) -> Result<BookRetargetPreview,AppError> {
     let manager=context.manager.clone();
     tauri::async_runtime::spawn_blocking(move || manager.lease(&args.project_id)?.with_connection(|db,_|crate::application::book_retarget::preview(db,&args))).await.map_err(|_|AppError::invalid("task"))?
+}
+
+#[cfg(test)]
+mod progress_tests {
+    use super::*;
+    #[test]
+    fn chapter_progress_counts_whole_chapters_and_latest_attempts() {
+        let db = rusqlite::Connection::open_in_memory().unwrap();
+        db.execute_batch("CREATE TABLE job_runs(id TEXT,kind TEXT,state TEXT,settings_snapshot TEXT,revision INTEGER,created_at TEXT,updated_at TEXT,terminal_error TEXT);
+            CREATE TABLE job_steps(run_id TEXT,entity_kind TEXT,entity_id TEXT,stage TEXT,attempt INTEGER,state TEXT,duration_ms INTEGER);
+            CREATE TABLE book_chapters(id TEXT,position INTEGER,display_number INTEGER,source_title TEXT);
+            INSERT INTO book_chapters VALUES('a',0,100,'First'),('b',1,101,'Second');").unwrap();
+        let snapshot = serde_json::json!({"settings":{"target_language":"ru"},"settings_revision":"0","glossary_revision":"0","selected_ids":["a","b"],"prompt_version":"v1","stages":["glossary","translation","context"],"provider":null,"instructions":null});
+        db.execute("INSERT INTO job_runs VALUES('run','book_translation','running',?1,0,'now','now',NULL)",[snapshot.to_string()]).unwrap();
+        db.execute_batch("INSERT INTO job_steps VALUES('run','chapter','a','glossary',1,'succeeded',100),('run','chapter','a','translation',1,'succeeded',100),('run','chapter','a','context',1,'succeeded',100),('run','chapter','b','glossary',1,'running',NULL);").unwrap();
+        let view = job_view(&db, &ProjectId::new(), "run").unwrap();
+        assert_eq!(view.completed_steps, 3);
+        assert_eq!(view.total_chapters, Some(2));
+        assert_eq!(view.completed_chapters, Some(1));
+        assert_eq!(view.current_chapter_number, Some(101));
+        assert_eq!(view.current_chapter_title.as_deref(), Some("Second"));
+        assert_eq!(view.current_stage.as_deref(), Some("glossary"));
+        db.execute_batch("INSERT INTO job_steps VALUES('run','chapter','a','translation',2,'running',NULL);").unwrap();
+        let view = job_view(&db, &ProjectId::new(), "run").unwrap();
+        assert_eq!(view.completed_chapters, Some(0));
+        assert_eq!(view.current_chapter_number, Some(100));
+    }
 }

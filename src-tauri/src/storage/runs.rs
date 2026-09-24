@@ -205,6 +205,7 @@ pub fn begin_step(db: &mut Connection, step: &StepAttempt) -> Result<(), AppErro
         return Err(conflict());
     }
     tx.execute("INSERT INTO job_steps(id,run_id,entity_kind,entity_id,stage,attempt,input_fingerprint,state) VALUES(?1,?2,?3,?4,?5,?6,?7,'running')",params![step.id,step.run_id,step.entity_kind,step.entity_id,step.stage,step.attempt,step.input_fingerprint]).map_err(storage_error)?;
+    tx.execute("UPDATE job_runs SET revision=revision+1 WHERE id=?1", [&step.run_id]).map_err(storage_error)?;
     tx.commit().map_err(storage_error)
 }
 

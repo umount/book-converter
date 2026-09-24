@@ -559,7 +559,8 @@ mod tests {
             &pipeline,
             cancel.clone(),
             |_| {
-                if events.fetch_add(1, Ordering::SeqCst) == 1 {
+                // Run start, step start, then the first committed result.
+                if events.fetch_add(1, Ordering::SeqCst) == 2 {
                     cancel.store(true, Ordering::SeqCst)
                 }
             }
