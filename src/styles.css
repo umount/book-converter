@@ -960,17 +960,11 @@ button + button {
   grid-row: 1;
   align-self: center;
 }
-.bc-chapters button small[data-state="done"] {
-  color: #63ad83;
-}
-.bc-chapters button small[data-review] {
+.bc-chapters button small[data-problem="warning"] {
   color: #ceaa62;
 }
-.bc-chapters button small[data-state="failed"] {
+.bc-chapters button small[data-problem="error"] {
   color: #dd7777;
-}
-.bc-chapters button small[data-state="in_progress"] {
-  color: var(--accent);
 }
 .bc-chapter-status-label {
   position: absolute;

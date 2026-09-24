@@ -1,9 +1,10 @@
 export function ToolbarIcon({
   name,
 }: {
-  name: "add" | "assistant" | "jobs" | "settings" | "search" | "reference" | "manual" | "model";
+  name: "add" | "assistant" | "jobs" | "settings" | "search" | "reference" | "manual" | "model" | "warning";
 }) {
   const paths = {
+    warning: "M12 3 2 21h20L12 3ZM12 9v5m0 3v.1",
     reference: "M12 5v15M12 5C9 3 5 3 2 4v15c3-1 7-1 10 1 3-2 7-2 10-1V4c-3-1-7-1-10 1Z",
     manual: "m4 16-1 5 5-1L20 8l-4-4L4 16Zm9-9 4 4",
     model: "m12 2 3 7 7 3-7 3-3 7-3-7-7-3 7-3 3-7Z",

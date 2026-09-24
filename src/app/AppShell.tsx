@@ -792,13 +792,21 @@ function Shell({
                           </strong>
                           <small
                             data-state={c.status}
-                            data-review={c.needsReview || undefined}
+                            data-problem={
+                              c.status === "failed" && !c.origin
+                                ? "error"
+                                : c.needsReview || c.status === "failed"
+                                  ? "warning"
+                                  : undefined
+                            }
                             title={`${t(c.needsReview ? "review" : c.status === "failed" ? "chapterFailed" : c.status === "in_progress" ? "chapterInProgress" : c.status === "done" ? "chapterDone" : "chapterPending")}${c.origin ? ` · ${t(c.origin === "reference" ? "originReference" : c.origin === "manual" ? "originManual" : "originModel")}` : ""}`}
                           >
                             {c.status === "in_progress" ? (
                               <span className="bc-chapter-spinner" aria-hidden="true" />
                             ) : c.origin ? (
                               <ToolbarIcon name={c.origin === "reference" ? "reference" : c.origin === "manual" ? "manual" : "model"} />
+                            ) : c.status === "failed" || c.needsReview ? (
+                              <ToolbarIcon name="warning" />
                             ) : null}
                             <span className="bc-chapter-status-label">
                             {t(
