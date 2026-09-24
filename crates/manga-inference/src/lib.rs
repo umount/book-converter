@@ -198,6 +198,7 @@ pub fn composite(original: &RgbImage, candidate: &RgbImage, mask: &GrayImage) ->
     Ok(output)
 }
 
+pub mod inpaint_input;
 #[cfg(feature = "onnx")]
 mod mask_graph;
 pub mod page;

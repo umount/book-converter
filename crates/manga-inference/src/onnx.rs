@@ -1,6 +1,6 @@
 //! CPU-only ONNX adapters. Load in an isolated worker, never the webview process.
 use crate::{composite, mask_graph, validate_mask, Crop, Error, Letterbox, Result};
-use image::{imageops, GrayImage, Rgb, RgbImage};
+use image::{GrayImage, Rgb, RgbImage};
 use ort::{session::Session, value::Tensor};
 use sha2::{Digest, Sha256};
 use std::{io::Read, path::Path};
@@ -112,33 +112,12 @@ impl Lama {
         if !mask.as_raw().contains(&255) {
             return Ok(original.clone());
         }
-        let mapping = Letterbox::new(
-            Crop {
-                x: 0,
-                y: 0,
-                width: original.width(),
-                height: original.height(),
-            },
-            512,
-        )?;
-        let square = mapping.rgb(original)?;
-        let resized = imageops::resize(
-            mask,
-            mapping.paste.width,
-            mapping.paste.height,
-            imageops::FilterType::Nearest,
-        );
-        let mut square_mask = GrayImage::new(512, 512);
-        imageops::replace(
-            &mut square_mask,
-            &resized,
-            mapping.paste.x.into(),
-            mapping.paste.y.into(),
-        );
-        let image = Tensor::from_array(([1usize, 3, 512, 512], channels(&square, false)))?;
+        let prepared = crate::inpaint_input::InpaintInput::new(original, mask, 512)?;
+        let image = Tensor::from_array(([1usize, 3, 512, 512], channels(&prepared.image, false)))?;
         let mask_input = Tensor::from_array((
             [1usize, 1, 512, 512],
-            square_mask
+            prepared
+                .mask
                 .as_raw()
                 .iter()
                 .map(|v| f32::from(*v) / 255.0)
@@ -160,20 +139,7 @@ impl Lama {
                     .clamp(0.0, 255.0) as u8
             }));
         }
-        let crop = imageops::crop_imm(
-            &cleaned,
-            mapping.paste.x,
-            mapping.paste.y,
-            mapping.paste.width,
-            mapping.paste.height,
-        )
-        .to_image();
-        let candidate = imageops::resize(
-            &crop,
-            original.width(),
-            original.height(),
-            imageops::FilterType::Triangle,
-        );
+        let candidate = prepared.restore(&cleaned, original.width(), original.height())?;
         composite(original, &candidate, mask)
     }
 }

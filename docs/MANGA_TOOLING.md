@@ -301,3 +301,41 @@ license notices independently from this project's proprietary source license.
   --manifest-path crates/manga-inference/Cargo.toml --all-features -- --include-ignored`.
   Normal tests neither download weights nor require a runtime. Desktop wiring and
   installed-platform tests remain pending.
+
+## Koharu reuse decision (2026-09-24)
+
+User-provided upstream: [koharu-rs/koharu](https://github.com/koharu-rs/koharu),
+reviewed at `c697b31eb1de016d9272743a2973f0e6a67eae6c`.
+Use its existing manga implementations as the reference before writing more adapters.
+The source is MIT OR Apache-2.0; adapted code uses MIT with its full copyright/permission
+notice retained in `third-party/koharu-LICENSE-MIT` and included in desktop resources.
+This does not change this application's proprietary source license.
+
+The examined LaMa adapter uses `mayocream/lama-manga`, pinned upstream revision
+`f91c85b26913b3e83f9877867b4c336da3675238`, file `lama-manga.safetensors`.
+It is a manga-finetuned Big-LaMa checkpoint, not the same artifact as our experimental
+`Carve/LaMa-ONNX`. The mask adapter uses `mayocream/manga-text-segmentation-2025`,
+revision `efd866e3ac6595ea20722f35ae343c403056ba76`; it is different from our
+experimental TareHimself ResNet18 mask. Do not substitute weights without changing
+architecture/preprocessing and verifying their own terms and CPU resource budget.
+
+Inspected upstream components:
+
+- `koharu-ml/src/lama`: native model, symmetric padding, image/mask normalization,
+  crop/resize orchestration and exact unmasked composition.
+- `koharu-ml/src/manga_text_mask`: normalization, output probabilities, threshold,
+  gap closing, hole filling and glyph dilation.
+- `koharu-pipeline/src/stages/inpainting`: model lifetime and scene publication.
+
+Already adapted symmetric border padding from the LaMa processor. Small crops keep
+native resolution; the fixed-size ONNX experiment pads rather than magnifying them
+into a black letterbox. Thin mask pixels survive downsampling; final composition
+still preserves every original pixel outside the canonical mask. The current worker
+still uses its existing experimental weights: this change does not claim to integrate
+Koharu's native model or its whole pipeline.
+
+Directly depending on the current `koharu-ml` crate also introduces its unconditional
+Torch, llama, diffusion and runtime dependencies. Prefer extracting/adapting the
+needed components with attribution and the existing worker boundary. Next compare
+Koharu's manga-specific cleanup checkpoint/runtime and crop orchestration before
+freezing the default model; reuse its lettering work when implementing that stage.

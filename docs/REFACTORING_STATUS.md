@@ -1050,3 +1050,21 @@ used fake providers and synthetic local assets; no paid API request was made.
   --manifest-path crates/manga-inference/Cargo.toml --all-features -- --include-ignored`.
   Normal tests neither download weights nor require a runtime. Desktop wiring and
   installed-platform tests remain pending.
+
+### P09 Koharu reference and reuse
+
+- User pointed to Koharu; reviewed pinned source and changed direction to reuse its
+  existing manga components instead of independently rebuilding the pipeline.
+- Confirmed LaMa family but different checkpoint: Koharu uses manga-finetuned
+  `mayocream/lama-manga`, while our CPU experiment uses `Carve/LaMa-ONNX`.
+- Adapted its symmetric LaMa border handling, retained MIT attribution/notice and
+  added notices to desktop bundle resources. Project source remains proprietary.
+- Native unit coverage includes small/one-pixel crops, border reflection and thin-mask
+  retention. Full adapter integration, model comparison and release targets remain open.
+- Next executable step: adapt/evaluate Koharu's crop orchestration and manga-specific
+  weights through the isolated CPU worker; avoid a whole `koharu-ml` dependency that
+  brings unrelated LLM/diffusion runtimes. Then reuse translation/lettering components.
+
+Validation for the Koharu border adaptation: 14 native unit tests; opt-in real CPU
+mask/LaMa smoke passed (exact unmasked pixels, immutable original, no overwrite);
+191 desktop Rust tests and frontend tests/production build passed.
