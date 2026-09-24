@@ -1,5 +1,6 @@
 //! Background job lifecycle plus operation-specific runners.
 
+pub mod durable;
 mod retarget;
 mod translation;
 
@@ -79,3 +80,6 @@ where
         }
     });
 }
+
+#[cfg(test)]
+mod durable_tests;

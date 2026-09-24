@@ -14,6 +14,9 @@ pub struct RunSnapshot {
     pub glossary_revision: Revision,
     pub selected_ids: Vec<String>,
     pub prompt_version: String,
+    pub stages: Vec<String>,
+    pub provider: Option<crate::ai::ProviderProfile>,
+    pub instructions: Option<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -47,6 +50,14 @@ pub fn create_run(
         || now.is_empty()
         || snapshot.selected_ids.is_empty()
         || snapshot.prompt_version.is_empty()
+        || snapshot.stages.is_empty()
+        || snapshot.stages.iter().any(|s| s.is_empty())
+        || snapshot
+            .stages
+            .iter()
+            .collect::<std::collections::HashSet<_>>()
+            .len()
+            != snapshot.stages.len()
     {
         return Err(AppError::invalid("job"));
     }
@@ -120,7 +131,13 @@ pub fn transition(
                 |r| r.get(0),
             )
             .map_err(storage_error)?;
-        if unfinished > 0 {
+        let completed: usize = tx.query_row(
+            "SELECT COUNT(*) FROM job_steps AS step WHERE run_id=?1 AND state='succeeded' AND NOT EXISTS(SELECT 1 FROM job_steps AS newer WHERE newer.run_id=step.run_id AND newer.entity_kind=step.entity_kind AND newer.entity_id=step.entity_id AND newer.stage=step.stage AND newer.attempt>step.attempt)",
+            [id], |r| r.get(0),
+        ).map_err(storage_error)?;
+        if unfinished > 0
+            || completed != record.snapshot.selected_ids.len() * record.snapshot.stages.len()
+        {
             return Err(AppError::invalid("unfinishedSteps"));
         }
     }
@@ -154,7 +171,10 @@ pub fn begin_step(db: &mut Connection, step: &StepAttempt) -> Result<(), AppErro
     }
     let tx = db.transaction().map_err(storage_error)?;
     let run = get_run(&tx, &step.run_id)?;
-    if run.state != JobState::Running || !run.snapshot.selected_ids.contains(&step.entity_id) {
+    if run.state != JobState::Running
+        || !run.snapshot.selected_ids.contains(&step.entity_id)
+        || !run.snapshot.stages.contains(&step.stage)
+    {
         return Err(AppError::invalid("stepSelection"));
     }
     let query = match step.entity_kind.as_str() {
@@ -191,6 +211,7 @@ pub fn finish_step(
     if changed != 1 {
         return Err(conflict());
     }
+    tx.execute("UPDATE job_runs SET revision=revision+1 WHERE id=(SELECT run_id FROM job_steps WHERE id=?1)",[id]).map_err(storage_error)?;
     Ok(())
 }
 
