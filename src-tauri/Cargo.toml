@@ -58,7 +58,8 @@ anyhow = "1"
 thiserror = "2"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
-ts-rs = { version = "=12.0.1", features = ["serde-compat"] }
+# Runtime-only serde rules such as deny_unknown_fields do not affect TypeScript types.
+ts-rs = { version = "=12.0.1", features = ["serde-compat", "no-serde-warnings"] }
 uuid = { version = "1", features = ["v4", "serde"] }
 
 [profile.release]
