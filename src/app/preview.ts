@@ -7,6 +7,7 @@ import type {
   GlossaryTermView,
   ModelView,
 } from "../shared/contracts/generated";
+let defaultTargetLanguage = "ru";
 let replacePreview: BookReplacePreview | null = null;
 const project = {
   id: "preview-book",
@@ -581,6 +582,7 @@ export async function invokePreview<T>(
     }
     case "get_effective_config":
       result = {
+        target_lang: defaultTargetLanguage,
         model: "preview-model",
         base_url: "https://example.invalid",
         has_key: false,
@@ -588,6 +590,8 @@ export async function invokePreview<T>(
       };
       break;
     case "set_setting":
+      if (raw?.key === "target_lang") defaultTargetLanguage = String(raw.value);
+      break;
     case "set_api_key":
       break;
     default:

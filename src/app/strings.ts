@@ -58,6 +58,8 @@ const en = {
   name: "Project name",
   sourceLanguage: "Original language",
   targetLanguage: "Translation language",
+  defaultTargetLanguage: "Default translation language",
+  defaultTargetLanguageHint: "Used when creating new projects.",
   fixedLanguages: "These languages are fixed for this project.",
   create: "Create project",
   metadataAfterCreate:
@@ -346,6 +348,8 @@ const ru: Record<Key, string> = {
   name: "Название проекта",
   sourceLanguage: "Язык оригинала",
   targetLanguage: "Язык перевода",
+  defaultTargetLanguage: "Язык перевода по умолчанию",
+  defaultTargetLanguageHint: "Подставляется при создании новых проектов.",
   fixedLanguages: "Эти языки закреплены за проектом и не меняются.",
   create: "Создать проект",
   metadataAfterCreate:
@@ -630,6 +634,8 @@ const zh: Record<Key, string> = {
   name: "项目名称",
   sourceLanguage: "原文语言",
   targetLanguage: "译文语言",
+  defaultTargetLanguage: "默认译文语言",
+  defaultTargetLanguageHint: "用于创建新项目。",
   fixedLanguages: "语言选定后不能更改。",
   create: "创建项目",
   metadataAfterCreate: "导入后翻译书名和作者并生成简介（AI）",

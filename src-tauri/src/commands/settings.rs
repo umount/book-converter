@@ -16,6 +16,7 @@ fn settings_db() -> std::path::PathBuf {
 #[derive(serde::Serialize)]
 pub struct EffectiveConfig {
     pub model: String,
+    pub target_lang: String,
     pub base_url: String,
     pub max_retries: usize,
     pub temperature: f32,
@@ -39,6 +40,7 @@ pub async fn get_effective_config() -> Result<EffectiveConfig, String> {
     let key_from_env = crate::config::Config::key_from_env();
     let mut env_locked = Vec::new();
     for (key, var) in [
+        ("target_lang", "TARGET_LANG"),
         ("model", "DEEPSEEK_MODEL"),
         ("base_url", "DEEPSEEK_BASE_URL"),
     ] {
@@ -47,6 +49,11 @@ pub async fn get_effective_config() -> Result<EffectiveConfig, String> {
         }
     }
     Ok(EffectiveConfig {
+        target_lang: std::env::var("TARGET_LANG").ok()
+            .filter(|value| !value.trim().is_empty())
+            .or(crate::settings::get(&settings_db(), "target_lang").map_err(err)?
+                .filter(|value| !value.trim().is_empty()))
+            .unwrap_or_else(|| "ru".into()),
         model: cfg.model,
         base_url: cfg.base_url,
         max_retries: cfg.max_retries,

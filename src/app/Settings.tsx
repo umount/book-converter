@@ -5,9 +5,10 @@ import { desktopInvoke as invoke } from "../shared/api/desktop";
 import { Modal } from "../shared/ui/Modal";
 import { ModelDownloads } from "../features/manga/ModelDownloads";
 import { LANGS, type Lang } from "../i18n";
-import { errorText, type T } from "./strings";
+import { errorText, languages, languageName, type T } from "./strings";
 type Config = {
   model: string;
+  target_lang: string;
   base_url: string;
   has_key: boolean;
   env_locked: string[];
@@ -48,6 +49,7 @@ export function Settings({
     setError(null);
     try {
       for (const [k, value] of [
+        ["target_lang", config.target_lang],
         ["model", config.model],
         ["base_url", config.base_url],
       ])
@@ -83,6 +85,21 @@ export function Settings({
             ))}
           </select>
         </label>
+        {config && (
+          <label>
+            {t("defaultTargetLanguage")}
+            <select
+              value={config.target_lang}
+              disabled={busy || config.env_locked.includes("target_lang")}
+              onChange={(e) => setConfig({ ...config, target_lang: e.target.value })}
+            >
+              {[...new Set([...languages, config.target_lang])].map((code) => (
+                <option key={code} value={code}>{languageName(code, lang)}</option>
+              ))}
+            </select>
+            <span className="bc-hint">{t("defaultTargetLanguageHint")}</span>
+          </label>
+        )}
         <p className="bc-hint">{t("providerHint")}</p>
         {config && (
           <>
