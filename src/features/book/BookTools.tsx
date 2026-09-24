@@ -305,6 +305,7 @@ function Tools({
           ) : (
             <>
               <ReferenceMappings
+                projectId={project.id}
                 chapters={chapters}
                 reference={reference}
                 disabled={busy}

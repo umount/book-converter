@@ -77,6 +77,8 @@ export function createProjectApi(transport: Transport) {
       call<C.BookReferenceView>("book_reference_import", args),
     reference: (args: C.ProjectArgs) =>
       call<C.BookReferenceView>("book_reference_get", args),
+    referenceExcerpt: (args: C.BookReferenceExcerptArgs) =>
+      call<C.BookReferenceExcerpt>("book_reference_excerpt", args),
     mapReference: (args: C.BookReferenceMapArgs) =>
       call<C.BookReferenceView>("book_reference_map", args),
     exportBook: (args: C.BookExportArgs) => call<void>("book_export", args),

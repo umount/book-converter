@@ -783,3 +783,26 @@ fn manual_editor_can_correct_outdated_translation_without_clearing_review() {
     assert_eq!(text, "Manual correction");
     assert_eq!(results::edit_translation_block(&mut db, &original.id, "text", &rev(0), "Late edit").unwrap_err().code, ErrorCode::RevisionConflict);
 }
+
+#[test]
+fn reference_lists_omit_bodies_and_excerpt_is_bounded_unicode_text() {
+    use crate::application::book_reference;
+    let mut db = book();
+    let text = "🙂正文".repeat(10000);
+    db.execute("INSERT INTO book_reference_chapters(id,position,title,text) VALUES('large',0,'Long reference',?1)", [&text]).unwrap();
+    let view = book_reference::read(&db).unwrap();
+    let json = serde_json::to_string(&view).unwrap();
+    assert!(json.len() < 1024);
+    assert!(!json.contains("正文"));
+    let excerpt = book_reference::excerpt(&mut db, "large").unwrap();
+    assert!(excerpt.truncated);
+    assert_eq!(excerpt.text.chars().count(), 1500);
+    assert!(text.starts_with(&excerpt.text));
+    assert!(book_reference::excerpt(&mut db, "missing").is_err());
+    db.execute("UPDATE book_reference_chapters SET text='Updated' WHERE id='large'", []).unwrap();
+    assert_ne!(book_reference::read(&db).unwrap().fingerprint, view.fingerprint);
+    let excerpt = book_reference::excerpt(&mut db, "large").unwrap();
+    assert_eq!(excerpt.text, "Updated");
+    assert!(!excerpt.truncated);
+    assert!(book_reference::excerpt(&mut manga(), "large").is_err());
+}

@@ -11,22 +11,54 @@ use rusqlite::{Connection, Transaction};
 use sha2::{Digest, Sha256};
 use std::path::Path;
 
+struct ImportedChapter {
+    id: String,
+    position: u32,
+    title: String,
+    text: String,
+}
+
+pub fn excerpt(db: &mut Connection, id: &str) -> Result<BookReferenceExcerpt, AppError> {
+    ProjectRepository::new(db, ProjectKind::Book)?;
+    use rusqlite::OptionalExtension;
+    let text: String = db
+        .query_row(
+            "SELECT substr(text,1,1501) FROM book_reference_chapters WHERE id=?1",
+            [id],
+            |r| r.get(0),
+        )
+        .optional()
+        .map_err(storage_error)?
+        .ok_or_else(crate::storage::repository::not_found)?;
+    Ok(BookReferenceExcerpt {
+        truncated: text.chars().count() > 1500,
+        text: text.chars().take(1500).collect(),
+    })
+}
+
 pub fn read(db: &Connection) -> Result<BookReferenceView, AppError> {
+    let mut fingerprint = Sha256::new();
     let chapters = {
         let mut q = db
             .prepare("SELECT id,position,title,text FROM book_reference_chapters ORDER BY position")
             .map_err(storage_error)?;
-        let rows = q
-            .query_map([], |r| {
-                Ok(ReferenceChapterView {
-                    id: r.get(0)?,
-                    position: r.get(1)?,
-                    title: r.get(2)?,
-                    text: r.get(3)?,
-                })
-            })
-            .map_err(storage_error)?;
-        rows.collect::<Result<Vec<_>, _>>().map_err(storage_error)?
+        let mut rows = q.query([]).map_err(storage_error)?;
+        let mut chapters = Vec::new();
+        while let Some(row) = rows.next().map_err(storage_error)? {
+            let chapter = ReferenceChapterView {
+                id: row.get(0).map_err(storage_error)?,
+                position: row.get(1).map_err(storage_error)?,
+                title: row.get(2).map_err(storage_error)?,
+            };
+            // Hash one row at a time; chapter bodies never enter the list response.
+            let text: String = row.get(3).map_err(storage_error)?;
+            let bytes = serde_json::to_vec(&(&chapter, &text))
+                .map_err(|_| AppError::invalid("reference"))?;
+            fingerprint.update((bytes.len() as u64).to_le_bytes());
+            fingerprint.update(bytes);
+            chapters.push(chapter);
+        }
+        chapters
     };
     let mappings = {
         let mut q = db
@@ -44,10 +76,10 @@ pub fn read(db: &Connection) -> Result<BookReferenceView, AppError> {
             .map_err(storage_error)?;
         rows.collect::<Result<Vec<_>, _>>().map_err(storage_error)?
     };
-    let bytes =
-        serde_json::to_vec(&(&chapters, &mappings)).map_err(|_| AppError::invalid("reference"))?;
+    let bytes = serde_json::to_vec(&mappings).map_err(|_| AppError::invalid("reference"))?;
+    fingerprint.update(bytes);
     Ok(BookReferenceView {
-        fingerprint: format!("{:x}", Sha256::digest(bytes)),
+        fingerprint: format!("{:x}", fingerprint.finalize()),
         chapters,
         mappings,
     })
@@ -89,15 +121,18 @@ pub fn import(
             body: decoded.text,
         });
     }
+    let blocks_by_chapter: std::collections::HashMap<_, _> = loaded
+        .blocks
+        .iter()
+        .map(|blocks| (blocks.chapter_index, blocks))
+        .collect();
     let chapters = loaded
         .chapters
         .iter()
         .enumerate()
         .map(|(position, chapter)| {
-            let text = loaded
-                .blocks
-                .iter()
-                .find(|blocks| blocks.chapter_index == chapter.index)
+            let text = blocks_by_chapter
+                .get(&chapter.index)
                 .map(|blocks| {
                     blocks
                         .blocks
@@ -108,7 +143,7 @@ pub fn import(
                         .join("\n\n")
                 })
                 .unwrap_or_else(|| chapter.body.clone());
-            ReferenceChapterView {
+            ImportedChapter {
                 id: uuid::Uuid::new_v4().to_string(),
                 position: position as u32,
                 title: chapter.title.clone(),

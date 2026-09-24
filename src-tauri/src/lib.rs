@@ -102,6 +102,7 @@ pub fn run() {
             commands::book_cover_set,
             commands::book_reference_import,
             commands::book_reference_get,
+            commands::book_reference_excerpt,
             commands::book_reference_map,
             commands::book_export,
             commands::book_update_block,

@@ -54,7 +54,6 @@ let previewReference: BookReferenceView = {
     id: `reference-${position}`,
     position,
     title: `Глава ${position + 1}`,
-    text: `Пример референса для главы ${position + 1}.`,
   })),
   mappings: [],
   fingerprint: "0",
@@ -336,6 +335,17 @@ export async function invokePreview<T>(
         current: true,
       };
       break;
+    case "book_reference_excerpt": {
+      const chapter = previewReference.chapters.find(
+        (c) => c.id === args.referenceId,
+      );
+      if (!chapter) throw { code: "not_found" };
+      result = {
+        text: `Пример референса для главы ${chapter.position + 1}.`,
+        truncated: false,
+      };
+      break;
+    }
     case "book_reference_get":
       result = previewReference;
       break;

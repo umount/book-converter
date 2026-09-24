@@ -550,3 +550,19 @@ fallback. Keep commits scoped; push only on user request.
   search for chapter 20,000, mapping and save were verified. Frontend tests/build
   passed. This bounds rendered rows; reference loading still transfers all reference
   text and needs a separate backend pagination/detail pass for large real books.
+
+### P06 reference list payload
+
+- Reference lists now return titles/IDs/mappings only; selecting a mapping fetches
+  a Unicode-safe excerpt of at most 1,500 characters. Full text remains in SQLite
+  and remains included in the streamed content fingerprint.
+- Indexed structural-block lookup removes quadratic scans during book/reference
+  import. Full library suite passed 316 tests; Clippy, frontend tests/build and
+  generated contracts passed. Browser fixture verified the chapter-20,000 excerpt.
+- User correction: preserve the legacy reference-as-base behavior. Verified in
+  commands/reference.rs and commands/util.rs: importing a reference automatically
+  copies complete translations into pending chapters, preferring chapter-number
+  correspondence and falling back to reading order. Existing translations are kept.
+  This behavior is still missing from the new service and is the next required
+  book task. Do not replace it with context-only use or a new opt-in workflow.
+  The 1,500-character limit applies only to the UI preview, never adopted translations.

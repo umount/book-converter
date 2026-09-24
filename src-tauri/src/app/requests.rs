@@ -132,7 +132,18 @@ pub struct ReferenceChapterView {
     pub id: String,
     pub position: u32,
     pub title: String,
+}
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct BookReferenceExcerptArgs {
+    pub project_id: ProjectId,
+    pub reference_id: String,
+}
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+pub struct BookReferenceExcerpt {
     pub text: String,
+    pub truncated: bool,
 }
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -664,6 +675,8 @@ pub fn typescript() -> String {
         BookReferenceImportArgs::decl(&config),
         BookMetadataView::decl(&config),
         ReferenceChapterView::decl(&config),
+        BookReferenceExcerptArgs::decl(&config),
+        BookReferenceExcerpt::decl(&config),
         ReferenceMapping::decl(&config),
         BookReferenceView::decl(&config),
         BookReferenceMapArgs::decl(&config),

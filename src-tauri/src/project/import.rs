@@ -134,12 +134,14 @@ fn book(
             );
         }
     }
+    let blocks_by_chapter: HashMap<_, _> = loaded
+        .blocks
+        .iter()
+        .map(|blocks| (blocks.chapter_index, blocks))
+        .collect();
     for (position, chapter) in loaded.chapters.iter().enumerate() {
         let chapter_id = uuid();
-        let typed = loaded
-            .blocks
-            .iter()
-            .find(|blocks| blocks.chapter_index == chapter.index);
+        let typed = blocks_by_chapter.get(&chapter.index);
         let content: Vec<BookBlockContent> = if let Some(typed) = typed {
             typed
                 .blocks
