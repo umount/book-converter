@@ -1,11 +1,13 @@
 /** Deterministic, memory-only fixture for browser visual QA; never used in native builds. */
 import type {
   BookChapterView,
+  BookReplacePreview,
   BookReferenceView,
   JobView,
   GlossaryTermView,
   ModelView,
 } from "../shared/contracts/generated";
+let replacePreview: BookReplacePreview | null = null;
 const project = {
   id: "preview-book",
   kind: "book",
@@ -254,6 +256,59 @@ export async function invokePreview<T>(
     case "book_list_chapters":
       result = { items: views.map((v) => v.chapter), nextCursor: null };
       break;
+    case "book_replace_preview": {
+      const pattern = new RegExp(
+        args.search.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"),
+        args.caseSensitive ? "g" : "gi",
+      );
+      replacePreview = {
+        previewId: "preview-replacement",
+        changes: views.flatMap((view) => {
+          if (
+            args.selection.kind === "explicit_ids" &&
+            !args.selection.ids.includes(view.chapter.id)
+          )
+            return [];
+          return view.blocks.flatMap((block) => {
+            if (block.translatedText == null) return [];
+            const after = block.translatedText.replace(
+              pattern,
+              () => args.replacement,
+            );
+            return after === block.translatedText
+              ? []
+              : [
+                  {
+                    chapterId: view.chapter.id,
+                    blockId: block.id,
+                    before: block.translatedText,
+                    after,
+                  },
+                ];
+          });
+        }),
+      };
+      result = replacePreview;
+      break;
+    }
+    case "book_replace_apply": {
+      if (!replacePreview || args.previewId !== replacePreview.previewId)
+        throw new Error("No replacement preview");
+      for (const change of replacePreview.changes) {
+        const view = views.find((v) => v.chapter.id === change.chapterId)!;
+        const block = view.blocks.find((b) => b.id === change.blockId)!;
+        if (block.translatedText !== change.before)
+          throw { code: "revision_conflict" };
+        block.translatedText = change.after;
+        if (view.translation)
+          view.translation.revision = String(
+            Number(view.translation.revision) + 1,
+          );
+      }
+      result = replacePreview.changes.length;
+      replacePreview = null;
+      break;
+    }
     case "book_search": {
       const normalize = (s: string) =>
         args.caseSensitive ? s : s.toLocaleLowerCase();

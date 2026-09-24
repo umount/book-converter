@@ -26,7 +26,10 @@ tracked in [REFACTORING](docs/REFACTORING.md).
 6. Use the assistant to discuss the current chapter and propose prompt changes,
    glossary entries, text replacements or bounded translation batches. Proposals show
    their changes before application; automatic application is an explicit opt-in.
-7. Save a portable `.bcproj` archive or export the book as TXT, FB2, EPUB or PDF.
+7. Use **File → Export** to save a portable `.bcproj` archive or export the book
+   as TXT, FB2 in a `.fb2.zip` archive, EPUB or PDF. Search and replace share the
+   sidebar (Ctrl/Cmd+F and Ctrl/Cmd+H); chapter instructions open from the reader
+   toolbar. **Help → About** shows the version, build identifier and build date.
 
 Book import supports TXT, FB2, EPUB, PDF and supported books inside ZIP archives.
 FB2 and EPUB illustrations are stored as structural image blocks, including repeated

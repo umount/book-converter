@@ -937,3 +937,23 @@ used fake providers and synthetic local assets; no paid API request was made.
 - Next executable slice: processing capability preflight and automatic pixel-mask
   adapter/runtime assessment. Keep full automatic processing unavailable until
   its required capabilities work; no rectangle-erasure fallback or manual masks.
+
+### P06 conventional menus and export packaging
+
+- Text menu actions replace the topbar icon-only controls. File groups library,
+  create/import and context-dependent export actions. Book exports open a modal;
+  manga output formats remain explicitly unavailable until their exporter exists,
+  while the portable project archive remains available.
+- Find and replace share the search sidebar (Ctrl/Cmd+F / Ctrl/Cmd+H). Replacement
+  retains explicit preview and apply. Chapter instructions open from the reader
+  toolbar and flush before closing; obsolete workspace tools were removed.
+- Help / About displays the Tauri version, timestamp/Git build identifier (optional
+  BC_BUILD_NUMBER override), build date and proprietary-source/free-binary notice.
+- FB2 exports publish a compressed ZIP containing one FB2 document. Round-trip
+  tests cover embedded illustrations and cover images, including a .fb2 destination
+  automatically receiving the .zip suffix. Atomic no-overwrite publication remains.
+- Validation: 184 Rust library tests, Clippy, frontend tests and production build.
+  Synthetic browser checks covered menus, About, instruction save/reopen, replace
+  preview/apply, book export options and switching to manga formats.
+- Source licensing is proprietary; official compiled releases are free to use.
+  Third-party license notices are preserved.

@@ -24,7 +24,14 @@ import { BookTools, type BookTool } from "../features/book/BookTools";
 import { Glossary } from "../features/glossary/Glossary";
 import { MangaWorkspace } from "../features/manga/MangaWorkspace";
 import { ProjectLibrary } from "../features/projects/ProjectLibrary";
-import { ArchiveExport } from "../features/projects/ArchiveExport";
+import {
+  ExportMenu,
+  ProjectExport,
+  type ExportFormat,
+} from "../features/projects/ProjectExport";
+import { ChapterInstructions } from "../features/book/ChapterInstructions";
+import { Menu, closeMenus } from "../shared/ui/Menu";
+import { About } from "./About";
 import { JobPanel } from "./JobPanel";
 import { CommandPalette, type Command } from "./CommandPalette";
 import { Settings } from "./Settings";
@@ -113,6 +120,17 @@ function Shell({
   const lock = useRef(false);
   const toolFlush = useRef<(() => Promise<void>) | null>(null);
   const [showSearch, setShowSearch] = useState(false);
+  const [searchMode, setSearchMode] = useState<"find" | "replace">("find");
+  const [exportFormat, setExportFormat] = useState<ExportFormat | null>(null);
+  const [showInstructions, setShowInstructions] = useState(false);
+  const [about, setAbout] = useState(false);
+  const searchFlush = useRef<(() => Promise<void>) | null>(null);
+  const registerSearchFlush = useCallback(
+    (flush: (() => Promise<void>) | null) => {
+      searchFlush.current = flush;
+    },
+    [],
+  );
   const [toolsVersion, setToolsVersion] = useState(0);
   const [showAssistant, setShowAssistant] = useState(
     () => window.innerWidth > 1000,
@@ -137,6 +155,7 @@ function Shell({
         void (async () => {
           await editorRef.current?.flush();
           await toolFlush.current?.();
+          await searchFlush.current?.();
           await assistantFlush.current?.();
           await getCurrentWindow().destroy();
         })().catch(setError);
@@ -231,12 +250,13 @@ function Shell({
         return;
       }
       if (
-        e.key.toLowerCase() === "f" &&
+        ["f", "h"].includes(e.key.toLowerCase()) &&
         !library &&
         state.project?.kind === "book"
       ) {
         e.preventDefault();
         setShowSearch(true);
+        setSearchMode(e.key.toLowerCase() === "h" ? "replace" : "find");
         requestAnimationFrame(() =>
           document
             .querySelector<HTMLInputElement>(".bc-book-search input")
@@ -263,6 +283,7 @@ function Shell({
     try {
       await editorRef.current?.flush();
       await toolFlush.current?.();
+      await searchFlush.current?.();
       await assistantFlush.current?.();
       await work();
     } catch (e) {
@@ -271,6 +292,19 @@ function Shell({
       lock.current = false;
       setBusy(false);
     }
+  }
+  async function importProject() {
+    await act(async () => {
+      const path = await open({
+        multiple: false,
+        filters: [{ name: t("importArchive"), extensions: ["bcproj"] }],
+      });
+      if (typeof path === "string") {
+        const p = await api.importArchive({ path });
+        await reload();
+        await activate(p.id);
+      }
+    });
   }
   async function activate(id: string) {
     await workspace.open(id);
@@ -347,16 +381,8 @@ function Shell({
   );
   const tabs =
     project?.kind === "book"
-      ? ([
-          "reader",
-          "overview",
-          "glossary",
-          "reference",
-          "replace",
-          "instructions",
-          "export",
-        ] as const)
-      : (["reader", "glossary", "export"] as const);
+      ? (["reader", "overview", "glossary", "reference"] as const)
+      : (["reader", "glossary"] as const);
   const commands: Command[] = [
     {
       id: "library",
@@ -370,6 +396,19 @@ function Shell({
     { id: "create", label: t("newProject"), run: () => setCreate(true) },
     { id: "settings", label: t("settings"), run: () => setSettings(true) },
     { id: "jobs", label: t("jobs"), run: () => setShowJobs(true) },
+    ...(project
+      ? [
+          {
+            id: "export",
+            label: t("export"),
+            run: () =>
+              void act(async () => {
+                setLibrary(false);
+                setExportFormat(project.kind === "book" ? "epub" : "bcproj");
+              }),
+          },
+        ]
+      : []),
     ...catalog.map((p) => ({
       id: p.descriptor.id,
       label: `${t("open")}: ${p.descriptor.name}`,
@@ -399,57 +438,77 @@ function Shell({
           <img src="/logo.svg" alt="" width="22" height="22" />
           <strong>Book Converter</strong>
         </span>
-        <button
-          aria-pressed={library}
-          onClick={() =>
-            void act(async () => {
-              setLibrary(true);
-              await reload();
-            })
-          }
-        >
-          {t("library")}
-        </button>
-        <button
-          className="bc-icon-button"
-          aria-label={t("newProject")}
-          title={t("newProject")}
-          onClick={() => setCreate(true)}
-        >
-          <ToolbarIcon name="add" />
-        </button>
-        <span className="bc-spacer" />
-        {!library && project?.kind === "book" && (
+        <Menu label={t("fileMenu")}>
           <button
-            className="bc-icon-button"
-            aria-label={t("assistant")}
-            title={t("assistant")}
-            aria-pressed={showAssistant}
-            onClick={() => setShowAssistant((v) => !v)}
+            disabled={busy}
+            onClick={() => {
+              closeMenus();
+              void act(async () => {
+                setLibrary(true);
+                await reload();
+              });
+            }}
           >
-            <ToolbarIcon name="assistant" />
+            {t("library")}
           </button>
-        )}
+          <button
+            onClick={() => {
+              closeMenus();
+              setCreate(true);
+            }}
+          >
+            {t("newProject")}
+          </button>
+          <button
+            disabled={busy}
+            onClick={() => {
+              closeMenus();
+              void importProject();
+            }}
+          >
+            {t("importArchive")}
+          </button>
+          {!library && project && (
+            <ExportMenu
+              project={project}
+              disabled={busy}
+              t={t}
+              choose={(format) => {
+                closeMenus();
+                void act(async () => setExportFormat(format));
+              }}
+            />
+          )}
+        </Menu>
+        <button onClick={() => setSettings(true)}>{t("settings")}</button>
         <button
-          className="bc-icon-button bc-jobs-toggle"
-          aria-label={t("jobs")}
-          title={t("jobs")}
+          className="bc-jobs-toggle"
           onClick={() => setShowJobs(!showJobs)}
           aria-pressed={showJobs}
         >
-          <ToolbarIcon name="jobs" />
+          {t("jobs")}
           {jobList.some((j) => j.state === "running") && (
             <span className="bc-activity-dot" />
           )}
         </button>
-        <button
-          className="bc-icon-button"
-          aria-label={t("settings")}
-          title={t("settings")}
-          onClick={() => setSettings(true)}
-        >
-          <ToolbarIcon name="settings" />
-        </button>
+        {!library && project?.kind === "book" && (
+          <button
+            aria-pressed={showAssistant}
+            onClick={() => setShowAssistant((v) => !v)}
+          >
+            {t("assistant")}
+          </button>
+        )}
+        <Menu label={t("helpMenu")}>
+          <button
+            onClick={() => {
+              closeMenus();
+              setAbout(true);
+            }}
+          >
+            {t("about")}
+          </button>
+        </Menu>
       </header>
       {(error ?? state.error ?? initialError) != null && (
         <div className="bc-error" role="alert">
@@ -473,19 +532,7 @@ function Shell({
           t={t}
           create={() => setCreate(true)}
           open={(id) => void act(() => activate(id))}
-          importArchive={() =>
-            void act(async () => {
-              const path = await open({
-                multiple: false,
-                filters: [{ name: t("importArchive"), extensions: ["bcproj"] }],
-              });
-              if (typeof path === "string") {
-                const p = await api.importArchive({ path });
-                await reload();
-                await activate(p.id);
-              }
-            })
-          }
+          importArchive={() => void importProject()}
           remove={(id) =>
             void act(async () => {
               const p = catalog.find((p) => p.descriptor.id === id)?.descriptor;
@@ -528,6 +575,20 @@ function Shell({
                 projectId={project.id}
                 t={t}
                 active={showSearch}
+                mode={searchMode}
+                setMode={setSearchMode}
+                chapters={state.chapters}
+                chapterId={state.chapter?.chapter.id ?? null}
+                registerFlush={registerSearchFlush}
+                beforeWork={async () => {
+                  await editorRef.current?.flush();
+                  await toolFlush.current?.();
+                  await assistantFlush.current?.();
+                }}
+                refresh={async () => {
+                  await editorRef.current?.refresh();
+                  await workspace.refreshChapters();
+                }}
                 close={() => setShowSearch(false)}
                 open={(chapter, block) =>
                   void act(async () => {
@@ -651,6 +712,14 @@ function Shell({
                 >
                   {t("translateChapter")}
                 </button>
+                <button
+                  disabled={busy || !editor}
+                  onClick={() =>
+                    void act(async () => setShowInstructions(true))
+                  }
+                >
+                  {t("instructions")}
+                </button>
                 <details className="bc-translation-options">
                   <summary>{t("translationOptions")}</summary>
                   <label className="bc-check">
@@ -692,15 +761,11 @@ function Shell({
                     }
                   />
                 ) : project.kind === "manga" ? (
-                  panel === "export" ? (
-                    <ArchiveExport project={project} t={t} />
-                  ) : (
-                    <MangaWorkspace
-                      key={project.id}
-                      projectId={project.id}
-                      t={t}
-                    />
-                  )
+                  <MangaWorkspace
+                    key={project.id}
+                    projectId={project.id}
+                    t={t}
+                  />
                 ) : panel === "reader" ? (
                   editor ? (
                     <BookReader
@@ -851,6 +916,7 @@ function Shell({
                 beforeWork={async () => {
                   await editorRef.current?.flush();
                   await toolFlush.current?.();
+                  await searchFlush.current?.();
                 }}
                 refresh={async () => {
                   await editor?.refresh();
@@ -915,6 +981,30 @@ function Shell({
           commands={commands}
           close={() => setPalette(false)}
           t={t}
+        />
+      )}
+      {about && <About t={t} close={() => setAbout(false)} />}
+      {showInstructions && editor && (
+        <ChapterInstructions
+          session={editor}
+          t={t}
+          close={() => setShowInstructions(false)}
+          registerFlush={registerFlush}
+        />
+      )}
+      {exportFormat && project && (
+        <ProjectExport
+          project={project}
+          format={exportFormat}
+          chapterId={state.chapter?.chapter.id ?? null}
+          t={t}
+          close={() => setExportFormat(null)}
+          beforeExport={async () => {
+            await editorRef.current?.flush();
+            await toolFlush.current?.();
+            await searchFlush.current?.();
+            await assistantFlush.current?.();
+          }}
         />
       )}
       {settings && (
