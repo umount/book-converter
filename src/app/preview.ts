@@ -1,0 +1,214 @@
+/** Deterministic, memory-only fixture for browser visual QA; never used in native builds. */
+import type {
+  BookChapterView,
+  JobView,
+  GlossaryTermView,
+} from "../shared/contracts/generated";
+const project = {
+  id: "preview-book",
+  kind: "book",
+  name: "Сад за морем",
+  formatVersion: 1,
+  createdAt: "2026-09-24T00:00:00Z",
+  source: {
+    format: "epub",
+    displayName: "The Garden Beyond the Sea.epub",
+    originalPath: null,
+  },
+};
+const chapters = [
+  "The last ferry",
+  "A garden in the rain",
+  "Letters from the coast",
+].map((title, position) => ({
+  id: `chapter-${position}`,
+  position,
+  title,
+  revision: "0",
+}));
+const original = [
+  "The last ferry left the harbour just before sunset. On the quay, Anna stood with a small suitcase and a letter she had read so often that the paper had softened along the folds.",
+  "Beyond the water, the island was little more than a dark line. She could make out the white tower above the trees, and, below it, the garden her grandfather had described.",
+  "“There is always something flowering,” he had written. “Even when it seems that everything else has stopped.”",
+];
+const translated = [
+  "Последний паром ушёл из гавани перед самым закатом. На причале стояла Анна с небольшим чемоданом и письмом, которое она перечитывала так часто, что бумага на сгибах стала мягкой.",
+  "За водой остров казался тонкой тёмной полосой. Над деревьями виднелась белая башня, а под ней — сад, о котором рассказывал дедушка.",
+  "«Здесь всегда что-нибудь цветёт, — писал он. — Даже когда кажется, что всё остальное замерло».",
+];
+const views: BookChapterView[] = chapters.map((chapter) => ({
+  chapter,
+  instructions: "",
+  translation: {
+    id: `translation-${chapter.id}`,
+    revision: "1",
+    title: ["Последний паром", "Сад под дождём", "Письма с побережья"][
+      chapter.position
+    ],
+    status: "ready",
+  },
+  blocks: original.map((text, position) => ({
+    id: `${chapter.id}-block-${position}`,
+    chapterId: chapter.id,
+    position,
+    revision: "0",
+    content: { kind: "text", text },
+    translatedText: translated[position],
+  })),
+}));
+let glossary: GlossaryTermView[] = [
+  {
+    id: "anna",
+    source: "Anna",
+    target: "Анна",
+    kind: "character",
+    pinned: true,
+    frequency: 12,
+    revision: "1",
+  },
+  {
+    id: "island",
+    source: "the island",
+    target: "остров",
+    kind: "place",
+    pinned: false,
+    frequency: 8,
+    revision: "1",
+  },
+];
+let settingsRevision = 1;
+const jobs: JobView[] = [];
+export async function invokePreview<T>(
+  command: string,
+  raw?: Record<string, unknown>,
+): Promise<T> {
+  const args = (raw?.args ?? {}) as Record<string, any>;
+  let result: unknown;
+  switch (command) {
+    case "project_list":
+      result = [
+        {
+          descriptor: project,
+          progress: { kind: "book", chapters: 3, translated: 3 },
+        },
+      ];
+      break;
+    case "project_open":
+      result = project;
+      break;
+    case "project_settings_get":
+      result = {
+        languages: { source: "en", target: "ru" },
+        choices: { aiProfileId: null, mangaProfileId: null },
+        revision: "1",
+      };
+      break;
+    case "book_list_chapters":
+      result = { items: chapters, nextCursor: null };
+      break;
+    case "book_get_chapter":
+      result = views.find((v) => v.chapter.id === args.chapterId);
+      break;
+    case "book_update_translation_block": {
+      const view = views.find((v) => v.translation?.id === args.translationId)!;
+      if (
+        !view.translation ||
+        view.translation.revision !== args.expectedRevision
+      )
+        throw { code: "revision_conflict" };
+      const revision = String(Number(view.translation.revision) + 1);
+      view.blocks.find((b) => b.id === args.blockId)!.translatedText =
+        args.text;
+      view.translation = {
+        ...view.translation,
+        revision,
+        id: `${view.chapter.id}-translation-${revision}`,
+      };
+      result = revision;
+      break;
+    }
+    case "book_update_instructions": {
+      const view = views.find((v) => v.chapter.id === args.chapterId)!;
+      view.instructions = args.instructions;
+      view.chapter.revision = String(Number(view.chapter.revision) + 1);
+      result = view.chapter.revision;
+      break;
+    }
+    case "book_metadata_get":
+      result = {
+        title: "Сад за морем",
+        author: "",
+        summary:
+          "Вернувшись на остров после долгого отсутствия, Анна находит письма, которые меняют её представление о семье и старом саде у моря.",
+        current: true,
+      };
+      break;
+    case "book_reference_get":
+      result = { chapters: [], mappings: [], fingerprint: "preview" };
+      break;
+    case "glossary_list":
+      result = {
+        items: glossary,
+        nextCursor: null,
+        settingsRevision: String(settingsRevision),
+      };
+      break;
+    case "glossary_put": {
+      const old = glossary.find((v) => v.id === args.termId);
+      if (
+        String(settingsRevision) !== args.expectedSettingsRevision ||
+        (old && old.revision !== args.expectedRevision)
+      )
+        throw { code: "revision_conflict" };
+      glossary = glossary.filter((v) => v.id !== args.termId);
+      glossary.push({
+        id: args.termId,
+        source: args.source,
+        target: args.target,
+        kind: args.kind,
+        pinned: args.pinned,
+        frequency: old?.frequency ?? 0,
+        revision: String(Number(old?.revision ?? 0) + 1),
+      });
+      settingsRevision++;
+      result = String(settingsRevision);
+      break;
+    }
+    case "job_list":
+      result = jobs;
+      break;
+    case "job_get":
+      result = jobs.find((v) => v.job.jobId === args.jobId);
+      break;
+    case "book_start_translation":
+    case "book_start_metadata":
+    case "book_start_glossary": {
+      const job = { projectId: project.id, jobId: `job-${jobs.length}` };
+      jobs.push({
+        job,
+        kind: command.replace("book_start_", "book_"),
+        state: "succeeded",
+        revision: "1",
+        totalSteps: 3,
+        completedSteps: 3,
+        error: null,
+      });
+      result = job;
+      break;
+    }
+    case "get_effective_config":
+      result = {
+        model: "preview-model",
+        base_url: "https://example.invalid",
+        has_key: false,
+        env_locked: [],
+      };
+      break;
+    case "set_setting":
+    case "set_api_key":
+      break;
+    default:
+      throw new Error(`Preview does not implement ${command}`);
+  }
+  return structuredClone(result) as T;
+}

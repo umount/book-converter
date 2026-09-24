@@ -60,6 +60,7 @@ export class WorkspaceStore {
       if (generation === this.generation && chapterGeneration === this.chapterGeneration) this.publish({ ...this.state, chapter: null, loading: false, error });
     }
   }
+  clearError() { this.publish({ ...this.state, error: null }); }
   close() { ++this.generation; ++this.chapterGeneration; this.publish(empty()); }
   dispose() { this.close(); this.listeners.clear(); }
 }
