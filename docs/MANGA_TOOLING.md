@@ -242,3 +242,43 @@ Accepted coordinates map back to canonical pixels. It returns request-local IDs;
 the result-publishing service assigns durable IDs and reconciles manual edits.
 It produces no masks, cleanup, translation or lettering, and enables no processing
 button until the remaining full-pipeline capability gates are satisfied.
+
+## Native CPU experiment (2026-09-24)
+
+`crates/manga-inference` contains an opt-in (`--features onnx`) Rust worker probe.
+It loads an explicit native ONNX Runtime 1.22 library through `ort =2.0.0-rc.10`;
+there is no system-runtime discovery, Python invocation or automatic download.
+Packaging/distribution of that library and worker is still pending.
+
+The second experimental catalog artifact is
+[TareHimself/comic-text-mask](https://huggingface.co/TareHimself/comic-text-mask):
+`model.safetensors`, revision `ebd37f1a9ae9298519678fb96a796573fb602977`,
+57,377,484 bytes, SHA-256
+`ab28dd8450462c4f87ddfd05d13601813bb90414f26bea5590bf6a0a7540f988`.
+The repository declares MIT. The pinned ResNet18/U-Net architecture is assembled
+from standard ONNX operators locally after checksum verification. RGB crops are
+black-letterboxed to 384 pixels, normalized with ImageNet mean/std, thresholded at
+0.5 and projected using the saved paste rectangle. No model Python code executes.
+Safetensors and ONNX downloads have distinct cache/partial filenames.
+
+A developer-only comparison used the same repository's pinned TorchScript artifact
+(`model.pt`, SHA-256
+`c1de7cd35c5cce1c5eca4e03696129dc9649db6ebe7d03fe1b995d7aca73e605`)
+and PyTorch 2.7.1 CPU in an isolated temporary environment. On a synthetic 384-square
+Latin/Cyrillic text crop, maximum probability error was 0.000005067 and binary
+mask disagreements were zero. This checks the graph port, not manga quality.
+
+Linux x86_64, Intel i7-3770K, two intra-op threads, release build, one isolated run:
+
+- Mask: 593 ms cold initialization, 696 ms inference, 229,728 KiB peak worker RSS.
+- LaMa: 8,564 ms cold initialization, 7,672 ms inference, 821,348 KiB peak worker RSS.
+- Both model files together: 265,422,300 bytes, below the 500 MiB download cap.
+- Cleaned PNG retained every decoded pixel outside the binary mask exactly.
+
+These are single-crop smoke measurements, not page p95 or process-tree acceptance.
+The LaMa output contract is float RGB in 0–255, not 0–1. Visible glyph remnants
+remain on this synthetic fixture; mask margins/projection and cleanup quality need
+further work. Do not enable automatic processing based on this experiment. Real
+page quality, cancellation, bundled runtime size and all release OS/architecture
+checks remain open. Release distribution must retain third-party runtime/model
+license notices independently from this project's proprietary source license.

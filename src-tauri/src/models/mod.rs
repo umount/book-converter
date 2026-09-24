@@ -89,7 +89,7 @@ impl ModelManager {
                     for view in &mut views {
                         let dir = manager.root.join(view.model.directory());
                         check_directory(&dir)?;
-                        let installed = dir.join("weights.onnx");
+                        let installed = dir.join(view.model.artifact_name());
                         if regular_size(&installed)?.is_some() {
                             match transfer::verify(&installed, &view.model, None) {
                                 Ok(()) => {
@@ -101,7 +101,9 @@ impl ModelManager {
                                     view.failure = Some(error);
                                 }
                             }
-                        } else if let Some(bytes) = regular_size(&dir.join("weights.onnx.part"))? {
+                        } else if let Some(bytes) =
+                            regular_size(&dir.join(view.model.partial_name()))?
+                        {
                             view.status = ModelStatus::Paused;
                             view.downloaded_bytes = bytes.min(u64::from(view.model.bytes)) as u32;
                         }
@@ -173,7 +175,10 @@ impl ModelManager {
         let dir = self.root.join(view.model.directory());
         check_directory(&self.root)?;
         check_directory(&dir)?;
-        for name in ["weights.onnx", "weights.onnx.part"] {
+        for name in [
+            view.model.artifact_name().to_string(),
+            view.model.partial_name(),
+        ] {
             let path = dir.join(name);
             if regular_size(&path)?.is_some() {
                 std::fs::remove_file(path).map_err(|_| ModelFailure::Storage)?;

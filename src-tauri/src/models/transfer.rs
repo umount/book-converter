@@ -68,8 +68,8 @@ pub(super) async fn download(
     let directory = manager.root.join(spec.directory());
     check_directory(&directory)?;
     std::fs::create_dir_all(&directory).map_err(|_| ModelFailure::Storage)?;
-    let partial = directory.join("weights.onnx.part");
-    let final_path = directory.join("weights.onnx");
+    let partial = directory.join(spec.partial_name());
+    let final_path = directory.join(spec.artifact_name());
     let mut offset = regular_size(&partial)?.unwrap_or(0);
     regular_size(&final_path)?;
     if offset > u64::from(spec.bytes) {

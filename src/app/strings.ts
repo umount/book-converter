@@ -4,7 +4,7 @@ const en = {
   modelDownloadHint:
     "Weights are downloaded from Hugging Face only when requested and cached locally. Closing this dialog keeps the download running. After an app restart, resume it here.",
   modelExperimental:
-    "Experimental cleanup model. Downloading does not enable manga processing: runtime compatibility and image quality still need validation.",
+    "Experimental processing model. Downloading does not enable manga processing: runtime compatibility and image quality still need validation.",
   modelMissing: "Not downloaded",
   modelDownloading: "Downloading",
   modelVerifying: "Verifying file",
@@ -313,7 +313,7 @@ const ru: Record<Key, string> = {
   modelDownloadHint:
     "Веса скачиваются с Hugging Face только по запросу и хранятся локально. Закрытие этого окна не прерывает загрузку. После перезапуска приложения продолжите её здесь.",
   modelExperimental:
-    "Экспериментальная модель очистки. Скачивание пока не включает обработку манги: ещё предстоит проверить совместимость и качество результата.",
+    "Экспериментальная модель обработки. Скачивание пока не включает обработку манги: ещё предстоит проверить совместимость и качество результата.",
   modelMissing: "Не скачана",
   modelDownloading: "Скачивание",
   modelVerifying: "Проверка файла",
@@ -624,7 +624,7 @@ const zh: Record<Key, string> = {
   modelDownloadHint:
     "仅按需从 Hugging Face 下载权重并缓存到本地。关闭此窗口不会中断下载；重启应用后可在此继续。",
   modelExperimental:
-    "实验性清理模型。下载不代表漫画处理已可用；仍需验证运行时兼容性和图像质量。",
+    "实验性处理模型。下载不代表漫画处理已可用；仍需验证运行时兼容性和图像质量。",
   modelMissing: "未下载",
   modelDownloading: "下载中",
   modelVerifying: "正在校验",

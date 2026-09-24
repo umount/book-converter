@@ -34,3 +34,5 @@ src-tauri/pdfium/
 
 # Local agent settings (may contain API keys)
 .claude/settings.local.json
+
+/crates/*/target

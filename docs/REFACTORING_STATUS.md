@@ -1017,3 +1017,17 @@ used fake providers and synthetic local assets; no paid API request was made.
 - Validation: 190 Rust library tests, strict all-target Clippy, frontend tests/build
   and generated-contract check passed. Provider checks were exercised with local
   fakes; no live AI calls or production weight downloads were made.
+
+## P09 native segmentation and cleanup experiment (2026-09-24)
+
+- Added a separate opt-in native CPU inference crate and pinned safetensors download
+  candidate. The desktop application does not yet load or bundle this runtime.
+- The Rust-generated ONNX segmentation graph matches the published TorchScript
+  reference on one synthetic crop (zero binary disagreements). Actual mask/LaMa
+  CPU execution succeeded without a Python dependency in the worker.
+- Pixel composition preserves unmasked artwork exactly; bounded geometry, projection,
+  malformed predictions and download/resume paths have regression coverage.
+- Recorded exact model pins, timings and memory in MANGA_TOOLING.md. Cleanup still
+  leaves visible remnants on the test crop, so quality acceptance remains open.
+- Next: cancellable worker boundary, page crop orchestration and mask margins;
+  immutable publication with dependency checks, then translation and lettering.

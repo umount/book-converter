@@ -231,3 +231,39 @@ async fn truncated_responses_keep_only_received_bytes_for_later_resume() {
     assert_eq!(view.downloaded_bytes as usize, bytes.len());
     std::fs::remove_dir_all(&manager.root).unwrap();
 }
+
+#[tokio::test]
+async fn safetensors_use_their_own_verified_cache_artifact_and_resume_path() {
+    let (old, mut model) = fixture();
+    model.filename = "model.safetensors".into();
+    let manager = Arc::new(ModelManager::with_catalog(
+        old.root.clone(),
+        vec![model.clone()],
+    ));
+    let dir = manager.root.join(model.directory());
+    std::fs::create_dir_all(&dir).unwrap();
+    std::fs::write(dir.join(model.partial_name()), b"abc").unwrap();
+    assert_eq!(manager.list().await.unwrap()[0].status, ModelStatus::Paused);
+    let (url, server) = server("HTTP/1.1 206 Partial Content\r\nContent-Length: 3\r\nContent-Range: bytes 3-5/6\r\nConnection: close\r\n\r\ndef", "range: bytes=3-").await;
+    let (_sender, receiver) = watch::channel(false);
+    transfer::download(manager.clone(), &model, receiver, url)
+        .await
+        .unwrap();
+    server.await.unwrap();
+    assert_eq!(
+        std::fs::read(dir.join("weights.safetensors")).unwrap(),
+        b"abcdef"
+    );
+    assert!(!dir.join("weights.onnx").exists());
+    let fresh = Arc::new(ModelManager::with_catalog(
+        manager.root.clone(),
+        vec![model.clone()],
+    ));
+    assert_eq!(
+        fresh.list().await.unwrap()[0].status,
+        ModelStatus::Downloaded
+    );
+    fresh.remove(&model.id).await.unwrap();
+    assert!(!dir.join(model.artifact_name()).exists());
+    std::fs::remove_dir_all(&manager.root).unwrap();
+}
