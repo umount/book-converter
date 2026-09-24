@@ -862,3 +862,16 @@ fallback. Keep commits scoped; push only on user request.
 
 Checks for this slice: manga pagination/volume backend test, frontend test suite,
 production build, generated contracts check and strict all-target Clippy passed.
+
+## P08 canvas navigation (2026-09-24)
+
+- Extracted PageCanvas from the workspace. Whole-page fit uses both viewport axes;
+  width fit and pixel percentages remain available. Resizing observes the viewport.
+- Focused canvas supports RTL-aware left/right navigation and sequential PageUp /
+  PageDown. Reading direction never mirrors image pixels. Page/zoom changes clear pan.
+- Frontend tests cover portrait/spread fitting and RTL/LTR key semantics; all four
+  frontend test files and production build pass. Browser preview verified whole-page
+  fit and left-arrow navigation from page 1 to page 2 in an RTL volume.
+- P08 remains partial pending native/source-removal and resource acceptance. Next is
+  the recognition contract/adapter slice; real OCR quality and automatic pixel masks
+  remain unimplemented and must not be represented as validated processing.

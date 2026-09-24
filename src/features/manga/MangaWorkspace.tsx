@@ -1,5 +1,6 @@
+import { PageCanvas } from "./PageCanvas";
 import { VirtualList } from "../../shared/ui/VirtualList";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { projectApi } from "../../shared/api/projects";
 import type {
   MangaVolumeSummary,
@@ -19,19 +20,6 @@ function MangaProjectWorkspace({ projectId, t }: { projectId: string; t: T }) {
     [selected, setSelected] = useState(0),
     [error, setError] = useState<unknown>(null);
   const [zoom, setZoom] = useState("fit");
-  const viewport = useRef<HTMLDivElement>(null);
-  const drag = useRef<{
-    x: number;
-    y: number;
-    left: number;
-    top: number;
-  } | null>(null);
-  useEffect(() => {
-    if (viewport.current) {
-      viewport.current.scrollTop = 0;
-      viewport.current.scrollLeft = 0;
-    }
-  }, [selected]);
   useEffect(() => {
     let alive = true;
     projectApi
@@ -171,6 +159,7 @@ function MangaProjectWorkspace({ projectId, t }: { projectId: string; t: T }) {
             {t("zoom")}{" "}
             <select value={zoom} onChange={(e) => setZoom(e.target.value)}>
               <option value="fit">{t("fitPage")}</option>
+              <option value="page">{t("wholePage")}</option>
               {[25, 50, 75, 100, 150, 200, 300].map((n) => (
                 <option key={n} value={n}>
                   {n}%
@@ -179,55 +168,22 @@ function MangaProjectWorkspace({ projectId, t }: { projectId: string; t: T }) {
             </select>
           </label>
         </div>
-        <div
-          className="bc-page-viewport"
-          ref={viewport}
-          tabIndex={0}
-          aria-label={t("pages")}
-          onPointerDown={(e) => {
-            if (e.button !== 0 || !viewport.current) return;
-            drag.current = {
-              x: e.clientX,
-              y: e.clientY,
-              left: viewport.current.scrollLeft,
-              top: viewport.current.scrollTop,
-            };
-            e.currentTarget.setPointerCapture(e.pointerId);
-          }}
-          onPointerMove={(e) => {
-            if (drag.current && viewport.current) {
-              viewport.current.scrollLeft =
-                drag.current.left + drag.current.x - e.clientX;
-              viewport.current.scrollTop =
-                drag.current.top + drag.current.y - e.clientY;
-            }
-          }}
-          onPointerUp={() => {
-            drag.current = null;
-          }}
-          onLostPointerCapture={() => {
-            drag.current = null;
-          }}
-          onPointerCancel={() => {
-            drag.current = null;
-          }}
-        >
-          {page ? (
-            <img
-              draggable={false}
-              src={assetUrl(projectId, page.originalAssetId)}
-              alt={`${t("page")} ${selected + 1}`}
-              style={{
-                width:
-                  zoom === "fit" ? "100%" : (page.width * Number(zoom)) / 100,
-                maxWidth: "none",
-                height: "auto",
-              }}
-            />
-          ) : (
-            <p>{t(loading ? "loading" : "noPages")}</p>
-          )}
-        </div>
+        <PageCanvas
+          projectId={projectId}
+          page={page}
+          zoom={zoom}
+          loading={loading}
+          rtl={
+            volumes.find((v) => v.id === page?.volumeId)?.readingDirection ===
+            "rtl"
+          }
+          onNavigate={(delta) =>
+            setSelected((i) =>
+              Math.max(0, Math.min(pages.length - 1, i + delta)),
+            )
+          }
+          t={t}
+        />
       </div>
     </div>
   );

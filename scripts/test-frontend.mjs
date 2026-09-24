@@ -8,12 +8,12 @@ const output = mkdtempSync(join(tmpdir(), "book-converter-tests-"));
 try {
   const build = spawnSync(process.execPath, ["node_modules/typescript/bin/tsc",
     "--target", "ES2020", "--module", "commonjs", "--strict", "--skipLibCheck",
-    "--outDir", output, "src/shared/api/transport.ts", "src/shared/state/jobs.ts", "src/shared/state/workspace.ts", "src/shared/state/editor.ts"], { stdio: "inherit" });
+    "--outDir", output, "src/shared/api/transport.ts", "src/shared/state/jobs.ts", "src/shared/state/workspace.ts", "src/shared/state/editor.ts", "src/shared/state/mangaCanvas.ts"], { stdio: "inherit" });
   if (build.error) throw build.error;
   if (build.status !== 0) process.exitCode = build.status ?? 1;
   else {
     writeFileSync(join(output, "package.json"), '{"type":"commonjs"}');
-    const tests = spawnSync(process.execPath, ["--test", "tests/frontend/transport.test.mjs", "tests/frontend/state.test.mjs", "tests/frontend/editor.test.mjs"], {
+    const tests = spawnSync(process.execPath, ["--test", "tests/frontend/transport.test.mjs", "tests/frontend/state.test.mjs", "tests/frontend/editor.test.mjs", "tests/frontend/manga.test.mjs"], {
       stdio: "inherit", env: { ...process.env, FRONTEND_TEST_OUTPUT: output },
     });
     if (tests.error) throw tests.error;
