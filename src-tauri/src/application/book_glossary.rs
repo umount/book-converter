@@ -200,7 +200,10 @@ pub fn persist(tx: &Transaction<'_>, output: GlossaryOutput) -> Result<String, A
     }
     changed+=tx.execute("UPDATE glossary_terms SET frequency=(SELECT COALESCE(SUM(frequency),0) FROM book_term_occurrences o WHERE o.source=glossary_terms.source),revision=revision+1 WHERE frequency!=(SELECT COALESCE(SUM(frequency),0) FROM book_term_occurrences o WHERE o.source=glossary_terms.source)",[]).map_err(storage_error)?;
     if changed > 0 {
-        shared::bump_glossary(tx)?;
+        // Extraction only adds terms and updates occurrence counts; existing targets
+        // stay unchanged. Advancing the snapshot must not flag earlier translations.
+        tx.execute("UPDATE glossary_state SET revision=revision+1 WHERE singleton=1", [])
+            .map_err(storage_error)?;
     }
     tx.execute("INSERT INTO book_glossary_results(id,chapter_id,source_revision,settings_revision,terms_json) VALUES(?1,?2,?3,?4,?5)",rusqlite::params![output.id,output.chapter,output.source_revision.value()?,output.settings_revision.value()?,serde_json::to_string(&output.terms).map_err(|_|invalid())?]).map_err(storage_error)?;
     Ok(output.id)

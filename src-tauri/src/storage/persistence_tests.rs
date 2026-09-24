@@ -647,7 +647,7 @@ fn extracted_glossary_preserves_edits_counts_occurrences_and_rejects_late_public
         db.query_row("SELECT status FROM book_translations", [], |r| r
             .get::<_, String>(0))
             .unwrap(),
-        "needs_review"
+        "ready"
     );
     let revision = shared::glossary_revision(&db).unwrap();
     let tx = db.transaction().unwrap();
@@ -856,4 +856,29 @@ fn chapter_list_states_match_reader_without_loading_chapter_bodies() {
     assert_eq!(view.chapter.status,view.status);assert_eq!(view.chapter.origin.as_deref(),Some("reference"));assert!(view.chapter.needs_review);
     db.execute("INSERT INTO book_chapters(id,position,source_title) VALUES('empty',1,'No text')",[]).unwrap();
     assert_eq!(db.query_row("SELECT status FROM book_chapter_states WHERE id='empty'",[],|r|r.get::<_,String>(0)).unwrap(),"skipped");
+}
+
+#[test]
+fn automatic_glossary_growth_preserves_previous_translation_review_state() {
+    use crate::application::book_glossary::{persist, ExtractedTerm, GlossaryOutput};
+    let mut db = book();
+    results::save_translation(&mut db, &translation()).unwrap();
+    db.execute("INSERT INTO book_chapters(id,position,source_title) VALUES('next',1,'Next')", []).unwrap();
+    for (index, frequency) in [1, 2, 3].into_iter().enumerate() {
+        if index == 2 {
+            db.execute("UPDATE book_translations SET status='needs_review'", []).unwrap();
+        }
+        let glossary_revision = shared::glossary_revision(&db).unwrap();
+        let tx = db.transaction().unwrap();
+        persist(&tx, GlossaryOutput {
+            id: format!("glossary-{index}"), chapter: "next".into(),
+            source_revision: rev(0), settings_revision: rev(0), glossary_revision,
+            terms: vec![(ExtractedTerm { source: "Name".into(), target: "Имя".into(), kind: "name".into() }, frequency)],
+        }).unwrap();
+        tx.commit().unwrap();
+        assert_eq!(shared::glossary_revision(&db).unwrap(), rev(index as u32 + 1));
+        let expected = if index == 2 { "needs_review" } else { "ready" };
+        assert_eq!(db.query_row("SELECT status FROM book_translations", [], |r| r.get::<_, String>(0)).unwrap(), expected);
+        assert_eq!(db.query_row("SELECT needs_review FROM book_chapter_states WHERE id='chapter'", [], |r| r.get::<_, bool>(0)).unwrap(), index == 2);
+    }
 }
