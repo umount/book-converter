@@ -72,6 +72,9 @@ pub enum ErrorCode {
     NotFound,
     CapabilityUnavailable,
     Storage,
+    JobCancelled,
+    Provider,
+    InvalidOutput,
 }
 
 impl AppError {
