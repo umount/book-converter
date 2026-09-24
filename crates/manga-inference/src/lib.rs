@@ -10,6 +10,12 @@ pub const MAX_EDGE: u32 = 16_384;
 pub enum Error {
     #[error("invalid image dimensions")]
     Dimensions,
+    #[error("invalid worker request")]
+    Request,
+    #[error("worker timed out")]
+    Timeout,
+    #[error("worker failed")]
+    Worker,
     #[error("invalid crop")]
     Crop,
     #[error("invalid model output")]
@@ -194,6 +200,11 @@ pub fn composite(original: &RgbImage, candidate: &RgbImage, mask: &GrayImage) ->
 
 #[cfg(feature = "onnx")]
 mod mask_graph;
+pub mod page;
+pub mod protocol;
+#[cfg(feature = "worker")]
+pub mod worker;
+
 #[cfg(feature = "onnx")]
 pub mod onnx;
 

@@ -8,8 +8,10 @@ license-file = "../../LICENSE.md"
 [features]
 default = []
 onnx = ["dep:ort"]
+worker = ["dep:tokio"]
 
 [dependencies]
+tokio = { version = "1", features = ["process", "io-util", "time", "rt", "macros", "sync"], optional = true }
 image = { version = "0.25", default-features = false, features = ["png", "jpeg"] }
 sha2 = "0.10"
 serde = { version = "1", features = ["derive"] }

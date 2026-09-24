@@ -282,3 +282,22 @@ further work. Do not enable automatic processing based on this experiment. Real
 page quality, cancellation, bundled runtime size and all release OS/architecture
 checks remain open. Release distribution must retain third-party runtime/model
 license notices independently from this project's proprietary source license.
+
+### P09 isolated worker and synthetic smoke follow-up
+
+- Added bounded JSON IPC, SHA-256 checks at asset decode, create-new PNG outputs,
+  one-worker admission and explicit process kill/reaping on cancellation or timeout.
+  Cancellation tests require the process to disappear within one second; the next
+  queued operation cannot start until the prior child is reaped.
+- Region masks are unioned into canonical page coordinates. A configurable 0–8 px
+  glyph margin never fills an empty prediction or an entire detection rectangle.
+- Twelve native crate unit tests and a real CPU smoke test passed. The committed
+  synthetic Latin/Cyrillic fixture exercises segmentation, cleanup, original-file
+  preservation, exact pixels outside the mask and rejection of output overwrites.
+  A two-pixel margin removed the obvious glyph remnants on this fixture; this is
+  not representative-page quality acceptance.
+- Repeat with `MANGA_RUNTIME`, `MANGA_MASK_MODEL`, `MANGA_LAMA_MODEL` pointing to
+  explicit verified local artifacts, then `cargo test --offline --release
+  --manifest-path crates/manga-inference/Cargo.toml --all-features -- --include-ignored`.
+  Normal tests neither download weights nor require a runtime. Desktop wiring and
+  installed-platform tests remain pending.
