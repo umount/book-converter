@@ -147,11 +147,20 @@ fn digest(value: &impl Serialize) -> Result<String, AppError> {
         Sha256::digest(serde_json::to_vec(value).map_err(|_| AppError::invalid("fingerprint"))?)
     ))
 }
-fn predecessor(
-    db: &rusqlite::Connection,
-    chapter: &str,
-) -> Result<Option<(String, String)>, AppError> {
-    db.query_row("SELECT ctx.id,ctx.summary || char(10) || ctx.previous_tail FROM book_contexts ctx JOIN book_translations t ON t.id=ctx.translation_id JOIN book_chapters c ON c.id=t.chapter_id WHERE t.status='ready' AND t.source_revision=c.revision AND c.position=(SELECT MAX(position) FROM book_chapters WHERE position<(SELECT position FROM book_chapters WHERE id=?1)) AND t.revision=(SELECT MAX(revision) FROM book_translations WHERE chapter_id=c.id AND target_language=t.target_language) ORDER BY t.revision DESC LIMIT 1",[chapter],|r|Ok((r.get(0)?,r.get(1)?))).optional().map_err(storage_error)
+#[derive(Debug, Serialize)]
+struct Continuity {
+    id: Option<String>,
+    summary: String,
+    previous_tail: String,
+}
+fn predecessor(db: &rusqlite::Connection, chapter: &str) -> Result<Option<Continuity>, AppError> {
+    let previous: Option<(String, Option<String>)> = db.query_row(
+        "SELECT t.id,ctx.id FROM book_translations t JOIN book_chapters c ON c.id=t.chapter_id LEFT JOIN book_contexts ctx ON ctx.translation_id=t.id WHERE t.status IN ('ready','needs_review') AND t.target_language=(SELECT target_language FROM project_settings WHERE singleton=1) AND c.position=(SELECT MAX(position) FROM book_chapters WHERE position<(SELECT position FROM book_chapters WHERE id=?1) AND EXISTS(SELECT 1 FROM book_source_blocks b WHERE b.chapter_id=book_chapters.id AND b.kind IN ('text','caption') AND trim(b.text)!='')) ORDER BY t.revision DESC LIMIT 1",[chapter],|r|Ok((r.get(0)?,r.get(1)?))).optional().map_err(storage_error)?;
+    let Some((translation,id))=previous else {return Ok(None)};
+    let mut q=db.prepare("SELECT translated_text FROM book_translation_blocks JOIN book_source_blocks b ON b.id=source_block_id WHERE translation_id=?1 ORDER BY b.position").map_err(storage_error)?;
+    let text=q.query_map([&translation],|r|r.get::<_,String>(0)).map_err(storage_error)?.collect::<Result<Vec<_>,_>>().map_err(storage_error)?.into_iter().filter(|s|!s.is_empty()).collect::<Vec<_>>().join("\n\n");
+    let summary: Option<String> = db.query_row("SELECT ctx.summary FROM book_contexts ctx JOIN book_translations t ON t.id=ctx.translation_id JOIN book_chapters c ON c.id=t.chapter_id WHERE c.position<(SELECT position FROM book_chapters WHERE id=?1) AND t.status IN ('ready','needs_review') AND t.target_language=(SELECT target_language FROM project_settings WHERE singleton=1) AND trim(ctx.summary)!='' AND t.revision=(SELECT MAX(revision) FROM book_translations WHERE chapter_id=c.id AND target_language=t.target_language) ORDER BY c.position DESC LIMIT 1",[chapter],|r|r.get(0)).optional().map_err(storage_error)?;
+    Ok(Some(Continuity {id,summary:summary.unwrap_or_default(),previous_tail:text.chars().rev().take(1200).collect::<String>().chars().rev().collect()}))
 }
 
 impl StepExecutor for BookPipeline {
@@ -310,7 +319,7 @@ impl BookPipeline {
             .source_language
             .as_deref()
             .unwrap_or("the detected source language");
-        let system=format!("Translate every text segment faithfully from {source} to {target}. Return only JSON {{\"segments\":[{{\"id\":\"exact input id\",\"text\":\"translation\"}}]}}. Keep every ID exactly once. Do not add image markers or explanations. Segments may continue mid-paragraph. Preserve whitespace boundaries. Instructions: {}\nChapter instructions: {}\nGlossary (respect pinned translations): {}\nPrevious context: {}\nReference: {}",self.instructions.as_deref().unwrap_or(""),chapter.instructions,serde_json::to_string(&glossary).map_err(|_|invalid_output())?,context.as_ref().map(|c|c.1.as_str()).unwrap_or(""),reference.as_deref().unwrap_or(""));
+        let system=format!("Translate every text segment faithfully from {source} to {target}. Return only JSON {{\"segments\":[{{\"id\":\"exact input id\",\"text\":\"translation\"}}]}}. Keep every ID exactly once. Do not add image markers or explanations. Segments may continue mid-paragraph. Preserve whitespace boundaries. Instructions: {}\nChapter instructions: {}\nGlossary (respect pinned translations): {}\nPrevious context: {}\nReference: {}",self.instructions.as_deref().unwrap_or(""),chapter.instructions,serde_json::to_string(&glossary).map_err(|_|invalid_output())?,serde_json::to_string(&context).map_err(|_|invalid_output())?,reference.as_deref().unwrap_or(""));
         let mut translated = HashMap::new();
         for batch in segments.chunks(4) {
             translated.extend(translate_segments(self.provider.as_ref(), &system, batch).await?);
@@ -350,13 +359,13 @@ impl BookPipeline {
         }))
     }
     async fn context(&self, lease: &ProjectLease, entity: &str) -> Result<BookOutput, AppError> {
-        let (id,revision,text,predecessor_id)=lease.with_connection(|db,_|{
+        let (id,revision,text,previous)=lease.with_connection(|db,_|{
             let (id,revision):(String,i64)=db.query_row("SELECT id,revision FROM book_translations WHERE chapter_id=?1 AND status='ready' ORDER BY revision DESC LIMIT 1",[entity],|r|Ok((r.get(0)?,r.get(1)?))).map_err(storage_error)?;
             let mut query=db.prepare("SELECT translated_text FROM book_translation_blocks JOIN book_source_blocks ON book_source_blocks.id=source_block_id WHERE translation_id=?1 ORDER BY position").map_err(storage_error)?;
             let rows=query.query_map([&id],|r|r.get::<_,String>(0)).map_err(storage_error)?;let text=rows.collect::<Result<Vec<_>,_>>().map_err(storage_error)?.join("\n\n");
-            Ok((id,revision,text,predecessor(db,entity)?.map(|c|c.0)))
+            Ok((id,revision,text,predecessor(db,entity)?))
         })?;
-        let response=self.provider.complete(Request::Structured{system:"Return JSON {\"summary\":\"concise continuity notes\"} for the translated chapter. Preserve names and unresolved events. Use the chapter's language.".into(),user:text.clone()}).await?;
+        let response=self.provider.complete(Request::Structured{system:"Update the rolling story summary using the previous summary and the newly translated chapter. Return JSON {\"summary\":\"concise cumulative continuity notes\"}. Preserve relevant earlier facts, names and unresolved events; integrate new events. Use the chapter's language. Keep the summary under 2000 characters.".into(),user:serde_json::json!({"previousSummary":previous.as_ref().map(|c|c.summary.as_str()).unwrap_or(""),"chapter":text}).to_string()}).await?;
         if response.finish_reason != "stop" {
             return Err(invalid_output());
         }
@@ -381,7 +390,38 @@ impl BookPipeline {
             translation_revision: Revision(revision.to_string()),
             summary: summary.summary,
             previous_tail: tail,
-            predecessor_id,
+            predecessor_id: previous.and_then(|c|c.id),
         }))
+    }
+}
+
+#[cfg(test)]
+mod continuity_tests {
+    use super::*;
+    #[test]
+    fn reference_tail_uses_full_saved_text_and_keeps_earlier_rolling_summary() {
+        let mut db=crate::storage::tests::database(crate::app::contracts::ProjectKind::Book);
+        for (position,id) in ["first","reference","next"].iter().enumerate() {
+            db.execute("INSERT INTO book_chapters(id,position,source_title) VALUES(?1,?2,'Title')",rusqlite::params![id,position]).unwrap();
+            db.execute("INSERT INTO book_source_blocks(id,chapter_id,position,kind,text) VALUES(?1,?1,0,'text','Source')",[id]).unwrap();
+        }
+        let reference=format!("{}ФИНАЛ РЕФЕРЕНСА", "Полный текст. ".repeat(500));
+        for (chapter,body,origin) in [("first","Первая глава","model"),("reference",reference.as_str(),"reference")] {
+            results::save_translation(&mut db,&results::BookTranslation {
+                id:chapter.into(),chapter_id:chapter.into(),inputs:results::InputVersions{source:Revision("0".into()),settings:Revision("0".into()),glossary:Revision("0".into())},expected_translation:None,title:"Глава".into(),provenance:origin.into(),context_fingerprint:"test".into(),blocks:vec![(chapter.into(),body.into())],
+            }).unwrap();
+            results::save_context(&db,&results::BookContext{id:format!("ctx-{chapter}"),translation_id:chapter.into(),translation_revision:Revision("0".into()),summary:if chapter=="first" {"Накопленное саммари".into()} else {String::new()},previous_tail:"Obsolete cached tail".into(),predecessor_id:None}).unwrap();
+        }
+        let context=predecessor(&db,"next").unwrap().unwrap();
+        assert_eq!(context.summary,"Накопленное саммари");
+        assert_eq!(context.previous_tail.chars().count(),1200);
+        assert!(context.previous_tail.ends_with("ФИНАЛ РЕФЕРЕНСА"));
+        assert!(reference.ends_with(&context.previous_tail));
+        db.execute("DELETE FROM book_contexts WHERE translation_id='reference'",[]).unwrap();
+        let restored=predecessor(&db,"next").unwrap().unwrap();
+        assert_eq!(restored.previous_tail,context.previous_tail);
+        assert_eq!(restored.summary,context.summary);
+        assert!(restored.id.is_none());
+        assert!(predecessor(&db,"first").unwrap().is_none());
     }
 }

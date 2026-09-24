@@ -141,13 +141,25 @@ impl Provider for Echo {
                 };
                 serde_json::json!({"terms":[{"source":source,"target":"Термин","kind":"term"}]})
                     .to_string()
-            } else if let Ok(mut payload) = serde_json::from_str::<serde_json::Value>(&user) {
+            } else if system.starts_with("Translate every") {
+                let mut payload: serde_json::Value = serde_json::from_str(&user).unwrap();
+                if payload["segments"].as_array().unwrap().iter().any(|s|s["text"].as_str().is_some_and(|t|t.contains("Before"))) {
+                    assert!(system.contains("Continuity notes"));
+                    assert!(system.contains("Translated Original text."));
+                }
                 for segment in payload["segments"].as_array_mut().unwrap() {
                     segment["text"] =
                         format!("Translated {}", segment["text"].as_str().unwrap()).into();
                 }
                 payload.to_string()
             } else {
+                let payload: serde_json::Value = serde_json::from_str(&user).unwrap();
+                let chapter = payload["chapter"].as_str().unwrap();
+                if chapter.contains("Before") {
+                    assert_eq!(payload["previousSummary"], "Continuity notes");
+                } else {
+                    assert_eq!(payload["previousSummary"], "");
+                }
                 if self
                     .fail_context_once
                     .swap(false, std::sync::atomic::Ordering::SeqCst)
@@ -230,6 +242,12 @@ async fn pipeline_populates_batch_glossary_and_resumes_without_repeating_complet
     )
     .await
     .is_err());
+    manager.lease(&project.id).unwrap().with_connection(|db,_| {
+        let chapter: String=db.query_row("SELECT id FROM book_chapters ORDER BY position LIMIT 1",[],|r|r.get(0)).unwrap();
+        let view=crate::storage::repository::ProjectRepository::new(db,ProjectKind::Book)?.chapter(&chapter)?;
+        assert_eq!(view.status,"failed"); assert!(view.translation_error.is_some());
+        Ok(())
+    }).unwrap();
     assert_eq!(
         provider
             .glossary_calls

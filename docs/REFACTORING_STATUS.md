@@ -580,3 +580,20 @@ fallback. Keep commits scoped; push only on user request.
   translation still replaces them and reports model origin.
 - The excerpt command, DTOs, client method, selection effect and preview UI are gone;
   metadata-only reference lists remain bounded in rendered rows.
+
+### P05 restore cumulative translation context
+
+- Translation requests now explicitly include the saved rolling summary and the last
+  1,200 Unicode characters of the previous text chapter's latest translation.
+  Image-only chapters do not break continuity. The tail is read from actual saved
+  text, including reference/manual translations, even if summary generation failed.
+- Summary requests now combine the previous rolling summary with the newly translated
+  chapter; the prior implementation summarized each chapter independently. Empty
+  reference summaries retain the latest available earlier rolling summary.
+- Fake-provider regression checks the actual translation/summary request payloads and
+  resume after a context-step failure without translating completed chapters again.
+  Reader failure status and structured error are checked before resume.
+- Validation: full library suite passed 319 tests; the additional reference-tail
+  continuity regression passed separately. Strict all-target Clippy, frontend tests,
+  production build and generated-contract check passed. No paid-provider quality
+  assessment or native desktop acceptance is implied by these deterministic tests.
