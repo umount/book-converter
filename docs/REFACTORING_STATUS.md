@@ -11,7 +11,7 @@ P05: in_progress. Translation, context, editing, reference, export and metadata 
 P06: in_progress. New shell, wizard, structural editor and supporting screens wired; native acceptance remains.
 P07: in_progress. Book assistant, guarded proposals and persisted history implemented.
 P08: partial. Import/read-only page workspace available; model processing not implemented.
-P09: in_progress. Bounded vision adapter, durable recognition, edit reconciliation and read-only region inspector; capability and real quality acceptance remain.
+P09: in_progress. Durable API recognition/translation and native mask/cleanup stages connected; lettering, full-pipeline admission/UI, packaging and quality acceptance remain.
 P10–P13: pending.
 
 ## Baseline (2026-09-23)
@@ -60,8 +60,9 @@ book feature expansion.
 
 ## Evidence rules
 
-No OCR/model benchmarks or native GUI smoke tests have run. No phase is complete
-without its acceptance evidence. Automatic manga processing has no manual/model-free
+Pinned mask/LaMa CPU smoke tests and an application job/storage integration smoke have
+passed on synthetic input. Representative OCR/translation quality and installed native
+GUI/platform acceptance remain unverified. No phase is complete without its acceptance evidence. Automatic manga processing has no manual/model-free
 fallback. Keep commits scoped; push only on user request.
 
 ## P01 progress
@@ -1116,3 +1117,43 @@ This changes licensing only, not GitHub repository visibility or package publish
   tests/build also passed. This proves stage integration, not final page quality/p95.
 - Native release packaging, lettering and whole-pipeline UI/admission are still open;
   no full automatic-translation button has been enabled.
+
+## End-of-session checkpoint (2026-09-24, user requested stop until tomorrow)
+
+Stable commits:
+- `8b74c96`: checkpointed API dialogue translation, preserving manual text and matching glossary only.
+- `2e735e0`: project changed to MIT, with original third-party notices preserved.
+- `97b7b01`: native masks/cleanup connected to durable project jobs and immutable assets.
+
+Stop here. Full automatic translation is NOT ready or enabled. No Qwen/local LLM is
+planned: recognition and translation use dedicated configured API profiles. Follow
+Koharu for reusable image/lettering components without pulling its whole LLM/diffusion
+stack. User expects autonomous phased commits on continuation; push only on request.
+
+Next executable work:
+1. Implement lettering with font coverage/overflow validation and immutable render
+   publication. Koharu's `koharu-renderer/src/layout.rs` at revision
+   `c697b31eb1de016d9272743a2973f0e6a67eae6c` contains a reusable
+   `largest_fitting_font_size` helper; retain upstream MIT attribution if adapted.
+   Its complete renderer depends on scene/font/shaping modules, so assess extraction
+   before duplicating layout. Current bundled fonts are DejaVuSans (+Bold).
+2. Package the isolated worker/native runtime for supported targets; `NativeFiles`
+   currently searches app resource `manga-runtime/` (development fallback under
+   `src-tauri/`). Files are NOT staged/bundled yet. Downloaded weights alone do not
+   make the current full-processing preflight ready.
+3. Compose recognition→translation→masks→cleanup→lettering into one bounded,
+   resumable job with both API profiles frozen in its snapshot. Add result display,
+   page progress and full-processing admission/UI, then export/review acceptance.
+
+The unimplemented lettering dependency experiment was removed before stopping.
+Potential small Rust components researched (not added): fontdue 0.9.4, rustybuzz
+0.20.1, unicode-linebreak 0.1.5. Dependencies fetched to the developer Cargo cache only.
+Do not confuse cached packages with an implemented renderer.
+
+Verification at this checkpoint: 20 manga tests, 15 native worker unit tests, real
+mask/LaMa job-and-storage smoke, strict app Clippy and frontend tests/build passed.
+The real integration test is opt-in `native_image_stages_publish_real_masks_and_cleanup`.
+It needs MANGA_RUNTIME, MANGA_WORKER, MANGA_MASK_MODEL, MANGA_LAMA_MODEL; never point
+fixtures at actual user projects. Developer probe weights/runtime remain under
+`/tmp/book-converter-model-probe` and `/tmp/book-converter-onnx-probe` if retained by
+this machine; reproducible model pins and limitations are in MANGA_TOOLING.md.
