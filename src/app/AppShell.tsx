@@ -626,6 +626,7 @@ function Shell({
       )}
       {settings && (
         <Settings
+          project={project}
           t={t}
           lang={lang}
           setLang={(value) => {

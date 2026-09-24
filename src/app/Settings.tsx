@@ -1,3 +1,5 @@
+import { ProviderProfiles } from "../features/projects/ProviderProfiles";
+import type { ProjectDescriptor } from "../shared/contracts/generated";
 import { useEffect, useState } from "react";
 import { desktopInvoke as invoke } from "../shared/api/desktop";
 import { Modal } from "../shared/ui/Modal";
@@ -11,11 +13,13 @@ type Config = {
   env_locked: string[];
 };
 export function Settings({
+  project,
   t,
   lang,
   setLang,
   onClose,
 }: {
+  project: ProjectDescriptor | null;
   t: T;
   lang: Lang;
   setLang: (v: Lang) => void;
@@ -123,6 +127,12 @@ export function Settings({
             {errorText(error, t)}
           </p>
         )}
+        <ProviderProfiles
+          project={project}
+          t={t}
+          defaults={config}
+          onBusy={setBusy}
+        />
         <ModelDownloads t={t} />
       </div>
       <footer>

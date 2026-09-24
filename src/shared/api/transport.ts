@@ -11,6 +11,10 @@ export function createProjectApi(transport: Transport) {
   const call = <T>(command: string, args: unknown) =>
     transport.invoke<T>(command, { args });
   return {
+    profiles: () =>
+      transport.invoke<C.ProviderEntry[]>("provider_profiles_list"),
+    saveProfile: (args: C.SaveProviderArgs) =>
+      call<C.ProviderEntry>("provider_profile_save", args),
     assistantView: (args: C.ProjectArgs) =>
       call<C.AssistantView>("assistant_project_view", args),
     assistantSend: (args: C.AssistantSendArgs) =>

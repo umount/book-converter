@@ -621,6 +621,8 @@ pub fn typescript() -> String {
         AssistantMessage::decl(&config),
         AssistantProposal::decl(&config),
         AssistantView::decl(&config),
+        ProviderEntry::decl(&config),
+        SaveProviderArgs::decl(&config),
         AssistantConfirmArgs::decl(&config),
         ProjectSettingsUpdateArgs::decl(&config),
         InspectManifestArgs::decl(&config),
@@ -780,3 +782,14 @@ pub struct AssistantProposal {pub id:String,pub kind:String,pub before:String,pu
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
 #[serde(rename_all="camelCase")]
 pub struct AssistantView {pub messages:Vec<AssistantMessage>,pub proposals:Vec<AssistantProposal>}
+
+#[derive(Clone, Serialize, Deserialize, TS)]
+#[serde(rename_all="camelCase",deny_unknown_fields)]
+pub struct ProviderEntry {
+    pub id:String, pub name:String, pub base_url:String, pub model:String,
+    pub temperature:f32, pub max_output_tokens:u32, pub timeout_seconds:u32,
+    pub network_retries:u32, pub has_key:bool, pub revision:Revision,
+}
+#[derive(Clone, Serialize, Deserialize, TS)]
+#[serde(rename_all="camelCase",deny_unknown_fields)]
+pub struct SaveProviderArgs {pub profile:ProviderEntry,pub credential:Option<String>,pub expected_revision:Option<Revision>}

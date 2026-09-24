@@ -103,7 +103,7 @@ pub async fn get_app_info() -> Result<AppInfo, String> {
 /// full once it has been saved.
 #[tauri::command]
 pub async fn get_setting(key: String) -> Result<Option<String>, String> {
-    if key == crate::config::API_KEY_SETTING {
+    if key == crate::config::API_KEY_SETTING || key.starts_with("ai_credential:") {
         return Ok(None);
     }
     crate::settings::get(&settings_db(), &key).map_err(err)
@@ -112,7 +112,7 @@ pub async fn get_setting(key: String) -> Result<Option<String>, String> {
 /// Persist an app setting. Secrets go through [`set_api_key`] instead.
 #[tauri::command]
 pub async fn set_setting(key: String, value: String) -> Result<(), String> {
-    if key == crate::config::API_KEY_SETTING {
+    if key == crate::config::API_KEY_SETTING || key.starts_with("ai_credential:") || key.starts_with("ai_profile:") || key.starts_with("ai_profile_revision:") || key.starts_with("ai_profile_name:") {
         return Err("use_set_api_key".into());
     }
     crate::settings::set(&settings_db(), &key, &value).map_err(err)

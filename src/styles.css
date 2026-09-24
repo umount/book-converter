@@ -790,3 +790,6 @@ button + button {
 .bc-proposal pre { white-space: pre-wrap; overflow-wrap: anywhere; font: inherit; max-height: 280px; overflow: auto; }
 .bc-assistant form { display: grid; gap: 12px; }
 @media (max-width: 800px) { .bc-proposal-diff { grid-template-columns: 1fr; } }
+.bc-provider-profiles { border-top: 1px solid var(--line); padding-top: 16px; }
+.bc-provider-profiles summary { cursor: pointer; font-weight: 600; }
+.bc-provider-profiles fieldset { border: 0; margin: 12px 0 0; padding: 0; display: grid; gap: 12px; }

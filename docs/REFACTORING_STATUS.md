@@ -431,3 +431,16 @@ fallback. Keep commits scoped; push only on user request.
 - Dedicated raster thumbnails, EXIF normalization, RAR ingestion and measured native
   memory budgets remain P08 work. OCR/cleanup/lettering are still unavailable; this
   milestone does not claim automatic manga translation.
+
+### P04 provider profile UI
+
+- Added typed local profile list/save services with atomic revision-checked writes.
+  Names, endpoints, models and generation options are editable; project translation
+  and assistant roles can select separate profiles without changing languages.
+- Credentials are profile-scoped and never returned by profile listing. Changing an
+  endpoint clears its old credential unless a replacement is explicitly supplied.
+  Generic legacy setting IPC now refuses profile writes and credential reads/writes.
+- Profile persistence test covers secret exclusion, stale writes and endpoint changes.
+  Strict Clippy passed. Browser fixture verified creating a named profile and assigning
+  it only to the assistant role. No credential or network request was used in QA.
+  Provider streaming/native response quality acceptance remains open.

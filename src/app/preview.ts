@@ -159,10 +159,29 @@ export async function invokePreview<T>(
     case "project_open":
       result = args.projectId === manga.id ? manga : project;
       break;
+    case "provider_profiles_list":
+      result = previewProfiles;
+      break;
+    case "provider_profile_save": {
+      const saved = {
+        ...args.profile,
+        hasKey: !!args.credential || args.profile.hasKey,
+        revision: String(Number(args.profile.revision) + 1),
+      };
+      previewProfiles = previewProfiles
+        .filter((p) => p.id !== saved.id)
+        .concat(saved);
+      result = saved;
+      break;
+    }
+    case "project_settings_update":
+      previewRoles = args.choices;
+      result = String(++settingsRevision);
+      break;
     case "project_settings_get":
       result = {
         languages: { source: "en", target: "ru" },
-        choices: { aiProfileId: null, mangaProfileId: null },
+        choices: previewRoles,
         revision: "1",
       };
       break;
@@ -358,3 +377,12 @@ let previewPresentation: import("../shared/contracts/generated").BookPresentatio
 
 const previewAssistant: import("../shared/contracts/generated").AssistantView =
   { messages: [], proposals: [] };
+
+let previewProfiles: import("../shared/contracts/generated").ProviderEntry[] =
+  [];
+let previewRoles: import("../shared/contracts/generated").ProcessingChoices = {
+  bookTranslationProfile: null,
+  mangaRecognitionProfile: null,
+  mangaTranslationProfile: null,
+  assistantProfile: null,
+};

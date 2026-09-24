@@ -165,6 +165,8 @@ pub fn run() {
             commands::set_setting,
             commands::set_api_key,
             commands::get_effective_config,
+            commands::provider_profiles_list,
+            commands::provider_profile_save,
             commands::get_app_info,
             commands::delete_project,
             commands::export_project,

@@ -14,7 +14,7 @@ pub fn db_path() -> PathBuf {
     paths::app_data_dir().join("settings.db")
 }
 
-fn open(db: &Path) -> Result<Connection> {
+pub(crate) fn open(db: &Path) -> Result<Connection> {
     if let Some(dir) = db.parent() {
         std::fs::create_dir_all(dir)?;
     }

@@ -78,3 +78,12 @@ pub async fn glossary_delete(
     .await
     .map_err(|_| AppError::invalid("task"))?
 }
+
+#[tauri::command]
+pub async fn provider_profiles_list() -> Result<Vec<crate::app::requests::ProviderEntry>,crate::app::contracts::AppError> {
+    crate::application::profiles::list(&crate::settings::db_path())
+}
+#[tauri::command]
+pub async fn provider_profile_save(args:crate::app::requests::SaveProviderArgs)->Result<crate::app::requests::ProviderEntry,crate::app::contracts::AppError>{
+    crate::application::profiles::save(&crate::settings::db_path(),args)
+}
