@@ -32,26 +32,34 @@ export function CreateProject({
   const targetTouched = useRef(false);
   useEffect(() => {
     let alive = true;
-    void desktopInvoke<{ target_lang: string }>("get_effective_config").then(config => {
-      if (alive && !targetTouched.current && config.target_lang) setTarget(config.target_lang);
-    }).catch(() => {});
-    return () => { alive = false; };
+    void desktopInvoke<{ target_lang: string }>("get_effective_config")
+      .then((config) => {
+        if (alive && !targetTouched.current && config.target_lang)
+          setTarget(config.target_lang);
+      })
+      .catch(() => {});
+    return () => {
+      alive = false;
+    };
   }, []);
-  async function chooseSource() {
+  async function chooseSource(directory = false) {
     setError(null);
     setBusy(true);
     try {
       const path = await open({
         multiple: false,
-        filters: [
-          {
-            name: t(kind),
-            extensions:
-              kind === "book"
-                ? ["txt", "fb2", "epub", "pdf", "zip"]
-                : ["cbz", "zip"],
-          },
-        ],
+        directory,
+        filters: directory
+          ? undefined
+          : [
+              {
+                name: t(kind),
+                extensions:
+                  kind === "book"
+                    ? ["txt", "fb2", "epub", "pdf", "zip"]
+                    : ["cbz", "zip"],
+              },
+            ],
       });
       if (typeof path !== "string") return;
       if (preview) {
@@ -131,6 +139,11 @@ export function CreateProject({
         <button disabled={busy} onClick={() => void chooseSource()}>
           {busy ? t("loading") : t("chooseSource")}
         </button>
+        {kind === "manga" && (
+          <button disabled={busy} onClick={() => void chooseSource(true)}>
+            {t("chooseFolder")}
+          </button>
+        )}
         {preview && (
           <>
             <p className="bc-file">{preview.source.displayName}</p>
@@ -147,7 +160,14 @@ export function CreateProject({
               {(
                 [
                   { value: source, set: setSource, label: "sourceLanguage" },
-                  { value: target, set: (value: string) => { targetTouched.current = true; setTarget(value); }, label: "targetLanguage" },
+                  {
+                    value: target,
+                    set: (value: string) => {
+                      targetTouched.current = true;
+                      setTarget(value);
+                    },
+                    label: "targetLanguage",
+                  },
                 ] as const
               ).map((field) => (
                 <label key={field.label}>

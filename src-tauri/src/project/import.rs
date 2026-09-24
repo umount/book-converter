@@ -106,8 +106,12 @@ fn book(
         .map(String::from);
     let store = AssetStore::new(directory).map_err(fail)?;
     if let Some((_, bytes)) = &loaded.cover {
-        let id = crate::application::book_presentation::publish_cover(db,directory,bytes)?;
-        db.execute("INSERT INTO book_presentation(singleton,cover_asset_id) VALUES(1,?1)",[id]).map_err(fail)?;
+        let id = crate::application::book_presentation::publish_cover(db, directory, bytes)?;
+        db.execute(
+            "INSERT INTO book_presentation(singleton,cover_asset_id) VALUES(1,?1)",
+            [id],
+        )
+        .map_err(fail)?;
     }
 
     let mut assets = HashMap::new();
@@ -225,6 +229,9 @@ pub(super) fn natural_cmp(left: &str, right: &str) -> std::cmp::Ordering {
 }
 
 fn comic(path: &Path, directory: &Path, db: &mut Connection) -> Result<(), AppError> {
+    if path.is_dir() {
+        return comic_folder(path, directory, db);
+    }
     let extension = path
         .extension()
         .and_then(|s| s.to_str())
@@ -258,44 +265,166 @@ fn comic(path: &Path, directory: &Path, db: &mut Connection) -> Result<(), AppEr
         return Err(AppError::invalid("emptyComic"));
     }
     entries.sort_by(|a, b| natural_cmp(&a.0, &b.0));
-    let store = AssetStore::new(directory).map_err(fail)?;
-    let mut volumes: HashMap<String, (String, u32)> = HashMap::new();
+    let mut volumes = HashMap::new();
     for (name, index) in entries {
-        let parent = Path::new(&name)
-            .parent()
-            .unwrap_or(Path::new(""))
-            .to_string_lossy()
-            .into_owned();
-        if !volumes.contains_key(&parent) {
-            let id = uuid();
-            ProjectRepository::new(db, ProjectKind::Manga)?.insert_volume(
-                &id,
-                volumes.len() as u32,
-                &parent,
-                true,
-            )?;
-            volumes.insert(parent.clone(), (id, 0));
-        }
-        let (volume, position) = volumes.get_mut(&parent).expect("inserted volume");
         let bytes = read_image(archive.by_index(index).map_err(fail)?)?;
-        let asset = store
-            .publish(db, &bytes, self::extension(&bytes)?)
-            .map_err(fail)?;
-        let (width, height) = image::ImageReader::new(std::io::Cursor::new(&bytes))
-            .with_guessed_format()
-            .map_err(fail)?
-            .into_dimensions()
-            .map_err(fail)?;
-        ProjectRepository::new(db, ProjectKind::Manga)?.insert_page(&PageSummary {
-            id: PageId(uuid()),
-            volume_id: VolumeId(volume.clone()),
-            position: *position,
-            original_asset_id: AssetId(asset),
-            width,
-            height,
-            revision: Revision("0".into()),
-        })?;
-        *position += 1;
+        insert_comic_page(db, directory, &mut volumes, &name, &bytes)?;
     }
     Ok(())
+}
+fn insert_comic_page(
+    db: &mut Connection,
+    directory: &Path,
+    volumes: &mut HashMap<String, (String, u32)>,
+    name: &str,
+    bytes: &[u8],
+) -> Result<(), AppError> {
+    let store = AssetStore::new(directory).map_err(fail)?;
+    let parent = Path::new(&name)
+        .parent()
+        .unwrap_or(Path::new(""))
+        .to_string_lossy()
+        .into_owned();
+    if !volumes.contains_key(&parent) {
+        let id = uuid();
+        ProjectRepository::new(db, ProjectKind::Manga)?.insert_volume(
+            &id,
+            volumes.len() as u32,
+            &parent,
+            true,
+        )?;
+        volumes.insert(parent.clone(), (id, 0));
+    }
+    let (volume, position) = volumes.get_mut(&parent).expect("inserted volume");
+    let asset = store
+        .publish(db, bytes, self::extension(bytes)?)
+        .map_err(fail)?;
+    let (width, height) = image::ImageReader::new(std::io::Cursor::new(&bytes))
+        .with_guessed_format()
+        .map_err(fail)?
+        .into_dimensions()
+        .map_err(fail)?;
+    ProjectRepository::new(db, ProjectKind::Manga)?.insert_page(&PageSummary {
+        id: PageId(uuid()),
+        volume_id: VolumeId(volume.clone()),
+        position: *position,
+        original_asset_id: AssetId(asset),
+        width,
+        height,
+        revision: Revision("0".into()),
+    })?;
+    *position += 1;
+    Ok(())
+}
+
+fn comic_folder(path: &Path, directory: &Path, db: &mut Connection) -> Result<(), AppError> {
+    fn collect(
+        root: &Path,
+        current: &Path,
+        depth: usize,
+        visited: &mut usize,
+        files: &mut Vec<String>,
+    ) -> Result<(), AppError> {
+        if depth > 32 {
+            return Err(AppError::invalid("sourceDepth"));
+        }
+        let meta = std::fs::symlink_metadata(current).map_err(fail)?;
+        if meta.file_type().is_symlink() {
+            return Err(AppError::invalid("sourceSymlink"));
+        }
+        for entry in std::fs::read_dir(current).map_err(fail)? {
+            let entry = entry.map_err(fail)?;
+            *visited += 1;
+            if *visited > 100_000 {
+                return Err(AppError::invalid("archiveEntries"));
+            }
+            let kind = entry.file_type().map_err(fail)?;
+            if kind.is_symlink() {
+                return Err(AppError::invalid("sourceSymlink"));
+            }
+            if kind.is_dir() {
+                collect(root, &entry.path(), depth + 1, visited, files)?;
+            } else if kind.is_file() {
+                let relative = entry
+                    .path()
+                    .strip_prefix(root)
+                    .map_err(fail)?
+                    .to_str()
+                    .ok_or_else(|| AppError::invalid("sourcePath"))?
+                    .to_string();
+                if is_image(&relative) {
+                    files.push(relative);
+                }
+            }
+        }
+        Ok(())
+    }
+    let mut files = Vec::new();
+    collect(path, path, 0, &mut 0, &mut files)?;
+    if files.is_empty() {
+        return Err(AppError::invalid("emptyComic"));
+    }
+    files.sort_by(|a, b| natural_cmp(a, b));
+    let mut volumes = HashMap::new();
+    for name in files {
+        let source = path.join(&name);
+        if std::fs::symlink_metadata(&source)
+            .map_err(fail)?
+            .file_type()
+            .is_symlink()
+        {
+            return Err(AppError::invalid("sourceSymlink"));
+        }
+        let bytes = read_image(std::fs::File::open(source).map_err(fail)?)?;
+        insert_comic_page(db, directory, &mut volumes, &name, &bytes)?;
+    }
+    Ok(())
+}
+
+#[cfg(test)]
+mod folder_tests {
+    use super::*;
+    #[test]
+    fn folders_are_naturally_ordered_self_contained_and_reject_symlinks() {
+        let root = std::env::temp_dir().join(format!("comic-folder-{}", uuid()));
+        let source = root.join("source.v1");
+        let target = root.join("project");
+        std::fs::create_dir_all(&target).unwrap();
+        for (volume, page, width) in [
+            ("vol10", "page1.png", 10),
+            ("vol2", "page10.png", 20),
+            ("vol2", "page2.png", 30),
+        ] {
+            std::fs::create_dir_all(source.join(volume)).unwrap();
+            image::RgbImage::new(width, 2)
+                .save(source.join(volume).join(page))
+                .unwrap();
+        }
+        let mut db =
+            crate::storage::create(&target.join("project.db"), ProjectKind::Manga, "ru").unwrap();
+        comic(&source, &target, &mut db).unwrap();
+        let widths=db.prepare("SELECT p.width FROM manga_pages p JOIN manga_volumes v ON v.id=p.volume_id ORDER BY v.position,p.position").unwrap().query_map([],|r|r.get::<_,u32>(0)).unwrap().collect::<Result<Vec<_>,_>>().unwrap();
+        assert_eq!(widths, [30, 20, 10]);
+        std::fs::remove_dir_all(&source).unwrap();
+        let paths = db
+            .prepare("SELECT relative_path FROM assets")
+            .unwrap()
+            .query_map([], |r| r.get::<_, String>(0))
+            .unwrap()
+            .collect::<Result<Vec<_>, _>>()
+            .unwrap();
+        for path in paths {
+            assert!(!AssetStore::read_path(&target.join(path))
+                .unwrap()
+                .is_empty());
+        }
+        #[cfg(unix)]
+        {
+            std::fs::create_dir_all(&source).unwrap();
+            std::os::unix::fs::symlink(&target, source.join("outside")).unwrap();
+            assert!(comic(&source, &target, &mut db).is_err());
+        }
+        drop(db);
+        std::fs::remove_dir_all(root).unwrap();
+    }
 }

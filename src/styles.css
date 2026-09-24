@@ -607,9 +607,13 @@ button + button {
 }
 .bc-manga {
   display: flex;
-  min-height: 100%;
+  height: 100%;
+  min-height: 0;
 }
 .bc-manga aside {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
   width: 160px;
   flex-shrink: 0;
   padding: 20px;
@@ -624,19 +628,22 @@ button + button {
 }
 .bc-manga aside img {
   width: 100%;
-  max-height: 180px;
+  height: 112px;
   object-fit: contain;
 }
 .bc-manga-page {
+  display: flex;
+  flex-direction: column;
   flex: 1;
   padding: 24px;
   min-width: 0;
   text-align: center;
 }
-.bc-manga-page > img {
-  max-width: 100%;
-  height: auto;
-}
+.bc-page-list { flex: 1; min-height: 0; }
+.bc-page-list button[aria-current="page"] { background: #2c3a50; }
+.bc-page-viewport { flex: 1; min-height: 0; overflow: auto; cursor: grab; touch-action: none; text-align: left; }
+.bc-page-viewport:active { cursor: grabbing; }
+.bc-page-viewport img { display: block; user-select: none; }
 .bc-manga-page p {
   text-align: left;
 }

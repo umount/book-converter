@@ -414,3 +414,20 @@ fallback. Keep commits scoped; push only on user request.
 - Extended the structural fixture test with glossary creation and an injected context
   failure. Resume skips all completed extraction and translation work, keeps images,
   and completes contexts. 307 Rust tests, strict Clippy, frontend tests/build passed.
+
+### P08 folder import and page navigation
+
+- Added manga image-folder import through the creation wizard, sharing immutable
+  asset/page publication with CBZ. Nested folders become naturally ordered volumes;
+  traversal rejects symlinks and bounds depth/entry count. Folder names containing
+  dots are correctly recorded as directory sources.
+- The page list now renders a bounded visible window, follows direct page selection,
+  and supports previous/next/number navigation. The main viewport supports fit-width,
+  fixed zoom and pointer panning. Originals remain read-only.
+- Eight project tests passed, including natural folder order (2 before 10), availability
+  after deleting the synthetic source, and symlink rejection. Strict Clippy passed.
+  Browser fixture with 1000 pages rendered eight thumbnail rows; direct jump to page
+  1000 and zoom to 200% were verified. The synthetic SVG fixture is development-only.
+- Dedicated raster thumbnails, EXIF normalization, RAR ingestion and measured native
+  memory budgets remain P08 work. OCR/cleanup/lettering are still unavailable; this
+  milestone does not claim automatic manga translation.

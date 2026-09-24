@@ -17,6 +17,26 @@ const project = {
     originalPath: null,
   },
 };
+const manga = {
+  ...project,
+  id: "preview-manga",
+  kind: "manga",
+  name: "Манга · 1000 страниц",
+  source: {
+    format: "directory",
+    displayName: "Preview pages",
+    originalPath: null,
+  },
+};
+const mangaPages = Array.from({ length: 1000 }, (_, i) => ({
+  id: `page-${i}`,
+  volumeId: `volume-${Math.floor(i / 100)}`,
+  position: i % 100,
+  originalAssetId: "preview-page",
+  width: 640,
+  height: 900,
+  revision: "0",
+}));
 const chapters = [
   "The last ferry",
   "A garden in the rain",
@@ -130,10 +150,14 @@ export async function invokePreview<T>(
           descriptor: project,
           progress: { kind: "book", chapters: 3, translated: 3 },
         },
+        {
+          descriptor: manga,
+          progress: { kind: "manga", pages: 1000, approved: 0, lettered: 0 },
+        },
       ];
       break;
     case "project_open":
-      result = project;
+      result = args.projectId === manga.id ? manga : project;
       break;
     case "project_settings_get":
       result = {
@@ -142,6 +166,17 @@ export async function invokePreview<T>(
         revision: "1",
       };
       break;
+    case "manga_list_pages": {
+      const start = args.cursor ? Number(args.cursor) : 0;
+      result = {
+        items: mangaPages.slice(start, start + args.limit),
+        nextCursor:
+          start + args.limit < mangaPages.length
+            ? String(start + args.limit)
+            : null,
+      };
+      break;
+    }
     case "book_list_chapters":
       result = { items: chapters, nextCursor: null };
       break;

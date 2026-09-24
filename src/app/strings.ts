@@ -104,6 +104,11 @@ const en = {
 
   batchCount: "Chapters per batch",
   batchGlossary: "Extract terms before translating the batch",
+  chooseFolder: "Choose image folder",
+  zoom: "Zoom",
+  fitPage: "Fit width",
+  previousPage: "Previous page",
+  nextPage: "Next page",
   noEligibleChapters: "No untranslated text chapters in this selection.",
   batchHint:
     "Stops after this batch. Review translations and glossary before starting the next one.",
@@ -298,6 +303,11 @@ const ru: Record<Key, string> = {
 
   batchCount: "Глав в партии",
   batchGlossary: "Пополнять словарь перед переводом партии",
+  chooseFolder: "Выбрать папку изображений",
+  zoom: "Масштаб",
+  fitPage: "По ширине",
+  previousPage: "Предыдущая страница",
+  nextPage: "Следующая страница",
   noEligibleChapters: "В выбранной области нет непереведённых текстовых глав.",
   batchHint:
     "После партии перевод остановится. Проверьте перевод и словарь перед следующим запуском.",
@@ -482,6 +492,11 @@ const zh: Record<Key, string> = {
 
   batchCount: "每批章节数",
   batchGlossary: "翻译本批次前提取术语",
+  chooseFolder: "选择图片文件夹",
+  zoom: "缩放",
+  fitPage: "适合宽度",
+  previousPage: "上一页",
+  nextPage: "下一页",
   noEligibleChapters: "所选范围内没有待翻译的文本章节。",
   batchHint: "本批次完成后停止。开始下一批前请检查译文和术语表。",
   force: "替换现有译文",

@@ -168,11 +168,11 @@ impl ProjectManager {
                 .unwrap_or("Source")
                 .to_string();
             let source = SourceDescriptor {
-                format: path
+                format: if path.is_dir() {"directory".into()} else {path
                     .extension()
                     .and_then(|s| s.to_str())
                     .unwrap_or("directory")
-                    .to_ascii_lowercase(),
+                    .to_ascii_lowercase()},
                 display_name: display_name.clone(),
                 original_path: Some(path.to_string_lossy().into_owned()),
             };

@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 type Props<T> = {
   items: T[];
+  activeIndex?: number;
   /** Fixed row height in px; every rendered row must be exactly this tall. */
   rowHeight: number;
   renderRow: (item: T, index: number) => ReactNode;
@@ -16,6 +17,7 @@ type Props<T> = {
  */
 export function VirtualList<T>({
   items,
+  activeIndex,
   rowHeight,
   renderRow,
   overscan = 6,
@@ -33,6 +35,18 @@ export function VirtualList<T>({
     setHeight(el.clientHeight);
     return () => ro.disconnect();
   }, []);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el || activeIndex === undefined) return;
+    const top = activeIndex * rowHeight;
+    if (
+      top < el.scrollTop ||
+      top + rowHeight > el.scrollTop + el.clientHeight
+    ) {
+      el.scrollTop = Math.max(0, top - (el.clientHeight - rowHeight) / 2);
+      setScrollTop(el.scrollTop);
+    }
+  }, [activeIndex, rowHeight, items.length]);
   const total = items.length * rowHeight;
   const start = Math.max(0, Math.floor(scrollTop / rowHeight) - overscan);
   const end = Math.min(

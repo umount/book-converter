@@ -1,4 +1,5 @@
-import { useEffect, useState } from "react";
+import { VirtualList } from "../../shared/ui/VirtualList";
+import { useEffect, useRef, useState } from "react";
 import { projectApi } from "../../shared/api/projects";
 import type { PageSummary } from "../../shared/contracts/generated";
 import { assetUrl } from "../../shared/api/assets";
@@ -7,6 +8,20 @@ export function MangaWorkspace({ projectId, t }: { projectId: string; t: T }) {
   const [pages, setPages] = useState<PageSummary[]>([]),
     [selected, setSelected] = useState(0),
     [error, setError] = useState<unknown>(null);
+  const [zoom, setZoom] = useState("fit");
+  const viewport = useRef<HTMLDivElement>(null);
+  const drag = useRef<{
+    x: number;
+    y: number;
+    left: number;
+    top: number;
+  } | null>(null);
+  useEffect(() => {
+    if (viewport.current) {
+      viewport.current.scrollTop = 0;
+      viewport.current.scrollLeft = 0;
+    }
+  }, [selected]);
   useEffect(() => {
     let alive = true;
     void (async () => {
@@ -36,22 +51,30 @@ export function MangaWorkspace({ projectId, t }: { projectId: string; t: T }) {
     <div className="bc-manga">
       <aside>
         <h2>{t("pages")}</h2>
-        {pages.map((p, i) => (
-          <button
-            key={p.id}
-            aria-current={i === selected ? "page" : undefined}
-            onClick={() => setSelected(i)}
-          >
-            <img
-              loading="lazy"
-              src={assetUrl(projectId, p.originalAssetId)}
-              alt=""
-            />
-            <span>
-              {t("page")} {i + 1}
-            </span>
-          </button>
-        ))}
+        <VirtualList
+          items={pages}
+          activeIndex={selected}
+          rowHeight={156}
+          className="bc-page-list"
+          overscan={2}
+          renderRow={(p, i) => (
+            <button
+              style={{ height: 156, margin: 0 }}
+              key={p.id}
+              aria-current={i === selected ? "page" : undefined}
+              onClick={() => setSelected(i)}
+            >
+              <img
+                loading="lazy"
+                src={assetUrl(projectId, p.originalAssetId)}
+                alt=""
+              />
+              <span>
+                {t("page")} {i + 1}
+              </span>
+            </button>
+          )}
+        />
       </aside>
       <div className="bc-manga-page">
         <p className="bc-warning">{t("mangaUnavailable")}</p>
@@ -60,14 +83,97 @@ export function MangaWorkspace({ projectId, t }: { projectId: string; t: T }) {
             {errorText(error, t)}
           </p>
         )}
-        {page ? (
-          <img
-            src={assetUrl(projectId, page.originalAssetId)}
-            alt={`${t("page")} ${selected + 1}`}
-          />
-        ) : (
-          <p>{t("noPages")}</p>
-        )}
+        <div className="bc-toolbar">
+          <button
+            disabled={selected === 0}
+            onClick={() => setSelected((i) => Math.max(0, i - 1))}
+            aria-label={t("previousPage")}
+          >
+            ←
+          </button>
+          <label>
+            {t("page")}{" "}
+            <input
+              type="number"
+              min={1}
+              max={pages.length}
+              value={pages.length ? selected + 1 : 0}
+              style={{ width: 80 }}
+              onChange={(e) => {
+                const n = Number(e.target.value);
+                if (Number.isInteger(n) && n >= 1 && n <= pages.length)
+                  setSelected(n - 1);
+              }}
+            />{" "}
+            / {pages.length}
+          </label>
+          <button
+            disabled={selected >= pages.length - 1}
+            onClick={() =>
+              setSelected((i) => Math.min(pages.length - 1, i + 1))
+            }
+            aria-label={t("nextPage")}
+          >
+            →
+          </button>
+          <label>
+            {t("zoom")}{" "}
+            <select value={zoom} onChange={(e) => setZoom(e.target.value)}>
+              <option value="fit">{t("fitPage")}</option>
+              {[25, 50, 75, 100, 150, 200, 300].map((n) => (
+                <option key={n} value={n}>
+                  {n}%
+                </option>
+              ))}
+            </select>
+          </label>
+        </div>
+        <div
+          className="bc-page-viewport"
+          ref={viewport}
+          tabIndex={0}
+          aria-label={t("pages")}
+          onPointerDown={(e) => {
+            if (e.button !== 0 || !viewport.current) return;
+            drag.current = {
+              x: e.clientX,
+              y: e.clientY,
+              left: viewport.current.scrollLeft,
+              top: viewport.current.scrollTop,
+            };
+            e.currentTarget.setPointerCapture(e.pointerId);
+          }}
+          onPointerMove={(e) => {
+            if (drag.current && viewport.current) {
+              viewport.current.scrollLeft =
+                drag.current.left + drag.current.x - e.clientX;
+              viewport.current.scrollTop =
+                drag.current.top + drag.current.y - e.clientY;
+            }
+          }}
+          onPointerUp={() => {
+            drag.current = null;
+          }}
+          onPointerCancel={() => {
+            drag.current = null;
+          }}
+        >
+          {page ? (
+            <img
+              draggable={false}
+              src={assetUrl(projectId, page.originalAssetId)}
+              alt={`${t("page")} ${selected + 1}`}
+              style={{
+                width:
+                  zoom === "fit" ? "100%" : (page.width * Number(zoom)) / 100,
+                maxWidth: "none",
+                height: "auto",
+              }}
+            />
+          ) : (
+            <p>{t("noPages")}</p>
+          )}
+        </div>
       </div>
     </div>
   );
