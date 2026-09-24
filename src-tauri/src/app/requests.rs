@@ -427,6 +427,8 @@ pub struct GlossaryPage {
 pub struct StartBookGlossaryArgs {
     pub project_id: ProjectId,
     pub selection: EntitySelection,
+    pub max_chapters: u32,
+    pub force: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]

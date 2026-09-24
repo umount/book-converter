@@ -47,18 +47,15 @@ P09–P13: pending.
 
 ## Next executable step
 
-User priority update (2026-09-24): **books → legacy removal → manga**.
+User priority update (2026-09-24): book functionality is sufficient for now.
+Do not expand book scope or invent additional features. Superseded backend/IPC and
+obsolete documentation removal are complete. Resume the manga stages next:
+P08 workspace acceptance, then P09 automatic recognition and the following pipeline.
+Model weights should download on demand rather than ship with the application.
 
-1. Close remaining book workflow gaps, assistant scope and book-specific acceptance.
-   Structural FB2 illustrations and PDF outline fallback are implemented. Verify import →
-   metadata → bounded translation → edit → search → export and native save/close
-   behavior where the host permits it. Keep language pairs immutable.
-2. Superseded backend/IPC removal is complete (2026-09-24). New services are the
-   sole runtime; architecture/settings/assistant documents describe the current code.
-3. Only then resume automatic manga recognition, cleanup, lettering and acceptance.
-
-Original phase numbering does not override this priority. Existing manga functionality
-must remain usable through shared changes, but new manga features are deferred.
+Outstanding native GUI and real-provider book acceptance remain documented checks;
+they are not evidence of missing requested functionality and do not justify further
+book feature expansion.
 
 ## Evidence rules
 
@@ -840,3 +837,14 @@ fallback. Keep commits scoped; push only on user request.
   during discard, cancelled autosave and successful retry during discard.
 - Frontend tests and production build passed. This verifies the editor state machine;
   native Tauri close/dialog acceptance remains outstanding. Backend code was unchanged.
+
+## Bounded standalone glossary extraction (2026-09-24)
+
+- Finished the already-started extraction batch limit before freezing book scope.
+  The dialog requires a positive chapter count and offers explicit repeat extraction.
+- Selection skips chapters without text and results current for source/settings
+  revisions before applying the cap; force allows reprocessing.
+- Validation: 174 Rust library tests, strict all-target Clippy, generated contract
+  check, frontend tests and production build passed. Synthetic browser preview
+  verified that zero disables submission and a one-chapter batch shows 1 / 1.
+  No native acceptance or paid provider request was performed.

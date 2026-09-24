@@ -171,6 +171,9 @@ const en = {
   author: "Author",
   summary: "Summary",
   extractTerms: "Extract terms",
+  extractionBatchHint:
+    "Process the next eligible chapters. Previously processed chapters are skipped unless repeated extraction is enabled.",
+  repeatExtraction: "Extract previously processed chapters again",
   newTerm: "Add term",
   glossarySearch: "Find a source or translated term (case-sensitive)",
   pinnedOnly: "Pinned only",
@@ -425,6 +428,9 @@ const ru: Record<Key, string> = {
   author: "Автор",
   summary: "Аннотация",
   extractTerms: "Извлечь термины",
+  extractionBatchHint:
+    "Обработать следующие подходящие главы. Уже обработанные пропускаются, если не включено повторное извлечение.",
+  repeatExtraction: "Повторно извлечь из обработанных глав",
   newTerm: "Добавить термин",
   glossarySearch: "Поиск по оригиналу или переводу термина (с учётом регистра)",
   pinnedOnly: "Только закреплённые",
@@ -667,6 +673,9 @@ const zh: Record<Key, string> = {
   author: "作者",
   summary: "简介",
   extractTerms: "提取术语",
+  extractionBatchHint:
+    "处理下一批符合条件的章节。除非启用重复提取，否则跳过已处理的章节。",
+  repeatExtraction: "重新提取已处理章节",
   newTerm: "添加术语",
   glossarySearch: "搜索原文或译文术语（区分大小写）",
   pinnedOnly: "仅固定术语",

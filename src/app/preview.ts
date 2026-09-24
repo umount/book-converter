@@ -448,12 +448,12 @@ export async function invokePreview<T>(
         state: "succeeded",
         revision: "1",
         totalSteps:
-          command === "book_start_retarget"
+          (command === "book_start_retarget" || command === "book_start_glossary")
             ? Math.min(views.length, args.maxChapters)
             : 3,
         remainingSeconds: null,
         completedSteps:
-          command === "book_start_retarget"
+          (command === "book_start_retarget" || command === "book_start_glossary")
             ? Math.min(views.length, args.maxChapters)
             : 3,
         error: null,

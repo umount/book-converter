@@ -280,13 +280,22 @@ function Shell({
     setChapterState("all");
     await jobs.watch(id);
   }
-  async function run(kind: "metadata" | "glossary") {
+  async function run(
+    kind: "metadata" | "glossary",
+    batch?: { maxChapters: number; force: boolean },
+  ) {
     if (!state.project) return;
     await editorRef.current?.flush();
     const projectId = state.project.id;
+    if (kind === "glossary" && !batch) throw new Error(t("batchCount"));
     const job = await (kind === "metadata"
       ? api.startMetadata({ projectId })
-      : api.extractGlossary({ projectId, selection: { kind: "all" } }));
+      : api.extractGlossary({
+          projectId,
+          selection: { kind: "all" },
+          maxChapters: batch!.maxChapters,
+          force: batch!.force,
+        }));
     await jobs.refresh(job);
     setShowJobs(true);
   }
@@ -678,7 +687,9 @@ function Shell({
                       await jobs.refresh(job);
                       setShowJobs(true);
                     }}
-                    extract={() => run("glossary")}
+                    extract={(maxChapters, force) =>
+                      run("glossary", { maxChapters, force })
+                    }
                   />
                 ) : project.kind === "manga" ? (
                   panel === "export" ? (

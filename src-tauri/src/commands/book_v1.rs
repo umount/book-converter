@@ -416,6 +416,8 @@ pub async fn book_start_glossary(
             &manager,
             &args.project_id,
             &args.selection,
+            args.max_chapters,
+            args.force,
         )
     })
     .await

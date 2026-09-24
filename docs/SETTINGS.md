@@ -39,3 +39,7 @@ starting. Required weights should be downloaded on demand rather than bundled by
 
 See [architecture](ARCHITECTURE.md), [manga requirements](MANGA.md) and
 [verification status](REFACTORING_STATUS.md).
+
+Standalone glossary extraction also requires a chapter batch limit. It skips chapters
+without text and chapters already processed at their current source/settings revisions.
+The repeat-extraction option explicitly includes previously processed chapters.

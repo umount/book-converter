@@ -18,13 +18,20 @@ export function Glossary({
   ) => Promise<void>;
   projectId: string;
   t: T;
-  extract: () => Promise<void>;
+  extract: (maxChapters: number, force: boolean) => Promise<void>;
   canExtract: boolean;
 }) {
   const [page, setPage] = useState<GlossaryPage | null>(null),
     [error, setError] = useState<unknown>(null),
     [busy, setBusy] = useState(false),
     [edit, setEdit] = useState<GlossaryTermView | null>(null);
+  const [showExtraction, setShowExtraction] = useState(false);
+  const [extractionCount, setExtractionCount] = useState("10");
+  const [repeatExtraction, setRepeatExtraction] = useState(false);
+  const validExtractionCount =
+    /^\d+$/.test(extractionCount) &&
+    Number(extractionCount) > 0 &&
+    Number(extractionCount) <= 4294967295;
   const [query, setQuery] = useState(""),
     [pinnedOnly, setPinnedOnly] = useState(false);
   const [offer, setOffer] = useState<{
@@ -178,10 +185,8 @@ export function Glossary({
             <button
               disabled={busy}
               onClick={() => {
-                setBusy(true);
-                void extract()
-                  .catch(setError)
-                  .finally(() => setBusy(false));
+                setError(null);
+                setShowExtraction(true);
               }}
             >
               {t("extractTerms")}
@@ -358,6 +363,62 @@ export function Glossary({
               onClick={() => void saveTerm()}
             >
               {t("save")}
+            </button>
+          </footer>
+        </Modal>
+      )}
+      {showExtraction && (
+        <Modal
+          title={t("extractTerms")}
+          closeLabel={t("close")}
+          busy={busy}
+          onClose={() => setShowExtraction(false)}
+        >
+          <div className="bc-dialog-body">
+            <p className="bc-hint">{t("extractionBatchHint")}</p>
+            <label>
+              {t("batchCount")}
+              <input
+                type="number"
+                min="1"
+                max="4294967295"
+                value={extractionCount}
+                disabled={busy}
+                onChange={(e) => setExtractionCount(e.target.value)}
+              />
+            </label>
+            <label>
+              <input
+                type="checkbox"
+                checked={repeatExtraction}
+                disabled={busy}
+                onChange={(e) => setRepeatExtraction(e.target.checked)}
+              />
+              {t("repeatExtraction")}
+            </label>
+            {error != null && (
+              <p className="bc-error" role="alert">
+                {errorText(error, t)}
+              </p>
+            )}
+          </div>
+          <footer>
+            <button disabled={busy} onClick={() => setShowExtraction(false)}>
+              {t("cancel")}
+            </button>
+            <button
+              className="primary"
+              disabled={busy || !validExtractionCount}
+              onClick={() => {
+                setBusy(true);
+                setError(null);
+                void extract(Number(extractionCount), repeatExtraction)
+                  .then(() => setShowExtraction(false))
+                  .catch(setError)
+                  .finally(() => setBusy(false));
+              }}
+            >
+              {t("extractTerms")}
             </button>
           </footer>
         </Modal>
