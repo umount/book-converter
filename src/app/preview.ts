@@ -3,6 +3,7 @@ import type {
   BookChapterView,
   JobView,
   GlossaryTermView,
+  ModelView,
 } from "../shared/contracts/generated";
 const project = {
   id: "preview-book",
@@ -78,6 +79,22 @@ let glossary: GlossaryTermView[] = [
 ];
 let settingsRevision = 1;
 const jobs: JobView[] = [];
+const previewModel: ModelView = {
+  model: {
+    id: "preview-lama",
+    name: "LaMa ONNX · FP32",
+    repository: "Carve/LaMa-ONNX",
+    revision: "preview",
+    filename: "lama_fp32.onnx",
+    sha256: "preview",
+    bytes: 208044816,
+    license: "Apache-2.0",
+    experimental: true,
+  },
+  status: "missing",
+  downloadedBytes: 0,
+  failure: null,
+};
 export async function invokePreview<T>(
   command: string,
   raw?: Record<string, unknown>,
@@ -85,6 +102,28 @@ export async function invokePreview<T>(
   const args = (raw?.args ?? {}) as Record<string, any>;
   let result: unknown;
   switch (command) {
+    case "model_list":
+      if (previewModel.status === "downloading") {
+        previewModel.downloadedBytes = Math.min(
+          previewModel.model.bytes,
+          previewModel.downloadedBytes + 10402240,
+        );
+        if (previewModel.downloadedBytes === previewModel.model.bytes)
+          previewModel.status = "verifying";
+      } else if (previewModel.status === "verifying")
+        previewModel.status = "downloaded";
+      result = [previewModel];
+      break;
+    case "model_download":
+      previewModel.status = "downloading";
+      break;
+    case "model_pause":
+      previewModel.status = "paused";
+      break;
+    case "model_remove":
+      previewModel.status = "missing";
+      previewModel.downloadedBytes = 0;
+      break;
     case "project_list":
       result = [
         {

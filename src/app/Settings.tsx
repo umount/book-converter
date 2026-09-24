@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { desktopInvoke as invoke } from "../shared/api/desktop";
 import { Modal } from "../shared/ui/Modal";
+import { ModelDownloads } from "../features/manga/ModelDownloads";
 import { LANGS, type Lang } from "../i18n";
 import { errorText, type T } from "./strings";
 type Config = {
@@ -122,6 +123,7 @@ export function Settings({
             {errorText(error, t)}
           </p>
         )}
+        <ModelDownloads t={t} />
       </div>
       <footer>
         <button disabled={busy} onClick={onClose}>

@@ -316,3 +316,25 @@ fallback. Keep commits scoped; push only on user request.
 - The maintenance tool is read-only without `--apply --app-stopped`; callers must first
   stop the application/writers. Legacy Rust handlers remain until application-service
   extraction/P12 cleanup; the new frontend does not invoke them.
+
+## On-demand models and application identity (2026-09-24)
+
+- Implemented global ModelManager and typed model_list/download/pause/remove commands.
+  Weights are fetched only by an explicit action from a pinned Hugging Face catalog;
+  they are not bundled with the app or downloaded during project creation/opening.
+- The first catalog entry is an experimental LaMa ONNX cleanup artifact (198.4 MiB).
+  Its commit, exact byte length and SHA-256 were checked against the public Hub API.
+  Download acceptance does not imply inference, quality or platform acceptance.
+- Added Settings controls with size, progress, pause/resume, removal and localized
+  failures in English/Russian/Chinese. The cache survives app restarts and stays
+  independent of project deletion and language choices. Public model requests do not
+  use any AI-provider credential. No real model weights were downloaded in this work.
+- Added an original vector logo: facing cream/blue book pages with speech blocks.
+  The header places the logo before a smaller product name; SVG favicon and generated
+  PNG/ICO/ICNS app icons share the same source. Regenerate with Tauri's icon command
+  from public/logo.svg. No new design/runtime package dependency was added.
+- Evidence: 304 Rust library tests, strict all-target Clippy, generated-contract check,
+  frontend tests and production build passed. The nine new model tests use temporary
+  caches and local HTTP servers. Browser fixture checks covered model progress/pause
+  and the settings layout; the rendered icon was visually inspected. Native packaged
+  installation and actual ONNX inference remain unverified; P09/P10 are not complete.

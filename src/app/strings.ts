@@ -1,6 +1,29 @@
 import type { Lang } from "../i18n";
 const en = {
-  unsupported: "This project uses an unsupported format. Create a new project from its source.",
+  mangaModels: "Manga models",
+  modelDownloadHint:
+    "Weights are downloaded from Hugging Face only when requested and cached locally. Closing this dialog keeps the download running. After an app restart, resume it here.",
+  modelExperimental:
+    "Experimental cleanup model. Downloading does not enable manga processing: runtime compatibility and image quality still need validation.",
+  modelMissing: "Not downloaded",
+  modelDownloading: "Downloading",
+  modelVerifying: "Verifying file",
+  modelPaused: "Download paused",
+  modelDownloaded: "Downloaded and verified",
+  modelDownload: "Download from Hugging Face",
+  modelPause: "Pause download",
+  modelRemove: "Remove local files",
+  modelUnknown: "This model is not in the catalog.",
+  modelBusy: "Another download is in progress.",
+  modelNetwork: "Download interrupted. Check your connection and resume.",
+  modelSizeError:
+    "The server returned an unexpected file size or range. Download was not installed.",
+  modelHashError: "File verification failed. Download it again.",
+  modelStorageError:
+    "Cannot access the model cache. Check free disk space and file permissions.",
+
+  unsupported:
+    "This project uses an unsupported format. Create a new project from its source.",
   commands: "Commands",
   library: "Projects",
   newProject: "New project",
@@ -142,7 +165,31 @@ const en = {
 };
 type Key = keyof typeof en;
 const ru: Record<Key, string> = {
-  unsupported: "Этот формат проекта не поддерживается. Создайте новый проект из исходного файла.",
+  mangaModels: "Модели для манги",
+  modelDownloadHint:
+    "Веса скачиваются с Hugging Face только по запросу и хранятся локально. Закрытие этого окна не прерывает загрузку. После перезапуска приложения продолжите её здесь.",
+  modelExperimental:
+    "Экспериментальная модель очистки. Скачивание пока не включает обработку манги: ещё предстоит проверить совместимость и качество результата.",
+  modelMissing: "Не скачана",
+  modelDownloading: "Скачивание",
+  modelVerifying: "Проверка файла",
+  modelPaused: "Загрузка приостановлена",
+  modelDownloaded: "Скачана и проверена",
+  modelDownload: "Скачать с Hugging Face",
+  modelPause: "Приостановить",
+  modelRemove: "Удалить локальные файлы",
+  modelUnknown: "Модели нет в каталоге.",
+  modelBusy: "Другая загрузка уже выполняется.",
+  modelNetwork:
+    "Загрузка прервана. Проверьте соединение и продолжите скачивание.",
+  modelSizeError:
+    "Сервер вернул неожиданный размер или диапазон файла. Модель не установлена.",
+  modelHashError: "Файл не прошёл проверку. Скачайте его повторно.",
+  modelStorageError:
+    "Не удалось открыть кеш моделей. Проверьте свободное место и права доступа.",
+
+  unsupported:
+    "Этот формат проекта не поддерживается. Создайте новый проект из исходного файла.",
   commands: "Команды",
   library: "Проекты",
   newProject: "Новый проект",
@@ -282,6 +329,26 @@ const ru: Record<Key, string> = {
   book_glossary: "Извлечение терминов",
 };
 const zh: Record<Key, string> = {
+  mangaModels: "漫画模型",
+  modelDownloadHint:
+    "仅按需从 Hugging Face 下载权重并缓存到本地。关闭此窗口不会中断下载；重启应用后可在此继续。",
+  modelExperimental:
+    "实验性清理模型。下载不代表漫画处理已可用；仍需验证运行时兼容性和图像质量。",
+  modelMissing: "未下载",
+  modelDownloading: "下载中",
+  modelVerifying: "正在校验",
+  modelPaused: "下载已暂停",
+  modelDownloaded: "已下载并校验",
+  modelDownload: "从 Hugging Face 下载",
+  modelPause: "暂停下载",
+  modelRemove: "删除本地文件",
+  modelUnknown: "目录中没有此模型。",
+  modelBusy: "另一个下载正在进行。",
+  modelNetwork: "下载已中断。请检查连接后继续。",
+  modelSizeError: "服务器返回了意外的文件大小或范围。模型未安装。",
+  modelHashError: "文件校验失败，请重新下载。",
+  modelStorageError: "无法访问模型缓存。请检查磁盘空间和文件权限。",
+
   unsupported: "不支持此项目格式。请从源文件创建新项目。",
   commands: "命令",
   library: "项目",

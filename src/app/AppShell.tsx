@@ -81,9 +81,13 @@ function Shell({
   const [busy, setBusy] = useState(false),
     [error, setError] = useState<unknown>(initialError),
     [, redraw] = useState(0);
-  const editor = useMemo(() => state.project && state.chapter
-    ? new BookEditorSession(api, state.project.id, state.chapter) : null,
-    [state.project, state.chapter]);
+  const editor = useMemo(
+    () =>
+      state.project && state.chapter
+        ? new BookEditorSession(api, state.project.id, state.chapter)
+        : null,
+    [state.project, state.chapter],
+  );
   const editorRef = useRef<BookEditorSession | null>(null);
   const [palette, setPalette] = useState(false);
   const lock = useRef(false);
@@ -136,7 +140,9 @@ function Shell({
   }, [jobs]);
   useEffect(() => {
     editorRef.current = editor;
-    return () => { editor?.dispose(); };
+    return () => {
+      editor?.dispose();
+    };
   }, [editor]);
   useEffect(
     () =>
@@ -261,7 +267,9 @@ function Shell({
     ...(project
       ? tabs.map((tab) => ({
           id: tab,
-          label: t(tab === "reader" && project.kind === "manga" ? "pages" : tab),
+          label: t(
+            tab === "reader" && project.kind === "manga" ? "pages" : tab,
+          ),
           run: () =>
             void act(async () => {
               setLibrary(false);
@@ -276,7 +284,10 @@ function Shell({
         <div className="bc-preview-banner">{t("previewMode")}</div>
       )}
       <header className="bc-topbar">
-        <strong className="bc-brand">Book Converter</strong>
+        <span className="bc-brand">
+          <img src="/logo.svg" alt="" width="28" height="28" />
+          <strong>Book Converter</strong>
+        </span>
         <button
           aria-pressed={library}
           onClick={() =>
@@ -400,7 +411,11 @@ function Shell({
                   disabled={busy}
                   onClick={() => void act(async () => setPanel(tab))}
                 >
-                  {t(tab === "reader" && project?.kind === "manga" ? "pages" : tab)}
+                  {t(
+                    tab === "reader" && project?.kind === "manga"
+                      ? "pages"
+                      : tab,
+                  )}
                 </button>
               ))}
             </nav>
