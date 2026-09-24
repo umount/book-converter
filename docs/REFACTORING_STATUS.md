@@ -742,3 +742,19 @@ fallback. Keep commits scoped; push only on user request.
   A range test covers reversed, duplicate and out-of-range bookmark destinations.
 - All 336 Rust library tests and strict all-target Clippy passed. No UI changes,
   real project data writes or native PDF rendering acceptance in this slice.
+
+### P07 chapter instructions through shared services
+
+- Added a current-chapter instruction proposal. The backend supplies the chapter
+  identity and expected revision; model output cannot choose another project/chapter.
+- Editor IPC and assistant confirmation now use the same application function,
+  retaining repository kind checks, revision checks and context invalidation.
+- Extended the fake-provider regression: missing chapter rejects the proposal;
+  newer manual instructions reject delayed confirmation; a fresh proposal updates
+  only the selected chapter, preserving other chapters and book instructions.
+- Targeted assistant regression, frontend tests/build and strict all-target Clippy
+  passed. No real provider call or UI layout changes were made.
+- Next: continue checking remaining book action parity (including glossary retarget
+  semantics) before deleting legacy IPC/runtime paths. Native acceptance and actual
+  provider quality remain unverified; the new assistant is not yet full legacy parity.
+- Final full Rust regression passed: 336 tests, zero failures.

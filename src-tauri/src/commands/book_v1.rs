@@ -397,15 +397,7 @@ pub async fn book_update_instructions(
     let manager = context.manager.clone();
     tauri::async_runtime::spawn_blocking(move || {
         manager.lease(&args.project_id)?.with_connection(|db, _| {
-            crate::storage::repository::ProjectRepository::new(
-                db,
-                crate::app::contracts::ProjectKind::Book,
-            )?
-            .update_chapter_instructions(
-                &args.chapter_id.0,
-                &args.expected_revision,
-                &args.instructions,
-            )
+            crate::application::book_edit::update_instructions(db, &args)
         })
     })
     .await

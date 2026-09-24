@@ -17,6 +17,18 @@ use std::{
     time::{Duration, Instant},
 };
 
+/// Shared chapter-instruction write path for the editor and assistant proposals.
+pub fn update_instructions(
+    db: &mut Connection,
+    args: &UpdateChapterInstructionsArgs,
+) -> Result<crate::app::contracts::Revision, AppError> {
+    ProjectRepository::new(db, ProjectKind::Book)?.update_chapter_instructions(
+        &args.chapter_id.0,
+        &args.expected_revision,
+        &args.instructions,
+    )
+}
+
 pub struct PreparedReplacement {
     project: ProjectId,
     created: Instant,
@@ -85,7 +97,17 @@ pub fn preview(
     for chapter in args.selection.resolve(&ordered)? {
         use rusqlite::OptionalExtension;
         let row = tx.query_row("SELECT id,revision,translated_title,source_revision,settings_revision,glossary_revision,context_fingerprint,status,provenance FROM book_translations WHERE chapter_id=?1 AND target_language=?2 ORDER BY revision DESC LIMIT 1", rusqlite::params![chapter,settings.choices.target_language], |r| Ok((r.get::<_,String>(0)?,r.get::<_,i64>(1)?,r.get::<_,String>(2)?,r.get::<_,i64>(3)?,r.get::<_,i64>(4)?,r.get::<_,i64>(5)?,r.get::<_,String>(6)?,r.get::<_,String>(7)?,r.get::<_,String>(8)?))).optional().map_err(storage_error)?;
-        let Some((id, revision, title, source, setting_rev, glossary_rev, context, status, provenance)) = row
+        let Some((
+            id,
+            revision,
+            title,
+            source,
+            setting_rev,
+            glossary_rev,
+            context,
+            status,
+            provenance,
+        )) = row
         else {
             continue;
         };

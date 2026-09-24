@@ -117,11 +117,13 @@ export function Assistant({
               {t(
                 p.kind === "book_prompt"
                   ? "bookPrompt"
-                  : p.kind === "glossary_term"
-                    ? "glossary"
-                    : p.kind === "translate_batch"
-                      ? "translateBatch"
-                      : "replace",
+                  : p.kind === "chapter_prompt"
+                    ? "instructions"
+                    : p.kind === "glossary_term"
+                      ? "glossary"
+                      : p.kind === "translate_batch"
+                        ? "translateBatch"
+                        : "replace",
               )}
             </strong>
             {p.kind === "translate_batch" ? (
