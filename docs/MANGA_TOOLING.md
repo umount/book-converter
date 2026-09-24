@@ -241,4 +241,4 @@ unknown region categories, noncontiguous reading order and out-of-bounds geometr
 Accepted coordinates map back to canonical pixels. It returns request-local IDs;
 the result-publishing service assigns durable IDs and reconciles manual edits.
 It produces no masks, cleanup, translation or lettering, and enables no processing
-button until the remaining capability and persistence stages are implemented.
+button until the remaining full-pipeline capability gates are satisfied.

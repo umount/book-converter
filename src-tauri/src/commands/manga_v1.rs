@@ -225,3 +225,18 @@ pub(super) fn dispatch(
     });
     Ok(())
 }
+
+#[tauri::command]
+pub async fn manga_get_page(
+    context: tauri::State<'_, AppContext>,
+    args: crate::app::requests::GetMangaPageArgs,
+) -> Result<crate::app::requests::MangaPageView, AppError> {
+    let manager = context.manager.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        manager
+            .lease(&args.project_id)?
+            .with_connection(|db, _| crate::application::manga::view::page(db, &args.page_id.0))
+    })
+    .await
+    .map_err(|_| AppError::invalid("task"))?
+}

@@ -11,7 +11,7 @@ P05: in_progress. Translation, context, editing, reference, export and metadata 
 P06: in_progress. New shell, wizard, structural editor and supporting screens wired; native acceptance remains.
 P07: in_progress. Book assistant, guarded proposals and persisted history implemented.
 P08: partial. Import/read-only page workspace available; model processing not implemented.
-P09: in_progress. Bounded vision adapter, durable recognition and edit reconciliation; inspector and real quality acceptance remain.
+P09: in_progress. Bounded vision adapter, durable recognition, edit reconciliation and read-only region inspector; capability and real quality acceptance remain.
 P10–P13: pending.
 
 ## Baseline (2026-09-23)
@@ -917,3 +917,23 @@ inline image requests and truncated fake-provider responses.
 Validation for durable recognition: 183 Rust library tests, strict all-target Clippy,
 frontend tests/build and generated contract check passed. All recognition requests
 used fake providers and synthetic local assets; no paid API request was made.
+
+## P09 saved region inspector (2026-09-24)
+
+- Added a consistent page-detail read service/IPC with saved regions, manual-text
+  flags and recognition freshness/review state. An absent result differs from a
+  successful empty result; revision changes report stale recognition explicitly.
+- Added a collapsible right inspector and selectable overlays scaled from canonical
+  page pixels. Source/translated text is read-only in this slice. Switching pages
+  clears old overlays; request generations reject late refreshes and job events
+  refresh the active page. No hidden recognition request is triggered by viewing.
+- Validation: all ten manga tests passed, including blank/unrecognized/stale page
+  reads and wrong-project-kind rejection. Strict all-target Clippy, frontend tests,
+  production build and generated contract check passed. The previous complete
+  regression run passed 183 tests; this slice adds one tested read-service case.
+- Browser preview verified the panel, whole-page overlays, missing translation and
+  a switch to an unrecognized page. This uses synthetic preview data, not native
+  asset/protocol or real OCR quality verification.
+- Next executable slice: processing capability preflight and automatic pixel-mask
+  adapter/runtime assessment. Keep full automatic processing unavailable until
+  its required capabilities work; no rectangle-erasure fallback or manual masks.

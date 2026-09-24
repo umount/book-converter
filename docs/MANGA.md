@@ -81,3 +81,8 @@ Reruns retain matched manual text and preserve unmatched edited regions for revi
 Original assets remain immutable. No automatic mask or inpainting result is generated
 from a text rectangle. Full-processing UI remains unavailable pending the remaining
 capabilities and real model quality verification.
+
+The page workspace can inspect saved recognition results with selectable overlays
+and a collapsible right panel. It distinguishes unrecognized, empty and stale OCR
+and shows preserved manual-text flags. Region text is currently read-only in the UI.
+Opening or selecting a page never starts a paid recognition request.

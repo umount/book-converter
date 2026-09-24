@@ -553,7 +553,17 @@ pub struct MangaRegionView {
     pub bounds: PixelBounds,
     pub source_text: String,
     pub translated_text: Option<String>,
+    pub source_manual: bool,
+    pub translation_manual: bool,
     pub revision: Revision,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct MangaRecognitionSummary {
+    pub revision: Revision,
+    pub current: bool,
+    pub needs_review: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
@@ -561,6 +571,7 @@ pub struct MangaRegionView {
 pub struct MangaPageView {
     pub page: PageSummary,
     pub regions: Vec<MangaRegionView>,
+    pub recognition: Option<MangaRecognitionSummary>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
@@ -681,6 +692,7 @@ pub fn typescript() -> String {
         PageSummaryPage::decl(&config),
         MangaRegionView::decl(&config),
         MangaPageView::decl(&config),
+        MangaRecognitionSummary::decl(&config),
         ImportPreview::decl(&config),
         ProjectSummary::decl(&config),
         DomainProgress::decl(&config),

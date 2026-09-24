@@ -1,5 +1,8 @@
 import { useEffect, useRef, useState } from "react";
-import type { PageSummary } from "../../shared/contracts/generated";
+import type {
+  MangaRegionView,
+  PageSummary,
+} from "../../shared/contracts/generated";
 import { assetUrl } from "../../shared/api/assets";
 import { fittedWidth, pageKeyDelta } from "../../shared/state/mangaCanvas";
 import type { T } from "../../app/strings";
@@ -11,6 +14,9 @@ export function PageCanvas({
   rtl,
   loading,
   onNavigate,
+  regions = [],
+  selectedRegion,
+  onSelectRegion,
   t,
 }: {
   projectId: string;
@@ -19,6 +25,9 @@ export function PageCanvas({
   rtl: boolean;
   loading: boolean;
   onNavigate: (delta: number) => void;
+  regions?: MangaRegionView[];
+  selectedRegion?: string | null;
+  onSelectRegion?: (id: string) => void;
   t: T;
 }) {
   const viewport = useRef<HTMLDivElement>(null);
@@ -88,19 +97,35 @@ export function PageCanvas({
       }}
     >
       {page ? (
-        <img
+        <div
           key={page.id}
-          draggable={false}
-          src={assetUrl(projectId, page.originalAssetId)}
-          alt={`${t("page")} ${page.position + 1}`}
-          style={{
-            display: "block",
-            margin: "0 auto",
-            width,
-            maxWidth: "none",
-            height: "auto",
-          }}
-        />
+          style={{ position: "relative", width, margin: "0 auto" }}
+        >
+          <img
+            draggable={false}
+            src={assetUrl(projectId, page.originalAssetId)}
+            alt={`${t("page")} ${page.position + 1}`}
+            style={{ display: "block", width: "100%", height: "auto" }}
+          />
+          {regions.map((region) => (
+            <button
+              key={region.id}
+              className="bc-region-overlay"
+              aria-label={`${t("region")} ${region.readingOrder + 1}: ${region.sourceText}`}
+              aria-pressed={region.id === selectedRegion}
+              onPointerDown={(e) => e.stopPropagation()}
+              onClick={() => onSelectRegion?.(region.id)}
+              style={{
+                left: `${(region.bounds.x / page.width) * 100}%`,
+                top: `${(region.bounds.y / page.height) * 100}%`,
+                width: `${(region.bounds.width / page.width) * 100}%`,
+                height: `${(region.bounds.height / page.height) * 100}%`,
+              }}
+            >
+              <span>{region.readingOrder + 1}</span>
+            </button>
+          ))}
+        </div>
       ) : (
         <p>{t(loading ? "loading" : "noPages")}</p>
       )}

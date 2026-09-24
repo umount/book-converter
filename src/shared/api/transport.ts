@@ -39,6 +39,8 @@ export function createProjectApi(transport: Transport) {
       call<C.ProjectDescriptor>("project_archive_import", args),
     startMangaStage: (args: C.StartMangaStageArgs) =>
       call<C.JobRef>("manga_start_stage", args),
+    mangaPage: (args: C.GetMangaPageArgs) =>
+      call<C.MangaPageView>("manga_get_page", args),
     mangaVolumes: (args: C.ProjectArgs) =>
       call<C.MangaVolumeSummary[]>("manga_list_volumes", args),
     mangaPages: (args: C.ListMangaPagesArgs) =>

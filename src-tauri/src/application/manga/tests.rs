@@ -498,3 +498,47 @@ fn admission_rejects_zero_batches_wrong_domains_and_unsupported_stages() {
         AppError::invalid("mangaStageUnavailable")
     );
 }
+
+#[tokio::test]
+async fn page_view_distinguishes_unrecognized_blank_and_stale_results() {
+    let f = Fixture::new(1);
+    let page = f.run().snapshot.selected_ids[0].clone();
+    let lease = f.manager.lease(&f.id).unwrap();
+    lease
+        .with_connection(|db, _| {
+            assert!(super::view::page(db, &page)?.recognition.is_none());
+            assert!(super::view::page(db, "missing").is_err());
+            Ok(())
+        })
+        .unwrap();
+    let fake = Fake::new(0);
+    *fake.text.lock().unwrap() = "{\"regions\":[]}".into();
+    durable::execute(
+        &f.manager,
+        &f.id,
+        "run",
+        &RecognitionPipeline {
+            provider: Arc::new(fake),
+        },
+        Arc::new(AtomicBool::new(false)),
+        |_| {},
+    )
+    .await
+    .unwrap();
+    lease
+        .with_connection(|db, _| {
+            let view = super::view::page(db, &page)?;
+            assert!(view.regions.is_empty());
+            assert!(view.recognition.unwrap().current);
+            db.execute(
+                "UPDATE manga_pages SET revision=revision+1 WHERE id=?1",
+                [&page],
+            )
+            .unwrap();
+            assert!(!super::view::page(db, &page)?.recognition.unwrap().current);
+            Ok(())
+        })
+        .unwrap();
+    let mut book = crate::storage::tests::database(ProjectKind::Book);
+    assert!(super::view::page(&mut book, &page).is_err());
+}

@@ -1,3 +1,5 @@
+import { RegionInspector } from "./RegionInspector";
+import { usePageView } from "./usePageView";
 import { PageCanvas } from "./PageCanvas";
 import { VirtualList } from "../../shared/ui/VirtualList";
 import { useEffect, useState } from "react";
@@ -67,6 +69,12 @@ function MangaProjectWorkspace({ projectId, t }: { projectId: string; t: T }) {
     };
   }, [projectId, volumeId]);
   const page = pages[selected];
+  const { view, error: pageError } = usePageView(projectId, page?.id);
+  const [showRegions, setShowRegions] = useState(false);
+  const [selectedRegion, setSelectedRegion] = useState<string | null>(null);
+  const activeRegion = view?.regions.some((r) => r.id === selectedRegion)
+    ? selectedRegion
+    : (view?.regions[0]?.id ?? null);
   return (
     <div className="bc-manga">
       <aside>
@@ -117,9 +125,9 @@ function MangaProjectWorkspace({ projectId, t }: { projectId: string; t: T }) {
       </aside>
       <div className="bc-manga-page">
         <p className="bc-warning">{t("mangaUnavailable")}</p>
-        {error != null && (
+        {(error != null || pageError != null) && (
           <p role="alert" className="bc-error">
-            {errorText(error, t)}
+            {errorText(error ?? pageError, t)}
           </p>
         )}
         <div className="bc-toolbar">
@@ -167,11 +175,20 @@ function MangaProjectWorkspace({ projectId, t }: { projectId: string; t: T }) {
               ))}
             </select>
           </label>
+          <button
+            aria-pressed={showRegions}
+            onClick={() => setShowRegions((value) => !value)}
+          >
+            {t("regions")}
+          </button>
         </div>
         <PageCanvas
           projectId={projectId}
           page={page}
           zoom={zoom}
+          regions={showRegions ? view?.regions : undefined}
+          selectedRegion={activeRegion}
+          onSelectRegion={setSelectedRegion}
           loading={loading}
           rtl={
             volumes.find((v) => v.id === page?.volumeId)?.readingDirection ===
@@ -185,6 +202,15 @@ function MangaProjectWorkspace({ projectId, t }: { projectId: string; t: T }) {
           t={t}
         />
       </div>
+      {showRegions && (
+        <RegionInspector
+          view={view}
+          selected={activeRegion}
+          onSelect={setSelectedRegion}
+          onClose={() => setShowRegions(false)}
+          t={t}
+        />
+      )}
     </div>
   );
 }

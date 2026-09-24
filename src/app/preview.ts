@@ -203,6 +203,32 @@ export async function invokePreview<T>(
         revision: "1",
       };
       break;
+    case "manga_get_page": {
+      const page = mangaPages.find((p) => p.id === args.pageId)!;
+      const processed = page.position % 3 !== 2;
+      result = {
+        page,
+        recognition: processed
+          ? { revision: "0", current: true, needsReview: false }
+          : null,
+        regions: processed
+          ? [
+              {
+                id: `${page.id}-r1`,
+                pageId: page.id,
+                readingOrder: 0,
+                bounds: { x: 70, y: 95, width: 290, height: 90 },
+                sourceText: "Preview dialogue",
+                translatedText: null,
+                sourceManual: false,
+                translationManual: false,
+                revision: "0",
+              },
+            ]
+          : [],
+      };
+      break;
+    }
     case "manga_list_volumes":
       result = Array.from({ length: 10 }, (_, i) => ({
         id: `volume-${i}`,
