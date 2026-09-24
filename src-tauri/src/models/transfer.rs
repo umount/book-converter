@@ -122,11 +122,21 @@ pub(super) async fn download(
             .map_err(|_| ModelFailure::Storage)?;
         manager.progress(&spec.id, ModelStatus::Downloading, offset as u32);
         loop {
-            let chunk = tokio::select! { biased; _ = cancel.changed() => { file.flush().await.map_err(|_| ModelFailure::Storage)?; return Ok(false); }, chunk = response.chunk() => chunk.map_err(|_| ModelFailure::Network)? };
+            let chunk = tokio::select! { biased; _ = cancel.changed() => { file.flush().await.map_err(|_| ModelFailure::Storage)?; return Ok(false); }, chunk = response.chunk() => chunk };
+            let chunk = match chunk {
+                Ok(chunk) => chunk,
+                Err(_) => {
+                    // Tokio file writes may still be queued after write_all returns.
+                    // Drain them before releasing the writer or reporting resumable size.
+                    file.flush().await.map_err(|_| ModelFailure::Storage)?;
+                    return Err(ModelFailure::Network);
+                }
+            };
             let Some(chunk) = chunk else {
                 break;
             };
             if offset + chunk.len() as u64 > u64::from(spec.bytes) {
+                file.flush().await.map_err(|_| ModelFailure::Storage)?;
                 return Err(ModelFailure::SizeMismatch);
             }
             file.write_all(&chunk)
