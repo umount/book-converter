@@ -70,100 +70,99 @@ export function Settings({
       title={t("settings")}
       busy={busy}
       onClose={onClose}
-    >
-      <div className="bc-dialog-body">
-        <label>
-          {t("interfaceLanguage")}
-          <select
-            value={lang}
-            onChange={(e) => setLang(e.target.value as Lang)}
+      footer={
+        <>
+          <button disabled={busy} onClick={onClose}>
+            {t("cancel")}
+          </button>
+          <button
+            className="primary"
+            disabled={busy || !config?.model.trim() || !config.base_url.trim()}
+            onClick={() => void save()}
           >
-            {LANGS.map((v) => (
-              <option key={v.code} value={v.code}>
-                {v.label}
+            {t("save")}
+          </button>
+        </>
+      }
+    >
+      <label>
+        {t("interfaceLanguage")}
+        <select value={lang} onChange={(e) => setLang(e.target.value as Lang)}>
+          {LANGS.map((v) => (
+            <option key={v.code} value={v.code}>
+              {v.label}
+            </option>
+          ))}
+        </select>
+      </label>
+      {config && (
+        <label>
+          {t("defaultTargetLanguage")}
+          <select
+            value={config.target_lang}
+            disabled={busy || config.env_locked.includes("target_lang")}
+            onChange={(e) =>
+              setConfig({ ...config, target_lang: e.target.value })
+            }
+          >
+            {[...new Set([...languages, config.target_lang])].map((code) => (
+              <option key={code} value={code}>
+                {languageName(code, lang)}
               </option>
             ))}
           </select>
+          <span className="bc-hint">{t("defaultTargetLanguageHint")}</span>
         </label>
-        {config && (
+      )}
+      <p className="bc-hint">{t("providerHint")}</p>
+      {config && (
+        <>
           <label>
-            {t("defaultTargetLanguage")}
-            <select
-              value={config.target_lang}
-              disabled={busy || config.env_locked.includes("target_lang")}
-              onChange={(e) => setConfig({ ...config, target_lang: e.target.value })}
-            >
-              {[...new Set([...languages, config.target_lang])].map((code) => (
-                <option key={code} value={code}>{languageName(code, lang)}</option>
-              ))}
-            </select>
-            <span className="bc-hint">{t("defaultTargetLanguageHint")}</span>
+            {t("model")}
+            <input
+              value={config.model}
+              disabled={busy || config.env_locked.includes("model")}
+              onChange={(e) => setConfig({ ...config, model: e.target.value })}
+            />
           </label>
-        )}
-        <p className="bc-hint">{t("providerHint")}</p>
-        {config && (
-          <>
-            <label>
-              {t("model")}
-              <input
-                value={config.model}
-                disabled={busy || config.env_locked.includes("model")}
-                onChange={(e) =>
-                  setConfig({ ...config, model: e.target.value })
-                }
-              />
-            </label>
-            <label>
-              {t("endpoint")}
-              <input
-                type="url"
-                value={config.base_url}
-                disabled={busy || config.env_locked.includes("base_url")}
-                onChange={(e) =>
-                  setConfig({ ...config, base_url: e.target.value })
-                }
-              />
-            </label>
-            <label>
-              {t("apiKey")}
-              <input
-                type="password"
-                autoComplete="off"
-                placeholder={t("keyHint")}
-                value={key}
-                onChange={(e) => setKey(e.target.value)}
-              />
-            </label>
-            <p className="bc-hint">
-              {t(config.has_key ? "keyStored" : "keyMissing")}
-            </p>
-          </>
-        )}
-        {error != null && (
-          <p role="alert" className="bc-error">
-            {errorText(error, t)}
+          <label>
+            {t("endpoint")}
+            <input
+              type="url"
+              value={config.base_url}
+              disabled={busy || config.env_locked.includes("base_url")}
+              onChange={(e) =>
+                setConfig({ ...config, base_url: e.target.value })
+              }
+            />
+          </label>
+          <label>
+            {t("apiKey")}
+            <input
+              type="password"
+              autoComplete="off"
+              placeholder={t("keyHint")}
+              value={key}
+              onChange={(e) => setKey(e.target.value)}
+            />
+          </label>
+          <p className="bc-hint">
+            {t(config.has_key ? "keyStored" : "keyMissing")}
           </p>
-        )}
-        <ProviderProfiles
-          project={project}
-          t={t}
-          defaults={config}
-          onBusy={setBusy}
-        />
-        <ModelDownloads t={t} />
-      </div>
-      <footer>
-        <button disabled={busy} onClick={onClose}>
-          {t("cancel")}
-        </button>
-        <button
-          className="primary"
-          disabled={busy || !config?.model.trim() || !config.base_url.trim()}
-          onClick={() => void save()}
-        >
-          {t("save")}
-        </button>
-      </footer>
+        </>
+      )}
+      {error != null && (
+        <p role="alert" className="bc-error">
+          {errorText(error, t)}
+        </p>
+      )}
+      <ProviderProfiles
+        project={project}
+        t={t}
+        defaults={config}
+        onBusy={setBusy}
+      />
+      <ModelDownloads t={t} />
     </Modal>
   );
 }

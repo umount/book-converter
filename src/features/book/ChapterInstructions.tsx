@@ -61,6 +61,20 @@ export function ChapterInstructions({
       closeLabel={t("close")}
       onClose={() => void finish()}
       busy={busy}
+      footer={
+        <>
+          <button disabled={busy} onClick={close}>
+            {t("cancel")}
+          </button>
+          <button
+            className="primary"
+            disabled={busy}
+            onClick={() => void finish()}
+          >
+            {t("save")}
+          </button>
+        </>
+      }
     >
       <p className="bc-hint">{t("instructionHint")}</p>
       <textarea
@@ -70,12 +84,6 @@ export function ChapterInstructions({
         disabled={busy}
         onChange={(e) => setText(e.target.value)}
       />
-      <button className="primary" disabled={busy} onClick={() => void finish()}>
-        {t("save")}
-      </button>
-      <button disabled={busy} onClick={close}>
-        {t("cancel")}
-      </button>
       {error != null && (
         <p role="alert" className="bc-error">
           {errorText(error, t)}

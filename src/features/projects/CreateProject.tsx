@@ -114,118 +114,116 @@ export function CreateProject({
       title={t("newProject")}
       onClose={() => void cancel()}
       busy={busy}
-    >
-      <div className="bc-dialog-body">
-        {!preview && (
-          <>
-            <p>{t("chooseKind")}</p>
-            <div className="bc-kind-options">
-              {(["book", "manga"] as const).map((value) => (
-                <button
-                  key={value}
-                  aria-pressed={kind === value}
-                  disabled={busy}
-                  onClick={() => setKind(value)}
-                >
-                  <strong>{t(value)}</strong>
-                  <span>
-                    {t(value === "book" ? "bookFormats" : "mangaFormats")}
-                  </span>
-                </button>
-              ))}
-            </div>
-          </>
-        )}
-        <button disabled={busy} onClick={() => void chooseSource()}>
-          {busy ? t("loading") : t("chooseSource")}
-        </button>
-        {kind === "manga" && (
-          <button disabled={busy} onClick={() => void chooseSource(true)}>
-            {t("chooseFolder")}
+      footer={
+        <>
+          <button disabled={busy} onClick={() => void cancel()}>
+            {t("cancel")}
           </button>
-        )}
-        {preview && (
-          <>
-            <p className="bc-file">{preview.source.displayName}</p>
-            <label>
-              {t("name")}
-              <input
-                autoFocus
-                value={name}
+          <button
+            className="primary"
+            disabled={busy || !preview || !name.trim() || !source || !target}
+            onClick={() => void create()}
+          >
+            {t("create")}
+          </button>
+        </>
+      }
+    >
+      {!preview && (
+        <>
+          <p>{t("chooseKind")}</p>
+          <div className="bc-kind-options">
+            {(["book", "manga"] as const).map((value) => (
+              <button
+                key={value}
+                aria-pressed={kind === value}
                 disabled={busy}
-                onChange={(e) => setName(e.target.value)}
-              />
-            </label>
-            <div className="bc-fields">
-              {(
-                [
-                  { value: source, set: setSource, label: "sourceLanguage" },
-                  {
-                    value: target,
-                    set: (value: string) => {
-                      targetTouched.current = true;
-                      setTarget(value);
-                    },
-                    label: "targetLanguage",
+                onClick={() => setKind(value)}
+              >
+                <strong>{t(value)}</strong>
+                <span>
+                  {t(value === "book" ? "bookFormats" : "mangaFormats")}
+                </span>
+              </button>
+            ))}
+          </div>
+        </>
+      )}
+      <button disabled={busy} onClick={() => void chooseSource()}>
+        {busy ? t("loading") : t("chooseSource")}
+      </button>
+      {kind === "manga" && (
+        <button disabled={busy} onClick={() => void chooseSource(true)}>
+          {t("chooseFolder")}
+        </button>
+      )}
+      {preview && (
+        <>
+          <p className="bc-file">{preview.source.displayName}</p>
+          <label>
+            {t("name")}
+            <input
+              autoFocus
+              value={name}
+              disabled={busy}
+              onChange={(e) => setName(e.target.value)}
+            />
+          </label>
+          <div className="bc-fields">
+            {(
+              [
+                { value: source, set: setSource, label: "sourceLanguage" },
+                {
+                  value: target,
+                  set: (value: string) => {
+                    targetTouched.current = true;
+                    setTarget(value);
                   },
-                ] as const
-              ).map((field) => (
-                <label key={field.label}>
-                  {t(field.label)}
-                  <select
-                    value={field.value}
-                    disabled={busy}
-                    onChange={(e) => field.set(e.target.value)}
-                  >
-                    <option value="">{t("choose")}</option>
-                    {[
-                      ...new Set(
-                        [...languages, source, target].filter(Boolean),
-                      ),
-                    ].map((code) => (
-                      <option key={code} value={code}>
-                        {languageName(code, lang)}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-              ))}
-            </div>
-            <p className="bc-hint">{t("fixedLanguages")}</p>
-            {preview.warnings.length > 0 && (
-              <p className="bc-warning">{t("importWarning")}</p>
-            )}
-            {kind === "book" && (
-              <label className="bc-check">
-                <input
-                  type="checkbox"
-                  checked={metadata}
+                  label: "targetLanguage",
+                },
+              ] as const
+            ).map((field) => (
+              <label key={field.label}>
+                {t(field.label)}
+                <select
+                  value={field.value}
                   disabled={busy}
-                  onChange={(e) => setMetadata(e.target.checked)}
-                />
-                {t("metadataAfterCreate")}
+                  onChange={(e) => field.set(e.target.value)}
+                >
+                  <option value="">{t("choose")}</option>
+                  {[
+                    ...new Set([...languages, source, target].filter(Boolean)),
+                  ].map((code) => (
+                    <option key={code} value={code}>
+                      {languageName(code, lang)}
+                    </option>
+                  ))}
+                </select>
               </label>
-            )}
-          </>
-        )}
-        {error != null && (
-          <p role="alert" className="bc-error">
-            {errorText(error, t)}
-          </p>
-        )}
-      </div>
-      <footer>
-        <button disabled={busy} onClick={() => void cancel()}>
-          {t("cancel")}
-        </button>
-        <button
-          className="primary"
-          disabled={busy || !preview || !name.trim() || !source || !target}
-          onClick={() => void create()}
-        >
-          {t("create")}
-        </button>
-      </footer>
+            ))}
+          </div>
+          <p className="bc-hint">{t("fixedLanguages")}</p>
+          {preview.warnings.length > 0 && (
+            <p className="bc-warning">{t("importWarning")}</p>
+          )}
+          {kind === "book" && (
+            <label className="bc-check">
+              <input
+                type="checkbox"
+                checked={metadata}
+                disabled={busy}
+                onChange={(e) => setMetadata(e.target.checked)}
+              />
+              {t("metadataAfterCreate")}
+            </label>
+          )}
+        </>
+      )}
+      {error != null && (
+        <p role="alert" className="bc-error">
+          {errorText(error, t)}
+        </p>
+      )}
     </Modal>
   );
 }

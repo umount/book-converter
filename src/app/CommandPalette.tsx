@@ -25,28 +25,26 @@ export function CommandPalette({
   }
   return (
     <Modal title={t("commands")} closeLabel={t("close")} onClose={close}>
-      <div className="bc-dialog-body">
-        <input
-          autoFocus
-          aria-label={t("commands")}
-          placeholder={t("find")}
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === "Enter" && visible[0]) {
-              e.preventDefault();
-              choose(visible[0]);
-            }
-          }}
-        />
-        <div className="bc-command-list">
-          {visible.map((command) => (
-            <button key={command.id} onClick={() => choose(command)}>
-              {command.label}
-            </button>
-          ))}
-          {!visible.length && <p>{t("noMatches")}</p>}
-        </div>
+      <input
+        autoFocus
+        aria-label={t("commands")}
+        placeholder={t("find")}
+        value={query}
+        onChange={(e) => setQuery(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" && visible[0]) {
+            e.preventDefault();
+            choose(visible[0]);
+          }
+        }}
+      />
+      <div className="bc-command-list">
+        {visible.map((command) => (
+          <button key={command.id} onClick={() => choose(command)}>
+            {command.label}
+          </button>
+        ))}
+        {!visible.length && <p>{t("noMatches")}</p>}
       </div>
     </Modal>
   );

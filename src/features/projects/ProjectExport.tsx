@@ -135,6 +135,11 @@ export function ProjectExport({
       closeLabel={t("close")}
       onClose={close}
       busy={busy}
+      footer={
+        <button className="primary" disabled={busy} onClick={() => void run()}>
+          {t("chooseDestination")}
+        </button>
+      }
     >
       {format !== "bcproj" && (
         <div className="bc-fields">
@@ -164,9 +169,6 @@ export function ProjectExport({
           </label>
         </div>
       )}
-      <button className="primary" disabled={busy} onClick={() => void run()}>
-        {t("chooseDestination")}
-      </button>
       {done && <p role="status">{t("exported")}</p>}
       {error != null && (
         <p role="alert" className="bc-error">

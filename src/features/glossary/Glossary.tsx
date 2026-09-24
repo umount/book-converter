@@ -325,89 +325,89 @@ export function Glossary({
           title={t("glossary")}
           busy={busy}
           onClose={() => setEdit(null)}
-        >
-          <div className="bc-dialog-body">
-            <label>
-              {t("termSource")}
-              <input
-                value={edit.source}
-                onChange={(e) => setEdit({ ...edit, source: e.target.value })}
-              />
-            </label>
-            <label>
-              {t("termTarget")}
-              <input
-                autoFocus
-                value={edit.target}
-                onChange={(e) => setEdit({ ...edit, target: e.target.value })}
-              />
-            </label>
-            <label>
-              {t("termKind")}
-              <input
-                value={edit.kind}
-                onChange={(e) => setEdit({ ...edit, kind: e.target.value })}
-              />
-            </label>
-            <label className="bc-check">
-              <input
-                type="checkbox"
-                checked={edit.pinned}
-                onChange={(e) => setEdit({ ...edit, pinned: e.target.checked })}
-              />
-              {t("pinned")}
-            </label>
-            {error != null && (
-              <p role="alert" className="bc-error">
-                {errorText(error, t)}
-              </p>
-            )}
-          </div>
-          <footer>
-            {page?.items.some((v) => v.id === edit.id) && (
-              <button
-                className="danger"
-                disabled={busy}
-                onClick={async () => {
-                  if (
-                    !(await confirmation.confirm({
-                      title: t("remove"),
-                      message: `${t("remove")}: ${edit.source}?`,
-                      action: t("remove"),
-                      danger: true,
-                    }))
-                  )
-                    return;
-                  setBusy(true);
-                  void projectApi
-                    .deleteTerm({
-                      projectId,
-                      termId: edit.id,
-                      expectedRevision: edit.revision,
-                      expectedSettingsRevision: page.settingsRevision,
-                    })
-                    .then(async () => {
-                      setEdit(null);
-                      await load();
-                    })
-                    .catch(setError)
-                    .finally(() => setBusy(false));
-                }}
-              >
-                {t("remove")}
+          footer={
+            <>
+              {page?.items.some((v) => v.id === edit.id) && (
+                <button
+                  className="danger"
+                  disabled={busy}
+                  onClick={async () => {
+                    if (
+                      !(await confirmation.confirm({
+                        title: t("remove"),
+                        message: `${t("remove")}: ${edit.source}?`,
+                        action: t("remove"),
+                        danger: true,
+                      }))
+                    )
+                      return;
+                    setBusy(true);
+                    void projectApi
+                      .deleteTerm({
+                        projectId,
+                        termId: edit.id,
+                        expectedRevision: edit.revision,
+                        expectedSettingsRevision: page.settingsRevision,
+                      })
+                      .then(async () => {
+                        setEdit(null);
+                        await load();
+                      })
+                      .catch(setError)
+                      .finally(() => setBusy(false));
+                  }}
+                >
+                  {t("remove")}
+                </button>
+              )}
+              <button disabled={busy} onClick={() => setEdit(null)}>
+                {t("cancel")}
               </button>
-            )}
-            <button disabled={busy} onClick={() => setEdit(null)}>
-              {t("cancel")}
-            </button>
-            <button
-              className="primary"
-              disabled={busy || !edit.source.trim() || !edit.target.trim()}
-              onClick={() => void saveTerm()}
-            >
-              {t("save")}
-            </button>
-          </footer>
+              <button
+                className="primary"
+                disabled={busy || !edit.source.trim() || !edit.target.trim()}
+                onClick={() => void saveTerm()}
+              >
+                {t("save")}
+              </button>
+            </>
+          }
+        >
+          <label>
+            {t("termSource")}
+            <input
+              value={edit.source}
+              onChange={(e) => setEdit({ ...edit, source: e.target.value })}
+            />
+          </label>
+          <label>
+            {t("termTarget")}
+            <input
+              autoFocus
+              value={edit.target}
+              onChange={(e) => setEdit({ ...edit, target: e.target.value })}
+            />
+          </label>
+          <label>
+            {t("termKind")}
+            <input
+              value={edit.kind}
+              onChange={(e) => setEdit({ ...edit, kind: e.target.value })}
+            />
+          </label>
+          <label className="bc-check">
+            <input
+              type="checkbox"
+              checked={edit.pinned}
+              onChange={(e) => setEdit({ ...edit, pinned: e.target.checked })}
+            />
+            {t("pinned")}
+          </label>
+          {error != null && (
+            <p role="alert" className="bc-error">
+              {errorText(error, t)}
+            </p>
+          )}
         </Modal>
       )}
       {showExtraction && (
@@ -416,54 +416,54 @@ export function Glossary({
           closeLabel={t("close")}
           busy={busy}
           onClose={() => setShowExtraction(false)}
+          footer={
+            <>
+              <button disabled={busy} onClick={() => setShowExtraction(false)}>
+                {t("cancel")}
+              </button>
+              <button
+                className="primary"
+                disabled={busy || !validExtractionCount}
+                onClick={() => {
+                  setBusy(true);
+                  setError(null);
+                  void extract(Number(extractionCount), repeatExtraction)
+                    .then(() => setShowExtraction(false))
+                    .catch(setError)
+                    .finally(() => setBusy(false));
+                }}
+              >
+                {t("extractTerms")}
+              </button>
+            </>
+          }
         >
-          <div className="bc-dialog-body">
-            <p className="bc-hint">{t("extractionBatchHint")}</p>
-            <label>
-              {t("batchCount")}
-              <input
-                type="number"
-                min="1"
-                max="4294967295"
-                value={extractionCount}
-                disabled={busy}
-                onChange={(e) => setExtractionCount(e.target.value)}
-              />
-            </label>
-            <label>
-              <input
-                type="checkbox"
-                checked={repeatExtraction}
-                disabled={busy}
-                onChange={(e) => setRepeatExtraction(e.target.checked)}
-              />
-              {t("repeatExtraction")}
-            </label>
-            {error != null && (
-              <p className="bc-error" role="alert">
-                {errorText(error, t)}
-              </p>
-            )}
-          </div>
-          <footer>
-            <button disabled={busy} onClick={() => setShowExtraction(false)}>
-              {t("cancel")}
-            </button>
-            <button
-              className="primary"
-              disabled={busy || !validExtractionCount}
-              onClick={() => {
-                setBusy(true);
-                setError(null);
-                void extract(Number(extractionCount), repeatExtraction)
-                  .then(() => setShowExtraction(false))
-                  .catch(setError)
-                  .finally(() => setBusy(false));
-              }}
-            >
-              {t("extractTerms")}
-            </button>
-          </footer>
+          <p className="bc-hint">{t("extractionBatchHint")}</p>
+          <label>
+            {t("batchCount")}
+            <input
+              type="number"
+              min="1"
+              max="4294967295"
+              value={extractionCount}
+              disabled={busy}
+              onChange={(e) => setExtractionCount(e.target.value)}
+            />
+          </label>
+          <label>
+            <input
+              type="checkbox"
+              checked={repeatExtraction}
+              disabled={busy}
+              onChange={(e) => setRepeatExtraction(e.target.checked)}
+            />
+            {t("repeatExtraction")}
+          </label>
+          {error != null && (
+            <p className="bc-error" role="alert">
+              {errorText(error, t)}
+            </p>
+          )}
         </Modal>
       )}
       {offer && showOffer && (
@@ -472,69 +472,69 @@ export function Glossary({
           closeLabel={t("close")}
           busy={busy}
           onClose={() => setShowOffer(false)}
+          footer={
+            <>
+              <button disabled={busy} onClick={() => setShowOffer(false)}>
+                {t("cancel")}
+              </button>
+              <button
+                className="primary"
+                disabled={busy || !validCount || !estimate?.chapters}
+                onClick={() =>
+                  void (async () => {
+                    setBusy(true);
+                    setError(null);
+                    try {
+                      const job = await projectApi.retarget({
+                        projectId,
+                        termId: offer.termId,
+                        expectedRevision: offer.revision,
+                        oldTarget: offer.oldTarget,
+                        maxChapters: Number(retargetCount),
+                      });
+                      await onJob(job);
+                      setShowOffer(false);
+                      setEstimate(null);
+                    } catch (e) {
+                      setError(e);
+                    } finally {
+                      setBusy(false);
+                    }
+                  })()
+                }
+              >
+                {t("retarget")}
+              </button>
+            </>
+          }
         >
-          <div className="bc-dialog-body">
-            <p>
-              {offer.oldTarget} → {offer.target}
+          <p>
+            {offer.oldTarget} → {offer.target}
+          </p>
+          <p className="bc-hint">{t("retargetHint")}</p>
+          <label>
+            {t("batchCount")}
+            <input
+              type="number"
+              min="1"
+              max="4294967295"
+              value={retargetCount}
+              disabled={busy}
+              onChange={(e) => setRetargetCount(e.target.value)}
+            />
+          </label>
+          <p role="status">
+            {estimate
+              ? `${t("chapters")}: ${estimate.chapters} · ${t("retargetFragments")}: ${estimate.fragments}`
+              : validCount
+                ? t("loading")
+                : t("batchCount")}
+          </p>
+          {error != null && (
+            <p className="bc-error" role="alert">
+              {errorText(error, t)}
             </p>
-            <p className="bc-hint">{t("retargetHint")}</p>
-            <label>
-              {t("batchCount")}
-              <input
-                type="number"
-                min="1"
-                max="4294967295"
-                value={retargetCount}
-                disabled={busy}
-                onChange={(e) => setRetargetCount(e.target.value)}
-              />
-            </label>
-            <p role="status">
-              {estimate
-                ? `${t("chapters")}: ${estimate.chapters} · ${t("retargetFragments")}: ${estimate.fragments}`
-                : validCount
-                  ? t("loading")
-                  : t("batchCount")}
-            </p>
-            {error != null && (
-              <p className="bc-error" role="alert">
-                {errorText(error, t)}
-              </p>
-            )}
-          </div>
-          <footer>
-            <button disabled={busy} onClick={() => setShowOffer(false)}>
-              {t("cancel")}
-            </button>
-            <button
-              className="primary"
-              disabled={busy || !validCount || !estimate?.chapters}
-              onClick={() =>
-                void (async () => {
-                  setBusy(true);
-                  setError(null);
-                  try {
-                    const job = await projectApi.retarget({
-                      projectId,
-                      termId: offer.termId,
-                      expectedRevision: offer.revision,
-                      oldTarget: offer.oldTarget,
-                      maxChapters: Number(retargetCount),
-                    });
-                    await onJob(job);
-                    setShowOffer(false);
-                    setEstimate(null);
-                  } catch (e) {
-                    setError(e);
-                  } finally {
-                    setBusy(false);
-                  }
-                })()
-              }
-            >
-              {t("retarget")}
-            </button>
-          </footer>
+          )}
         </Modal>
       )}
     </div>

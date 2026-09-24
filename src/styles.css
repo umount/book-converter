@@ -1499,8 +1499,7 @@ button + button {
   overflow-wrap: anywhere;
 }
 .bc-about {
-  padding: 24px;
-  text-align: center;
+  text-align: left;
 }
 .bc-about-brand {
   display: flex;

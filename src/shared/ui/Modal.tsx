@@ -5,12 +5,14 @@ export function Modal({
   closeLabel,
   onClose,
   children,
+  footer,
   busy = false,
 }: {
   title: string;
   closeLabel: string;
   onClose: () => void;
   children: ReactNode;
+  footer?: ReactNode;
   busy?: boolean;
 }) {
   const ref = useRef<HTMLDialogElement>(null);
@@ -46,7 +48,8 @@ export function Modal({
           ×
         </button>
       </header>
-      {children}
+      <div className="bc-dialog-body">{children}</div>
+      {footer && <footer>{footer}</footer>}
     </dialog>
   );
 }

@@ -34,19 +34,19 @@ export function useConfirm(t: T) {
         title={request.title}
         closeLabel={t("close")}
         onClose={() => finish(false)}
+        footer={
+          <>
+            <button onClick={() => finish(false)}>{t("cancel")}</button>
+            <button
+              className={request.danger ? "danger" : "primary"}
+              onClick={() => finish(true)}
+            >
+              {request.action}
+            </button>
+          </>
+        }
       >
-        <div className="bc-dialog-body">
-          <p className="bc-confirm-message">{request.message}</p>
-        </div>
-        <footer>
-          <button onClick={() => finish(false)}>{t("cancel")}</button>
-          <button
-            className={request.danger ? "danger" : "primary"}
-            onClick={() => finish(true)}
-          >
-            {request.action}
-          </button>
-        </footer>
+        <p className="bc-confirm-message">{request.message}</p>
       </Modal>
     ),
   };
