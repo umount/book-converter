@@ -6,8 +6,9 @@ P00: completed. Baseline and deterministic fixtures.
 P01: completed. Typed contracts, composition boundary and frontend test harness.
 P02: completed. Versioned repositories, immutable assets and domain result persistence.
 P03: backend lifecycle implemented; reset execution and UI activation remain.
-P04: in_progress. Durable execution is being connected.
-P05–P13: pending; initial source normalization was added for lifecycle tests.
+P04: in_progress. Durable execution and structured provider transport implemented.
+P05: in_progress. Structural translation, context and manual saves implemented.
+P06–P13: pending; typed frontend API methods prepared.
 
 ## Baseline (2026-09-23)
 
@@ -43,8 +44,8 @@ P05–P13: pending; initial source normalization was added for lifecycle tests.
 
 ## Next executable step
 
-Continue P04 durable execution and structured AI transport, then connect the P05
-book pipeline. Run combined regression before the next large milestone.
+Continue P05 editing/reference/export and independent metadata/glossary jobs, then
+P06 workspace integration. Close remaining P04 acceptance items before cutover.
 Plan snapshot committed as a45d990. Baseline formatting drift is recorded, not hidden.
 
 ## Evidence rules
@@ -151,3 +152,29 @@ fallback. Keep commits scoped; push only on user request.
   The subsequently added reset test is included in the next combined regression.
 - Commands are registered, but the old UI still uses its old command set until P06.
   RAR/folder ingestion and EXIF normalization remain P08 work, not claimed here.
+
+## P04 runner and P05 translation/context boundary (2026-09-24)
+
+- Added a shared HTTP provider with structured/text/vision/tool request shapes,
+  bounded transport retries and response sizes, credential-free profile snapshots,
+  and a global two-request limit. Wire reference: https://api-docs.deepseek.com/api/create-chat-completion/.
+  No paid API request was made. Streaming and role-specific credential stores remain.
+- Durable execution persists each domain result and successful step atomically.
+  Cancellation drops pending requests; fingerprints and repository revisions reject
+  late results. Resume skips matching successful steps. Startup marks running work
+  interrupted without automatically repeating requests. Completion checks all expected
+  stages, including jobs with no persisted steps.
+- Structural book translation chunks Unicode text deterministically, validates exact
+  segment IDs, repairs only missing/duplicate segments within a finite budget, and
+  runs context generation independently. Images never enter the text protocol.
+- Added run admission/cancellation, book/job IPC, translated chapter reads and
+  revision-checked manual saves. Manual edits publish a new snapshot and preserve
+  historical translations. Typed frontend API methods are ready for P06 integration.
+- Evidence: 281 Rust library tests, strict all-target Clippy, contract generation,
+  npm test and npm run build passed. Tests include fixture translation with repeated
+  images, partial output repair, cancellation, late results, resume after context
+  failure and stale manual-editor rejection. A SQL table typo in the new test was
+  corrected before the final successful run.
+- P04/P05 are not declared complete: streaming/role configuration and broader job
+  acceptance remain; P05 metadata/glossary jobs, reference/edit tools and structured
+  exports remain. The legacy UI/handlers are still present; reset was not executed.

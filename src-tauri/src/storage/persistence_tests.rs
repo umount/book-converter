@@ -277,10 +277,14 @@ fn run_recovery_keeps_successful_steps_and_excludes_concurrent_mutators() {
         glossary_revision: rev(0),
         selected_ids: vec!["chapter".into()],
         prompt_version: "v1".into(),
+        stages: vec!["translation".into()],
+        provider: None,
+        instructions: None,
     };
     runs::create_run(&mut db, "run", "book_translation", &snapshot, "now").unwrap();
     assert!(runs::create_run(&mut db, "other", "book_translation", &snapshot, "now").is_err());
     runs::transition(&mut db, "run", &rev(0), JobState::Running, None, "now").unwrap();
+    assert!(runs::transition(&mut db, "run", &rev(1), JobState::Succeeded, None, "now").is_err());
     let step = runs::StepAttempt {
         id: "step".into(),
         run_id: "run".into(),
@@ -305,8 +309,8 @@ fn run_recovery_keeps_successful_steps_and_excludes_concurrent_mutators() {
             .unwrap(),
         "succeeded"
     );
-    runs::transition(&mut db, "run", &rev(2), JobState::Queued, None, "resume").unwrap();
-    runs::transition(&mut db, "run", &rev(3), JobState::Running, None, "resume").unwrap();
+    runs::transition(&mut db, "run", &rev(3), JobState::Queued, None, "resume").unwrap();
+    runs::transition(&mut db, "run", &rev(4), JobState::Running, None, "resume").unwrap();
     assert!(runs::begin_step(
         &mut db,
         &runs::StepAttempt {
@@ -316,7 +320,7 @@ fn run_recovery_keeps_successful_steps_and_excludes_concurrent_mutators() {
         }
     )
     .is_err());
-    runs::transition(&mut db, "run", &rev(4), JobState::Succeeded, None, "done").unwrap();
+    runs::transition(&mut db, "run", &rev(5), JobState::Succeeded, None, "done").unwrap();
 }
 
 #[test]
@@ -352,5 +356,33 @@ fn reference_replacement_rolls_back_and_history_is_ordered() {
             .map(|m| m.id.as_str())
             .collect::<Vec<_>>(),
         vec!["2", "3"]
+    );
+}
+
+#[test]
+fn manual_translation_edit_publishes_snapshot_and_rejects_stale_editor() {
+    let mut db = book();
+    let first = results::save_translation(&mut db, &translation()).unwrap();
+    let edited =
+        results::edit_translation_block(&mut db, "translation", "text", &first, "Edited").unwrap();
+    assert_ne!(first, edited);
+    assert!(
+        results::edit_translation_block(&mut db, "translation", "text", &first, "Lost update")
+            .is_err()
+    );
+    let view = super::repository::ProjectRepository::new(&mut db, ProjectKind::Book)
+        .unwrap()
+        .chapter("chapter")
+        .unwrap();
+    assert_eq!(view.blocks[0].translated_text.as_deref(), Some("Edited"));
+    assert_eq!(view.translation.unwrap().revision, edited);
+    assert_eq!(
+        db.query_row(
+            "SELECT translated_text FROM book_translation_blocks WHERE translation_id='translation'",
+            [],
+            |r| r.get::<_, String>(0)
+        )
+        .unwrap(),
+        "Translated"
     );
 }

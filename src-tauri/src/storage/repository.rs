@@ -2,7 +2,7 @@
 use crate::app::contracts::{
     AppError, BookBlockContent, BookBlockView, ErrorCode, ProjectKind, Revision,
 };
-use crate::app::requests::{BookChapterView, ChapterSummary, PageSummary};
+use crate::app::requests::{BookChapterView, ChapterSummary, PageSummary, TranslationSummary};
 use rusqlite::{params, Connection, OptionalExtension};
 
 pub(super) fn failure(code: ErrorCode, key: &str) -> AppError {
@@ -14,7 +14,7 @@ pub(super) fn failure(code: ErrorCode, key: &str) -> AppError {
     }
 }
 
-pub(super) fn storage_error(_: rusqlite::Error) -> AppError {
+pub(crate) fn storage_error(_: rusqlite::Error) -> AppError {
     failure(ErrorCode::Storage, "errors.storage")
 }
 
@@ -121,6 +121,18 @@ impl<'a> ProjectRepository<'a> {
             .optional()
             .map_err(storage_error)?
             .ok_or_else(not_found)?;
+        let translation=tx.query_row("SELECT id,revision,translated_title,status FROM book_translations WHERE chapter_id=?1 AND target_language=(SELECT target_language FROM project_settings WHERE singleton=1) ORDER BY revision DESC LIMIT 1",[id],|r|Ok(TranslationSummary{id:r.get(0)?,revision:Revision(r.get::<_,i64>(1)?.to_string()),title:r.get(2)?,status:r.get(3)?})).optional().map_err(storage_error)?;
+        let translated: std::collections::HashMap<String, String> = if let Some(translation) =
+            &translation
+        {
+            let mut query=tx.prepare("SELECT source_block_id,translated_text FROM book_translation_blocks WHERE translation_id=?1").map_err(storage_error)?;
+            let rows = query
+                .query_map([&translation.id], |r| Ok((r.get(0)?, r.get(1)?)))
+                .map_err(storage_error)?;
+            rows.collect::<Result<_, _>>().map_err(storage_error)?
+        } else {
+            Default::default()
+        };
         let blocks = {
             let mut query = tx.prepare("SELECT id,position,kind,text,asset_id,alt,revision FROM book_source_blocks WHERE chapter_id=?1 ORDER BY position").map_err(storage_error)?;
             let rows = query
@@ -141,14 +153,18 @@ impl<'a> ProjectRepository<'a> {
                         position: r.get(1)?,
                         revision: Revision(r.get::<_, i64>(6)?.to_string()),
                         content,
-                        translated_text: None,
+                        translated_text: translated.get(&r.get::<_, String>(0)?).cloned(),
                     })
                 })
                 .map_err(storage_error)?;
             rows.collect::<Result<Vec<_>, _>>().map_err(storage_error)?
         };
         tx.commit().map_err(storage_error)?;
-        Ok(BookChapterView { chapter, blocks })
+        Ok(BookChapterView {
+            chapter,
+            blocks,
+            translation,
+        })
     }
 
     pub fn update_book_text(

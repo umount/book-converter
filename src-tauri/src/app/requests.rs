@@ -391,6 +391,7 @@ pub struct ChapterPage {
 pub struct BookChapterView {
     pub chapter: ChapterSummary,
     pub blocks: Vec<BookBlockView>,
+    pub translation: Option<TranslationSummary>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
@@ -463,9 +464,41 @@ pub enum DomainProgress {
     },
 }
 
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+pub struct TranslationSummary {
+    pub id: String,
+    pub revision: Revision,
+    pub title: String,
+    pub status: String,
+}
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+pub struct JobView {
+    pub job: JobRef,
+    pub kind: String,
+    pub state: JobState,
+    pub revision: Revision,
+    pub total_steps: u32,
+    pub completed_steps: u32,
+    pub error: Option<AppError>,
+}
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct UpdateTranslationBlockArgs {
+    pub project_id: ProjectId,
+    pub translation_id: String,
+    pub block_id: BlockId,
+    pub text: String,
+    pub expected_revision: Revision,
+}
+
 pub fn typescript() -> String {
     let config = ts_rs::Config::default();
     let declarations = [
+        TranslationSummary::decl(&config),
+        JobView::decl(&config),
+        UpdateTranslationBlockArgs::decl(&config),
         GlossaryListArgs::decl(&config),
         GlossaryPutArgs::decl(&config),
         GlossaryDeleteArgs::decl(&config),

@@ -7,7 +7,9 @@
 //! Architecture and design: see `docs/ARCHITECTURE.md` and `docs/DECISIONS.md`.
 //! The modules below are UI-agnostic; the frontend calls them via `commands`.
 
+pub mod ai;
 pub mod app;
+pub mod application;
 pub mod project;
 pub mod assets;
 mod assistant;
@@ -59,6 +61,9 @@ pub fn run() {
             // app's resource dir (packaged builds) or next to the executable (raw
             // `cargo`/`target/release` runs). Falls back to env / system pdfium.
             use tauri::Manager;
+            let context = app.state::<app::services::AppContext>();
+            application::runtime::recover_interrupted(&context.manager)
+                .map_err(|error| std::io::Error::other(format!("Job recovery failed: {error:?}")))?;
             let name = pdfium_render::prelude::Pdfium::pdfium_platform_library_name_at_path;
             let mut dirs: Vec<std::path::PathBuf> = Vec::new();
             if let Ok(d) = app.path().resource_dir() {
@@ -78,6 +83,15 @@ pub fn run() {
         .manage(std::sync::Arc::new(assistant::AssistantRuntime::new()))
         .invoke_handler(tauri::generate_handler![
             commands::project_inspect_manifest,
+            commands::book_get_chapter,
+            commands::book_list_chapters,
+            commands::book_start_translation,
+            commands::job_cancel,
+            commands::job_resume,
+            commands::job_get,
+            commands::job_list,
+            commands::book_update_translation_block,
+
             commands::project_list,
             commands::project_inspect_source,
             commands::project_create,

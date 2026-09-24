@@ -7,6 +7,7 @@
 //! the UI via `progress` / `done` / `job_error` events.
 
 mod assistant;
+mod book_v1;
 mod export_cmd;
 mod glossary;
 pub(crate) mod ops;
@@ -23,6 +24,7 @@ pub use crate::session::AppState;
 // function; wildcard re-exports intentionally carry those symbols to the flat
 // namespace consumed by `generate_handler!`.
 pub use assistant::*;
+pub use book_v1::*;
 pub use export_cmd::*;
 pub use glossary::*;
 pub use project::*;

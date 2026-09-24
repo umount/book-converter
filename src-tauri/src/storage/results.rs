@@ -36,11 +36,20 @@ pub fn save_translation(
     db: &mut Connection,
     value: &BookTranslation,
 ) -> Result<Revision, AppError> {
+    let tx = db.transaction().map_err(storage_error)?;
+    let revision = save_translation_in(&tx, value)?;
+    tx.commit().map_err(storage_error)?;
+    Ok(revision)
+}
+
+pub fn save_translation_in(
+    tx: &rusqlite::Transaction<'_>,
+    value: &BookTranslation,
+) -> Result<Revision, AppError> {
     if value.id.is_empty() || value.provenance.is_empty() || value.context_fingerprint.is_empty() {
         return Err(AppError::invalid("translation"));
     }
-    let tx = db.transaction().map_err(storage_error)?;
-    check_inputs(&tx, &value.inputs)?;
+    check_inputs(tx, &value.inputs)?;
     let source = tx
         .query_row(
             "SELECT revision FROM book_chapters WHERE id=?1",
@@ -53,7 +62,7 @@ pub fn save_translation(
     if source != value.inputs.source.value()? {
         return Err(conflict());
     }
-    let target = settings(&tx)?.choices.target_language;
+    let target = settings(tx)?.choices.target_language;
     let latest: Option<i64>=tx.query_row("SELECT MAX(revision) FROM book_translations WHERE chapter_id=?1 AND target_language=?2",params![value.chapter_id,target],|r|r.get(0)).map_err(storage_error)?;
     if latest
         != value
@@ -81,12 +90,16 @@ pub fn save_translation(
     if ids.is_empty() || supplied != ids || supplied.len() != value.blocks.len() {
         return Err(AppError::invalid("translationBlocks"));
     }
+    tx.execute(
+        "UPDATE book_translations SET status='stale' WHERE chapter_id=?1 AND target_language=?2",
+        rusqlite::params![value.chapter_id, target],
+    )
+    .map_err(storage_error)?;
     tx.execute("INSERT INTO book_translations(id,chapter_id,source_revision,settings_revision,status,provenance,target_language,translated_title,context_fingerprint,glossary_revision,revision) VALUES(?1,?2,?3,?4,'ready',?5,?6,?7,?8,?9,?10)",params![value.id,value.chapter_id,source,value.inputs.settings.value()?,value.provenance,target,value.title,value.context_fingerprint,value.inputs.glossary.value()?,revision]).map_err(storage_error)?;
     for (id, text) in &value.blocks {
         tx.execute("INSERT INTO book_translation_blocks(translation_id,chapter_id,source_block_id,translated_text) VALUES(?1,?2,?3,?4)",params![value.id,value.chapter_id,id,text]).map_err(storage_error)?;
     }
     tx.execute("UPDATE book_translations SET status='needs_review' WHERE status='ready' AND chapter_id IN (SELECT id FROM book_chapters WHERE position > (SELECT position FROM book_chapters WHERE id=?1))",[&value.chapter_id]).map_err(storage_error)?;
-    tx.commit().map_err(storage_error)?;
     Ok(Revision(revision.to_string()))
 }
 
@@ -126,6 +139,16 @@ pub struct MangaResult {
 }
 
 pub fn save_manga_result(db: &mut Connection, value: &MangaResult) -> Result<Revision, AppError> {
+    let tx = db.transaction().map_err(storage_error)?;
+    let revision = save_manga_result_in(&tx, value)?;
+    tx.commit().map_err(storage_error)?;
+    Ok(revision)
+}
+
+pub fn save_manga_result_in(
+    tx: &rusqlite::Transaction<'_>,
+    value: &MangaResult,
+) -> Result<Revision, AppError> {
     if value.id.is_empty() || value.fingerprint.is_empty() || value.provider_version.is_empty() {
         return Err(AppError::invalid("result"));
     }
@@ -136,8 +159,7 @@ pub fn save_manga_result(db: &mut Connection, value: &MangaResult) -> Result<Rev
     if needs_image != matches!(&value.output, MangaOutput::Image(_)) {
         return Err(AppError::invalid("stageOutput"));
     }
-    let tx = db.transaction().map_err(storage_error)?;
-    check_inputs(&tx, &value.inputs)?;
+    check_inputs(tx, &value.inputs)?;
     let source = tx
         .query_row(
             "SELECT revision FROM manga_pages WHERE id=?1",
@@ -184,6 +206,12 @@ pub fn save_manga_result(db: &mut Connection, value: &MangaResult) -> Result<Rev
             )
         }
     };
+    if let Some(asset_id) = &asset {
+        let valid:i64=tx.query_row("SELECT COUNT(*) FROM assets JOIN manga_pages ON assets.width=manga_pages.width AND assets.height=manga_pages.height WHERE assets.id=?1 AND manga_pages.id=?2",params![asset_id,value.page_id],|r|r.get(0)).map_err(storage_error)?;
+        if valid != 1 {
+            return Err(AppError::invalid("resultDimensions"));
+        }
+    }
     let affected: &[&str] = match value.stage {
         MangaStage::Detection => &[
             "detection",
@@ -212,6 +240,52 @@ pub fn save_manga_result(db: &mut Connection, value: &MangaResult) -> Result<Rev
         [&value.id],
     )
     .map_err(storage_error)?;
-    tx.commit().map_err(storage_error)?;
     Ok(Revision(revision.to_string()))
+}
+
+/// Manual editing publishes a new chapter translation revision, preserving historical contexts.
+pub fn edit_translation_block(
+    db: &mut Connection,
+    id: &str,
+    block: &str,
+    expected: &Revision,
+    text: &str,
+) -> Result<Revision, AppError> {
+    let tx = db.transaction().map_err(storage_error)?;
+    let (chapter,title,source,settings_rev,glossary,revision,context):(String,String,i64,i64,i64,i64,String)=tx.query_row("SELECT chapter_id,translated_title,source_revision,settings_revision,glossary_revision,revision,context_fingerprint FROM book_translations WHERE id=?1",[id],|r|Ok((r.get(0)?,r.get(1)?,r.get(2)?,r.get(3)?,r.get(4)?,r.get(5)?,r.get(6)?))).optional().map_err(storage_error)?.ok_or_else(not_found)?;
+    if revision != expected.value()? {
+        return Err(conflict());
+    }
+    let mut blocks = {
+        let mut query=tx.prepare("SELECT source_block_id,translated_text FROM book_translation_blocks WHERE translation_id=?1").map_err(storage_error)?;
+        let rows = query
+            .query_map([id], |r| {
+                Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?))
+            })
+            .map_err(storage_error)?;
+        rows.collect::<Result<Vec<_>, _>>().map_err(storage_error)?
+    };
+    let Some(target) = blocks.iter_mut().find(|(id, _)| id == block) else {
+        return Err(AppError::invalid("translationBlock"));
+    };
+    target.1 = text.into();
+    let result = save_translation_in(
+        &tx,
+        &BookTranslation {
+            id: uuid::Uuid::new_v4().to_string(),
+            chapter_id: chapter,
+            inputs: InputVersions {
+                source: Revision(source.to_string()),
+                settings: Revision(settings_rev.to_string()),
+                glossary: Revision(glossary.to_string()),
+            },
+            expected_translation: Some(expected.clone()),
+            title,
+            provenance: "manual".into(),
+            context_fingerprint: context,
+            blocks,
+        },
+    )?;
+    tx.commit().map_err(storage_error)?;
+    Ok(result)
 }

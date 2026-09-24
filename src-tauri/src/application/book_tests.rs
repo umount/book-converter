@@ -1,0 +1,203 @@
+use super::book::*;
+use crate::ai::{Completion, ProviderProfile, Usage};
+use crate::{
+    ai::{Provider, Request},
+    app::contracts::AppError,
+};
+use std::sync::Mutex;
+use std::{future::Future, pin::Pin};
+
+struct Fake {
+    profile: ProviderProfile,
+    replies: Mutex<std::collections::VecDeque<String>>,
+    requests: Mutex<Vec<serde_json::Value>>,
+}
+impl Fake {
+    fn new(replies: Vec<&str>) -> Self {
+        Self {
+            profile: ProviderProfile {
+                id: "fake".into(),
+                base_url: "https://unused.test".into(),
+                model: "fake".into(),
+                temperature: 0.,
+                max_output_tokens: 1000,
+                timeout_seconds: 1,
+                network_retries: 0,
+            },
+            replies: Mutex::new(replies.into_iter().map(String::from).collect()),
+            requests: Mutex::new(vec![]),
+        }
+    }
+}
+impl Provider for Fake {
+    fn profile(&self) -> &ProviderProfile {
+        &self.profile
+    }
+    fn complete(
+        &self,
+        request: Request,
+    ) -> Pin<Box<dyn Future<Output = Result<Completion, AppError>> + Send + '_>> {
+        if let Request::Structured { user, .. } = request {
+            self.requests
+                .lock()
+                .unwrap()
+                .push(serde_json::from_str(&user).unwrap());
+        }
+        Box::pin(async {
+            Ok(Completion {
+                text: self
+                    .replies
+                    .lock()
+                    .unwrap()
+                    .pop_front()
+                    .expect("bounded number of calls"),
+                finish_reason: "stop".into(),
+                usage: Usage::default(),
+                tool_calls: vec![],
+            })
+        })
+    }
+}
+#[test]
+fn unicode_segments_reassemble_without_changing_whitespace() {
+    let text = "日 本語\n🙂 abcdef";
+    let pieces = split_segments("block", text, 3).unwrap();
+    assert_eq!(
+        pieces.iter().map(|s| s.text.as_str()).collect::<String>(),
+        text
+    );
+    assert_eq!(pieces[1].id, "block:1");
+    assert!(pieces.iter().all(|s| s.text.chars().count() <= 3));
+}
+#[tokio::test]
+async fn repairs_only_missing_or_duplicated_ids() {
+    let fake = Fake::new(vec![
+        r#"{"segments":[{"id":"a","text":"A"},{"id":"b","text":"wrong"},{"id":"b","text":"duplicate"}]}"#,
+        r#"{"segments":[{"id":"b","text":"B"},{"id":"c","text":"C"}]}"#,
+    ]);
+    let segments = ["a", "b", "c"].map(|id| Segment {
+        id: id.into(),
+        text: format!("source {id}"),
+    });
+    let output = translate_segments(&fake, "JSON", &segments).await.unwrap();
+    assert_eq!(output.len(), 3);
+    let requests = fake.requests.lock().unwrap();
+    assert_eq!(requests[1]["segments"].as_array().unwrap().len(), 2);
+    assert!(requests[1]["segments"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .all(|s| s["id"] != "a"));
+}
+#[tokio::test]
+async fn unknown_ids_are_rejected_and_malformed_repairs_are_bounded() {
+    let segment = Segment {
+        id: "a".into(),
+        text: "source".into(),
+    };
+    let fake = Fake::new(vec![r#"{"segments":[{"id":"invented","text":"bad"}]}"#]);
+    assert!(
+        translate_segments(&fake, "JSON", std::slice::from_ref(&segment))
+            .await
+            .is_err()
+    );
+    let fake = Fake::new(vec!["bad", "bad", "bad"]);
+    assert!(translate_segments(&fake, "JSON", &[segment]).await.is_err());
+    assert_eq!(fake.requests.lock().unwrap().len(), 3);
+}
+
+struct Echo {
+    profile: ProviderProfile,
+}
+impl Provider for Echo {
+    fn profile(&self) -> &ProviderProfile {
+        &self.profile
+    }
+    fn complete(
+        &self,
+        request: Request,
+    ) -> Pin<Box<dyn Future<Output = Result<Completion, AppError>> + Send + '_>> {
+        Box::pin(async move {
+            let Request::Structured { user, .. } = request else {
+                panic!("structured request expected")
+            };
+            let text = if let Ok(mut payload) = serde_json::from_str::<serde_json::Value>(&user) {
+                for segment in payload["segments"].as_array_mut().unwrap() {
+                    segment["text"] =
+                        format!("Translated {}", segment["text"].as_str().unwrap()).into();
+                }
+                payload.to_string()
+            } else {
+                r#"{"summary":"Continuity notes"}"#.into()
+            };
+            Ok(Completion {
+                text,
+                finish_reason: "stop".into(),
+                usage: Usage::default(),
+                tool_calls: vec![],
+            })
+        })
+    }
+}
+#[tokio::test]
+async fn pipeline_translates_structural_fixture_and_keeps_images_in_place() {
+    use crate::{
+        app::{
+            contracts::ProjectKind,
+            requests::{LanguagePair, ProjectChoices},
+        },
+        jobs::durable,
+        project::lifecycle::ProjectManager,
+        storage::{runs, shared},
+    };
+    use std::sync::{atomic::AtomicBool, Arc};
+    let root = std::env::temp_dir().join(format!("book-pipeline-{}", uuid::Uuid::new_v4()));
+    let manager = ProjectManager::new(root.clone());
+    let preview = manager
+        .inspect_source(
+            ProjectKind::Book,
+            &std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+                .join("../tests/fixtures/structural.epub"),
+        )
+        .unwrap();
+    let project = manager
+        .create(
+            &preview.import_id.0,
+            &ProjectChoices {
+                name: "Test".into(),
+                languages: LanguagePair {
+                    source: Some("en".into()),
+                    target: "ru".into(),
+                },
+                processing_profile_id: None,
+            },
+        )
+        .unwrap();
+    let profile = Fake::new(vec![]).profile;
+    manager.lease(&project.id).unwrap().with_connection(|db,_|{
+        let selected_ids={let mut query=db.prepare("SELECT id FROM book_chapters WHERE EXISTS(SELECT 1 FROM book_source_blocks WHERE chapter_id=book_chapters.id AND kind IN ('text','caption')) ORDER BY position").unwrap();let rows=query.query_map([],|r|r.get::<_,String>(0)).unwrap();rows.collect::<Result<Vec<_>,_>>().unwrap()};
+        let settings=shared::settings(db)?;
+        runs::create_run(db,"run","book_translation",&runs::RunSnapshot{settings:settings.choices,settings_revision:settings.revision,glossary_revision:shared::glossary_revision(db)?,selected_ids,prompt_version:"book-v1".into(),stages:vec!["translation".into(),"context".into()],provider:Some(profile.clone()),instructions:None},"now")
+    }).unwrap();
+    let pipeline = BookPipeline {
+        provider: Arc::new(Echo { profile }),
+        instructions: None,
+    };
+    durable::execute(
+        &manager,
+        &project.id,
+        "run",
+        &pipeline,
+        Arc::new(AtomicBool::new(false)),
+        |_| {},
+    )
+    .await
+    .unwrap();
+    manager.lease(&project.id).unwrap().with_connection(|db,_|{
+        assert_eq!(db.query_row("SELECT COUNT(*) FROM book_translations",[],|r|r.get::<_,i64>(0)).unwrap(),2);
+        assert_eq!(db.query_row("SELECT COUNT(*) FROM book_contexts",[],|r|r.get::<_,i64>(0)).unwrap(),2);
+        assert_eq!(db.query_row("SELECT COUNT(*) FROM book_source_blocks WHERE kind='image'",[],|r|r.get::<_,i64>(0)).unwrap(),3);
+        assert_eq!(db.query_row("SELECT COUNT(*) FROM book_translation_blocks WHERE translated_text LIKE '%[[img:%'",[],|r|r.get::<_,i64>(0)).unwrap(),0);Ok(())
+    }).unwrap();
+    std::fs::remove_dir_all(root).unwrap();
+}
