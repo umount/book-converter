@@ -6,10 +6,14 @@ import type {
 } from "../../shared/contracts/generated";
 import { errorText, type T } from "../../app/strings";
 export function BookSearch({
+  active,
+  close,
   projectId,
   t,
   open,
 }: {
+  active: boolean;
+  close: () => void;
   projectId: string;
   t: T;
   open: (chapterId: string, blockId: string) => void;
@@ -23,6 +27,10 @@ export function BookSearch({
     [searched, setSearched] = useState(false),
     [error, setError] = useState<unknown>(null);
   const alive = useRef(true);
+  const input = useRef<HTMLInputElement>(null);
+  useEffect(() => {
+    if (active) input.current?.focus();
+  }, [active]);
   useEffect(() => {
     alive.current = true;
     return () => {
@@ -61,8 +69,24 @@ export function BookSearch({
     }
   }
   return (
-    <section className="bc-tool">
-      <h2>{t("bookSearch")}</h2>
+    <section
+      className="bc-book-search"
+      hidden={!active}
+      onKeyDown={(e) => {
+        if (e.key === "Escape") close();
+      }}
+    >
+      <header>
+        <strong>{t("bookSearch")}</strong>
+        <button
+          className="bc-icon-button"
+          aria-label={t("close")}
+          title={t("close")}
+          onClick={close}
+        >
+          ×
+        </button>
+      </header>
       <form
         className="bc-search-form"
         onSubmit={(e) => {
@@ -71,9 +95,10 @@ export function BookSearch({
         }}
       >
         <label>
-          {t("searchText")}
+          <span className="bc-sr-only">{t("searchText")}</span>
           <input
-            autoFocus
+            ref={input}
+            placeholder={t("searchText")}
             disabled={busy}
             value={query}
             onChange={(e) => {

@@ -75,9 +75,9 @@ function Shell({
     [library, setLibrary] = useState(true),
     [create, setCreate] = useState(false),
     [settings, setSettings] = useState(false);
-  const [panel, setPanel] = useState<
-      "reader" | "glossary" | "bookSearch" | BookTool
-    >("reader"),
+  const [panel, setPanel] = useState<"reader" | "glossary" | BookTool>(
+      "reader",
+    ),
     [filter, setFilter] = useState(""),
     [showJobs, setShowJobs] = useState(false),
     [force, setForce] = useState(false),
@@ -112,6 +112,7 @@ function Shell({
   const [palette, setPalette] = useState(false);
   const lock = useRef(false);
   const toolFlush = useRef<(() => Promise<void>) | null>(null);
+  const [showSearch, setShowSearch] = useState(false);
   const [toolsVersion, setToolsVersion] = useState(0);
   const [showAssistant, setShowAssistant] = useState(
     () => window.innerWidth > 1000,
@@ -229,6 +230,15 @@ function Shell({
         if (["s", "k"].includes(e.key.toLowerCase())) e.preventDefault();
         return;
       }
+      if (
+        e.key.toLowerCase() === "f" &&
+        !library &&
+        state.project?.kind === "book"
+      ) {
+        e.preventDefault();
+        setShowSearch(true);
+        requestAnimationFrame(() => document.querySelector<HTMLInputElement>(".bc-book-search input")?.focus());
+      }
       if (e.key.toLowerCase() === "s") {
         e.preventDefault();
         void act(async () => {}).catch(setError);
@@ -329,7 +339,6 @@ function Shell({
           "overview",
           "glossary",
           "reference",
-          "bookSearch",
           "replace",
           "instructions",
           "export",
@@ -485,95 +494,122 @@ function Shell({
         <div className="bc-workspace">
           {project?.kind === "book" && (
             <aside className="bc-sidebar">
-              <h2>{project.name}</h2>
+              <div className="bc-sidebar-heading">
+                <h2>{project.name}</h2>
+                <button
+                  className="bc-icon-button"
+                  aria-label={t("bookSearch")}
+                  title={`${t("bookSearch")} (Ctrl+F)`}
+                  aria-pressed={showSearch}
+                  onClick={() => setShowSearch((v) => !v)}
+                >
+                  <ToolbarIcon name="search" />
+                </button>
+              </div>
               <p className="bc-hint">
                 {state.settings &&
                   `${languageName(state.settings.languages.source ?? "und", lang)} → ${languageName(state.settings.languages.target, lang)}`}
               </p>
-              <details className="bc-chapter-filters" key={project.id}>
-                <summary title={t("chapterFilter")}>
-                  <span>
-                    {t("chapters")} ·{" "}
-                    {filter || chapterState !== "all"
-                      ? `${visibleChapters.length} / ${state.chapters.length} ●`
-                      : state.chapters.length}
-                  </span>
-                  <svg
-                    aria-hidden="true"
-                    width="16"
-                    height="16"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="1.6"
-                  >
-                    <path d="M4 5h16M7 12h10M10 19h4" />
-                  </svg>
-                </summary>
-                <label className="bc-chapter-search">
-                  <span className="bc-sr-only">{t("chapterFilter")}</span>
-                  <input
-                    aria-label={t("chapterFilter")}
-                    placeholder={t("chapterFilter")}
-                    value={filter}
-                    onChange={(e) => setFilter(e.target.value)}
-                  />
-                </label>
-                <label className="bc-chapter-search">
-                  {t("chapterStatusFilter")}
-                  <select
-                    value={chapterState}
-                    onChange={(e) => setChapterState(e.target.value)}
-                  >
-                    <option value="all">{t("allChapters")}</option>
-                    <option value="pending">{t("chapterPending")}</option>
-                    <option value="failed">{t("chapterFailed")}</option>
-                    <option value="review">{t("review")}</option>
-                    <option value="done">{t("chapterDone")}</option>
-                    <option value="reference">{t("originReference")}</option>
-                  </select>
-                </label>
-              </details>
-              <VirtualList
-                key={`${project.id}/${filter}/${chapterState}`}
-                items={visibleChapters}
-                rowHeight={62}
-                className="bc-chapters"
-                renderRow={(c) => (
-                  <button
-                    key={c.id}
-                    disabled={busy}
-                    aria-current={
-                      editor?.snapshot().view.chapter.id === c.id
-                        ? "page"
-                        : undefined
-                    }
-                    onClick={() =>
-                      void act(() => workspace.selectChapter(c.id))
-                    }
-                  >
-                    <span>{c.position + 1}</span>
-                    <strong>{c.title}</strong>
-                    <small>
-                      {t(
-                        c.status === "failed"
-                          ? "chapterFailed"
-                          : c.status === "in_progress"
-                            ? "chapterInProgress"
-                            : c.status === "done"
-                              ? "chapterDone"
-                              : c.status === "skipped"
-                                ? "chapterSkipped"
-                                : "chapterPending",
-                      )}
-                      {c.origin
-                        ? ` · ${t(c.origin === "reference" ? "originReference" : c.origin === "manual" ? "originManual" : "originModel")}`
-                        : ""}
-                      {c.needsReview ? ` · ${t("review")}` : ""}
-                    </small>
-                  </button>
-                )}
+              <BookSearch
+                key={project.id}
+                projectId={project.id}
+                t={t}
+                active={showSearch}
+                close={() => setShowSearch(false)}
+                open={(chapter, block) =>
+                  void act(async () => {
+                    setFocusBlock(block);
+                    await workspace.selectChapter(chapter);
+                    setPanel("reader");
+                  })
+                }
               />
+              <div className="bc-chapter-navigation" hidden={showSearch}>
+                <details className="bc-chapter-filters" key={project.id}>
+                  <summary title={t("chapterFilter")}>
+                    <span>
+                      {t("chapters")} ·{" "}
+                      {filter || chapterState !== "all"
+                        ? `${visibleChapters.length} / ${state.chapters.length} ●`
+                        : state.chapters.length}
+                    </span>
+                    <svg
+                      aria-hidden="true"
+                      width="16"
+                      height="16"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="1.6"
+                    >
+                      <path d="M4 5h16M7 12h10M10 19h4" />
+                    </svg>
+                  </summary>
+                  <label className="bc-chapter-search">
+                    <span className="bc-sr-only">{t("chapterFilter")}</span>
+                    <input
+                      aria-label={t("chapterFilter")}
+                      placeholder={t("chapterFilter")}
+                      value={filter}
+                      onChange={(e) => setFilter(e.target.value)}
+                    />
+                  </label>
+                  <label className="bc-chapter-search">
+                    {t("chapterStatusFilter")}
+                    <select
+                      value={chapterState}
+                      onChange={(e) => setChapterState(e.target.value)}
+                    >
+                      <option value="all">{t("allChapters")}</option>
+                      <option value="pending">{t("chapterPending")}</option>
+                      <option value="failed">{t("chapterFailed")}</option>
+                      <option value="review">{t("review")}</option>
+                      <option value="done">{t("chapterDone")}</option>
+                      <option value="reference">{t("originReference")}</option>
+                    </select>
+                  </label>
+                </details>
+                <VirtualList
+                  key={`${project.id}/${filter}/${chapterState}`}
+                  items={visibleChapters}
+                  rowHeight={62}
+                  className="bc-chapters"
+                  renderRow={(c) => (
+                    <button
+                      key={c.id}
+                      disabled={busy}
+                      aria-current={
+                        editor?.snapshot().view.chapter.id === c.id
+                          ? "page"
+                          : undefined
+                      }
+                      onClick={() =>
+                        void act(() => workspace.selectChapter(c.id))
+                      }
+                    >
+                      <span>{c.position + 1}</span>
+                      <strong>{c.title}</strong>
+                      <small>
+                        {t(
+                          c.status === "failed"
+                            ? "chapterFailed"
+                            : c.status === "in_progress"
+                              ? "chapterInProgress"
+                              : c.status === "done"
+                                ? "chapterDone"
+                                : c.status === "skipped"
+                                  ? "chapterSkipped"
+                                  : "chapterPending",
+                        )}
+                        {c.origin
+                          ? ` · ${t(c.origin === "reference" ? "originReference" : c.origin === "manual" ? "originManual" : "originModel")}`
+                          : ""}
+                        {c.needsReview ? ` · ${t("review")}` : ""}
+                      </small>
+                    </button>
+                  )}
+                />
+              </div>
             </aside>
           )}
           <main className="bc-main">
@@ -646,19 +682,6 @@ function Shell({
                       t={t}
                     />
                   )
-                ) : panel === "bookSearch" ? (
-                  <BookSearch
-                    key={project.id}
-                    projectId={project.id}
-                    t={t}
-                    open={(chapter, block) =>
-                      void act(async () => {
-                        setFocusBlock(block);
-                        await workspace.selectChapter(chapter);
-                        setPanel("reader");
-                      })
-                    }
-                  />
                 ) : panel === "reader" ? (
                   editor ? (
                     <BookReader

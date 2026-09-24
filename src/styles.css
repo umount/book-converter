@@ -1194,3 +1194,75 @@ button + button {
   border-radius: 50%;
   background: var(--accent);
 }
+
+.bc-sidebar-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 0 12px 8px 18px;
+}
+.bc-sidebar-heading h2 {
+  font-size: 15px;
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.bc-chapter-navigation {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+}
+.bc-chapter-navigation[hidden],
+.bc-book-search[hidden] {
+  display: none;
+}
+.bc-book-search {
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  padding: 0 12px 12px;
+  gap: 8px;
+}
+.bc-book-search header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 12px;
+}
+.bc-book-search .bc-search-form {
+  gap: 8px;
+  font-size: 12px;
+}
+.bc-book-search .bc-search-results {
+  display: block;
+  overflow: auto;
+  flex: 1;
+  min-height: 0;
+}
+.bc-book-search .bc-search-results button {
+  width: 100%;
+  margin: 0;
+  padding: 8px;
+  gap: 4px;
+  border: 0;
+  border-bottom: 1px solid var(--line);
+  border-radius: 0;
+  white-space: normal;
+  background: transparent;
+}
+.bc-book-search .bc-search-results button:hover {
+  background: #2b2b31;
+}
+.bc-book-search .bc-search-results span {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.bc-book-search .bc-search-results span {
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}

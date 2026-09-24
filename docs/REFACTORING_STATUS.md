@@ -718,3 +718,13 @@ fallback. Keep commits scoped; push only on user request.
   labels, icon title translation action, 38px application bar, reduced tab padding,
   collapsed reader options, and compact job rows. Shared toolbar icons include
   accessible names and tooltips. Frontend tests/build and whitespace check passed.
+
+### P06 book search as a sidebar tool
+
+- Removed the dedicated book-search tab. A search icon beside the book name and
+  Ctrl/Cmd+F open search in the left sidebar while keeping the reader visible.
+- Results navigate to a chapter/block without closing the search. Closing/Escape
+  restores chapter navigation; query/results remain mounted until project changes.
+  Result snippets are limited visually to three lines in the compact sidebar.
+- Browser fixture check: keyboard opening, Enter search, cross-chapter result
+  navigation and highlighted block. Frontend tests/build and whitespace check pass.

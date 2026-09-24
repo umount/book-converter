@@ -1,9 +1,10 @@
 export function ToolbarIcon({
   name,
 }: {
-  name: "add" | "assistant" | "jobs" | "settings";
+  name: "add" | "assistant" | "jobs" | "settings" | "search";
 }) {
   const paths = {
+    search: "M21 21l-5-5M18 10a8 8 0 1 1-16 0 8 8 0 0 1 16 0Z",
     add: "M12 5v14M5 12h14",
     assistant:
       "M5 4h14a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H9l-6 3V6a2 2 0 0 1 2-2ZM7 9h10M7 13h6",
