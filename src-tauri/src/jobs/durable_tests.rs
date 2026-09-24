@@ -292,3 +292,73 @@ async fn cancellation_drops_pending_request_and_records_terminal_state() {
         })
         .unwrap();
 }
+
+#[tokio::test]
+async fn a_pending_project_does_not_block_another_and_deletion_drains_it() {
+    let pending = Arc::new(Fixture::new(vec!["translation".into()]));
+    let other = Fixture::new(vec!["translation".into()]);
+    let started = Arc::new(tokio::sync::Notify::new());
+    let signal = started.clone();
+    let task_fixture = pending.clone();
+    let task = tokio::spawn(async move {
+        execute(
+            &task_fixture.manager,
+            &task_fixture.id,
+            "run",
+            &Slow,
+            Arc::new(AtomicBool::new(false)),
+            |event| {
+                if matches!(
+                    event.event,
+                    crate::app::contracts::EventPayload::JobUpdated {
+                        state: JobState::Running
+                    }
+                ) {
+                    signal.notify_one();
+                }
+            },
+        )
+        .await
+    });
+    tokio::time::timeout(Duration::from_secs(3), started.notified())
+        .await
+        .unwrap();
+    let fake = Fake {
+        fail_summary: AtomicBool::new(false),
+        calls: Mutex::new(vec![]),
+        edit_during_request: false,
+    };
+    tokio::time::timeout(
+        Duration::from_secs(3),
+        execute(
+            &other.manager,
+            &other.id,
+            "run",
+            &fake,
+            Arc::new(AtomicBool::new(false)),
+            |_| {},
+        ),
+    )
+    .await
+    .unwrap()
+    .unwrap();
+    let deleting = pending.clone();
+    tokio::time::timeout(
+        Duration::from_secs(3),
+        tokio::task::spawn_blocking(move || deleting.manager.delete(&deleting.id)),
+    )
+    .await
+    .unwrap()
+    .unwrap()
+    .unwrap();
+    assert_eq!(
+        task.await.unwrap().unwrap_err().code,
+        ErrorCode::JobCancelled
+    );
+    assert!(!pending
+        .root
+        .join("projects")
+        .join(pending.id.as_str())
+        .exists());
+    assert!(pending.manager.lease(&pending.id).is_err());
+}

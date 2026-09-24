@@ -73,7 +73,15 @@ pub fn provider_profile(selected: Option<&str>) -> Result<(ProviderProfile, Stri
             network_retries: u32::try_from(config.max_retries.min(5)).unwrap_or(5),
         }
     };
-    Ok((profile, config.api_key))
+    let credential = match selected {
+        Some(id) => {
+            crate::settings::get(&crate::settings::db_path(), &format!("ai_credential:{id}"))
+                .map_err(|_| AppError::invalid("providerCredential"))?
+                .unwrap_or_default()
+        }
+        None => config.api_key,
+    };
+    Ok((profile, credential))
 }
 
 pub fn prepare_book_run(
@@ -126,8 +134,11 @@ pub fn resume_provider(
         .snapshot
         .provider
         .ok_or_else(|| AppError::invalid("providerProfile"))?;
-    // Preserve the saved provider/model/options. Reload only the credential, never languages.
-    let key = crate::config::Config::load().api_key;
+    // A project archive cannot choose a new destination for a locally stored credential.
+    // Keep the saved model/options, but require the endpoint to remain locally configured.
+    let (configured, key) =
+        provider_profile(run.snapshot.settings.book_translation_profile.as_deref())?;
+    validate_credential_destination(&profile, &configured)?;
     let provider = Arc::new(ChatCompletions::new(profile, key)?);
     Ok(super::book::BookPipeline {
         provider,
@@ -162,5 +173,42 @@ pub(crate) struct Reservation {
 impl Drop for Reservation {
     fn drop(&mut self) {
         self.runtime.release(&self.project, &self.job);
+    }
+}
+
+fn validate_credential_destination(
+    saved: &ProviderProfile,
+    configured: &ProviderProfile,
+) -> Result<(), AppError> {
+    if saved.id != configured.id
+        || saved.base_url.trim_end_matches('/') != configured.base_url.trim_end_matches('/')
+    {
+        return Err(AppError::invalid("providerEndpointChanged"));
+    }
+    Ok(())
+}
+
+#[cfg(test)]
+mod credential_tests {
+    use super::*;
+    #[test]
+    fn imported_snapshot_cannot_redirect_a_local_credential() {
+        let configured = ProviderProfile {
+            id: "book".into(),
+            base_url: "https://provider.example/v1".into(),
+            model: "model".into(),
+            temperature: 0.5,
+            max_output_tokens: 100,
+            timeout_seconds: 10,
+            network_retries: 0,
+        };
+        let mut saved = configured.clone();
+        saved.model = "previous-model".into();
+        assert!(validate_credential_destination(&saved, &configured).is_ok());
+        saved.base_url = "https://different.example/v1".into();
+        assert!(validate_credential_destination(&saved, &configured).is_err());
+        saved = configured.clone();
+        saved.id = "other-profile".into();
+        assert!(validate_credential_destination(&saved, &configured).is_err());
     }
 }
