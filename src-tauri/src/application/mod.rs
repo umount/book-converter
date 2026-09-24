@@ -1,5 +1,7 @@
 //! Domain application services shared by commands and assistant tools.
 pub mod book;
+pub mod book_glossary;
+pub mod preferences;
 pub mod book_edit;
 pub mod book_export;
 pub mod book_reference;

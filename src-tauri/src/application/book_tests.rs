@@ -330,3 +330,177 @@ async fn metadata_job_persists_independently_and_becomes_stale_after_source_edit
         .unwrap();
     std::fs::remove_dir_all(root).unwrap();
 }
+
+#[tokio::test]
+async fn glossary_run_resumes_without_repeating_published_chapters_or_overwriting_pins() {
+    use crate::{
+        app::{
+            contracts::{ProjectKind, Revision},
+            requests::{LanguagePair, ProjectChoices},
+        },
+        jobs::durable,
+        project::lifecycle::ProjectManager,
+        storage::{runs, shared},
+    };
+    use std::sync::{
+        atomic::{AtomicBool, AtomicUsize, Ordering},
+        Arc,
+    };
+    let root = std::env::temp_dir().join(format!("glossary-job-{}", uuid::Uuid::new_v4()));
+    let manager = ProjectManager::new(root.clone());
+    let preview = manager
+        .inspect_source(
+            ProjectKind::Book,
+            &std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+                .join("../tests/fixtures/structural.epub"),
+        )
+        .unwrap();
+    let project = manager
+        .create(
+            &preview.import_id.0,
+            &ProjectChoices {
+                name: "Glossary test".into(),
+                languages: LanguagePair {
+                    source: Some("en".into()),
+                    target: "ru".into(),
+                },
+                processing_profile_id: None,
+            },
+        )
+        .unwrap();
+    struct Extractor {
+        profile: ProviderProfile,
+        calls: AtomicUsize,
+    }
+    impl Provider for Extractor {
+        fn profile(&self) -> &ProviderProfile {
+            &self.profile
+        }
+        fn complete(
+            &self,
+            request: Request,
+        ) -> Pin<Box<dyn Future<Output = Result<Completion, AppError>> + Send + '_>> {
+            let call = self.calls.fetch_add(1, Ordering::SeqCst);
+            Box::pin(async move {
+                let Request::Structured { user, .. } = request else {
+                    panic!("structured request expected")
+                };
+                if call == 1 {
+                    return Err(AppError::invalid("testFailure"));
+                }
+                let term = if user.contains("Original") {
+                    assert_eq!(call, 0, "published chapter must not run twice");
+                    "Original"
+                } else {
+                    "Before"
+                };
+                Ok(Completion{text:serde_json::json!({"terms":[{"source":term,"target":"Generated","kind":"term"}]}).to_string(),finish_reason:"stop".into(),usage:Usage::default(),tool_calls:vec![]})
+            })
+        }
+    }
+    let profile = Fake::new(vec![]).profile;
+    manager
+        .lease(&project.id)
+        .unwrap()
+        .with_connection(|db, _| {
+            shared::put_term(
+                db,
+                &shared::GlossaryTerm {
+                    id: "pinned".into(),
+                    source: "Original".into(),
+                    target: "Ручной перевод".into(),
+                    kind: "name".into(),
+                    pinned: true,
+                    frequency: 0,
+                    revision: Revision("0".into()),
+                },
+                None,
+            )?;
+            let selected = {
+                let mut q = db
+                    .prepare(
+                        "SELECT id FROM book_chapters WHERE position IN (0,2) ORDER BY position",
+                    )
+                    .unwrap();
+                let rows = q.query_map([], |r| r.get::<_, String>(0)).unwrap();
+                rows.collect::<Result<Vec<_>, _>>().unwrap()
+            };
+            let settings = shared::settings(db)?;
+            runs::create_run(
+                db,
+                "glossary",
+                "book_glossary",
+                &runs::RunSnapshot {
+                    settings: settings.choices,
+                    settings_revision: settings.revision,
+                    glossary_revision: shared::glossary_revision(db)?,
+                    selected_ids: selected,
+                    prompt_version: "book-glossary-v1".into(),
+                    stages: vec!["glossary".into()],
+                    provider: Some(profile.clone()),
+                    instructions: None,
+                },
+                "now",
+            )
+        })
+        .unwrap();
+    let provider = Arc::new(Extractor {
+        profile,
+        calls: AtomicUsize::new(0),
+    });
+    let pipeline = BookPipeline {
+        provider: provider.clone(),
+        instructions: None,
+    };
+    assert!(durable::execute(
+        &manager,
+        &project.id,
+        "glossary",
+        &pipeline,
+        Arc::new(AtomicBool::new(false)),
+        |_| {}
+    )
+    .await
+    .is_err());
+    durable::execute(
+        &manager,
+        &project.id,
+        "glossary",
+        &pipeline,
+        Arc::new(AtomicBool::new(false)),
+        |_| {},
+    )
+    .await
+    .unwrap();
+    assert_eq!(provider.calls.load(Ordering::SeqCst), 3);
+    manager
+        .lease(&project.id)
+        .unwrap()
+        .with_connection(|db, _| {
+            let terms = shared::glossary(db)?;
+            let pinned = terms.iter().find(|t| t.id == "pinned").unwrap();
+            assert_eq!(pinned.target, "Ручной перевод");
+            assert!(pinned.pinned);
+            assert_eq!(pinned.frequency, 1);
+            assert_eq!(terms.len(), 2);
+            assert_eq!(
+                db.query_row("SELECT COUNT(*) FROM book_glossary_results", [], |r| r
+                    .get::<_, i64>(0))
+                    .unwrap(),
+                2
+            );
+            assert_eq!(
+                db.query_row("SELECT COUNT(*) FROM book_translations", [], |r| r
+                    .get::<_, i64>(0))
+                    .unwrap(),
+                0
+            );
+            assert_eq!(
+                runs::get_run(db, "glossary")?.state,
+                crate::app::contracts::JobState::Succeeded
+            );
+            Ok(())
+        })
+        .unwrap();
+    std::fs::remove_dir_all(root).unwrap();
+}

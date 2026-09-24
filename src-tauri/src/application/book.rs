@@ -138,6 +138,7 @@ pub enum BookOutput {
     Translation(results::BookTranslation),
     Context(results::BookContext),
     Metadata(super::book_metadata::MetadataOutput),
+    Glossary(super::book_glossary::GlossaryOutput),
 }
 
 fn digest(value: &impl Serialize) -> Result<String, AppError> {
@@ -165,6 +166,11 @@ impl StepExecutor for BookPipeline {
         entity: &str,
         stage: &str,
     ) -> Result<String, AppError> {
+        if stage == "glossary" {
+            return lease.with_connection(|db, _| {
+                super::book_glossary::fingerprint(db, entity, run, self.provider.as_ref())
+            });
+        }
         if stage == "metadata" {
             return lease.with_connection(|db, _| {
                 digest(&(
@@ -192,6 +198,11 @@ impl StepExecutor for BookPipeline {
             match stage {
                 "translation" => self.translate(lease, run, entity).await,
                 "context" => self.context(lease, entity).await,
+                "glossary" => {
+                    super::book_glossary::compute(lease, run, entity, self.provider.as_ref())
+                        .await
+                        .map(BookOutput::Glossary)
+                }
                 "metadata" => super::book_metadata::compute(lease, run, self.provider.as_ref())
                     .await
                     .map(BookOutput::Metadata),
@@ -201,6 +212,7 @@ impl StepExecutor for BookPipeline {
     }
     fn persist(&self, tx: &Transaction<'_>, output: BookOutput) -> Result<String, AppError> {
         match output {
+            BookOutput::Glossary(value) => super::book_glossary::persist(tx, value),
             BookOutput::Metadata(value) => super::book_metadata::persist(tx, value),
             BookOutput::Translation(value) => {
                 results::save_translation_in(tx, &value)?;

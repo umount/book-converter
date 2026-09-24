@@ -56,7 +56,7 @@ fn glossary_and_settings_are_atomic_versioned_and_invalidate_results() {
     let mut db = book();
     results::save_translation(&mut db, &translation()).unwrap();
     let mut choices = shared::settings(&db).unwrap().choices;
-    choices.target_language = "en".into();
+    choices.book_translation_profile = Some("other".into());
     assert_eq!(
         shared::update_settings(&mut db, &rev(0), &choices).unwrap(),
         rev(1)
@@ -548,4 +548,173 @@ fn chapter_instructions_are_revision_guarded_and_invalidate_translation() {
     let chapter = repository.chapter("chapter").unwrap();
     assert_eq!(chapter.instructions, "Keep honorifics");
     assert_eq!(chapter.translation.unwrap().status, "needs_review");
+}
+
+#[test]
+fn languages_can_only_be_chosen_when_finalizing_an_import() {
+    let mut db = rusqlite::Connection::open_in_memory().unwrap();
+    db.execute_batch(include_str!("schema.sql")).unwrap();
+    db.execute("INSERT INTO project_settings(singleton,kind,target_language,languages_locked) VALUES(1,'book','und',0)",[]).unwrap();
+    let mut choices = shared::settings(&db).unwrap().choices;
+    choices.source_language = Some("zh".into());
+    choices.target_language = "ru".into();
+    assert_eq!(
+        shared::finalize_import_settings(&mut db, &rev(0), &choices).unwrap(),
+        rev(1)
+    );
+    assert_eq!(
+        shared::finalize_import_settings(&mut db, &rev(1), &choices).unwrap(),
+        rev(1)
+    );
+    let mut changed = choices.clone();
+    changed.target_language = "en".into();
+    assert!(shared::update_settings(&mut db, &rev(1), &changed).is_err());
+    assert!(shared::finalize_import_settings(&mut db, &rev(1), &changed).is_err());
+    assert!(db
+        .execute("UPDATE project_settings SET target_language='en'", [])
+        .is_err());
+    assert!(db
+        .execute("UPDATE project_settings SET source_language='ja'", [])
+        .is_err());
+    assert!(db
+        .execute("UPDATE project_settings SET languages_locked=0", [])
+        .is_err());
+    choices.book_translation_profile = Some("new-model".into());
+    assert_eq!(
+        shared::update_settings(&mut db, &rev(1), &choices).unwrap(),
+        rev(2)
+    );
+    assert_eq!(shared::settings(&db).unwrap().choices, choices);
+    let json = serde_json::json!({"projectId":crate::app::contracts::ProjectId::new(),"expectedRevision":"2","choices":{"languages":{"source":"en","target":"ja"},"bookTranslationProfile":null,"mangaRecognitionProfile":null,"mangaTranslationProfile":null,"assistantProfile":null}});
+    assert!(
+        serde_json::from_value::<crate::app::requests::ProjectSettingsUpdateArgs>(json).is_err()
+    );
+}
+
+#[test]
+fn extracted_glossary_preserves_edits_counts_occurrences_and_rejects_late_publication() {
+    use crate::application::book_glossary::{self, ExtractedTerm, GlossaryOutput};
+    let mut db = book();
+    let pinned = shared::GlossaryTerm {
+        id: "pinned".into(),
+        source: "Source".into(),
+        target: "Manual".into(),
+        kind: "name".into(),
+        pinned: true,
+        frequency: 0,
+        revision: rev(0),
+    };
+    shared::put_term(&mut db, &pinned, None).unwrap();
+    let mut translated = translation();
+    translated.inputs.glossary = rev(1);
+    results::save_translation(&mut db, &translated).unwrap();
+    let output = |id: &str, g: Revision| GlossaryOutput {
+        id: id.into(),
+        chapter: "chapter".into(),
+        source_revision: rev(0),
+        settings_revision: rev(0),
+        glossary_revision: g,
+        terms: vec![
+            (
+                ExtractedTerm {
+                    source: "Source".into(),
+                    target: "AI override".into(),
+                    kind: "term".into(),
+                },
+                2,
+            ),
+            (
+                ExtractedTerm {
+                    source: "New".into(),
+                    target: "Новый".into(),
+                    kind: "term".into(),
+                },
+                1,
+            ),
+        ],
+    };
+    let tx = db.transaction().unwrap();
+    book_glossary::persist(&tx, output("first", rev(1))).unwrap();
+    tx.commit().unwrap();
+    let terms = shared::glossary(&db).unwrap();
+    let term = terms.iter().find(|t| t.id == "pinned").unwrap();
+    assert!(term.pinned);
+    assert_eq!(term.target, "Manual");
+    assert_eq!(term.kind, "name");
+    assert_eq!(term.frequency, 2);
+    assert_eq!(terms.len(), 2);
+    assert_eq!(
+        db.query_row("SELECT status FROM book_translations", [], |r| r
+            .get::<_, String>(0))
+            .unwrap(),
+        "needs_review"
+    );
+    let revision = shared::glossary_revision(&db).unwrap();
+    let tx = db.transaction().unwrap();
+    book_glossary::persist(&tx, output("second", revision.clone())).unwrap();
+    tx.commit().unwrap();
+    assert_eq!(shared::glossary_revision(&db).unwrap(), revision);
+    assert_eq!(count(&db, "book_term_occurrences"), 2);
+    let tx = db.transaction().unwrap();
+    assert_eq!(
+        book_glossary::persist(&tx, output("late", rev(0)))
+            .unwrap_err()
+            .code,
+        ErrorCode::RevisionConflict
+    );
+    drop(tx);
+    assert_eq!(count(&db, "book_glossary_results"), 2);
+}
+
+#[test]
+fn glossary_api_paginates_and_rejects_a_stale_editor() {
+    use crate::{
+        app::{
+            contracts::{ProjectId, TermId},
+            requests::*,
+        },
+        application::preferences,
+    };
+    let mut db = book();
+    let project = ProjectId::new();
+    let mut args = GlossaryPutArgs {
+        project_id: project.clone(),
+        term_id: TermId("a".into()),
+        source: "Alpha".into(),
+        target: "A".into(),
+        kind: "term".into(),
+        pinned: true,
+        expected_revision: None,
+        expected_settings_revision: rev(0),
+    };
+    preferences::put_term(&mut db, &args).unwrap();
+    args.term_id = TermId("b".into());
+    args.source = "Beta".into();
+    preferences::put_term(&mut db, &args).unwrap();
+    let mut list = GlossaryListArgs {
+        project_id: project,
+        cursor: None,
+        limit: 1,
+    };
+    let first = preferences::glossary_page(&mut db, &list).unwrap();
+    assert_eq!(first.items[0].source, "Alpha");
+    list.cursor = first.next_cursor;
+    let second = preferences::glossary_page(&mut db, &list).unwrap();
+    assert_eq!(second.items[0].source, "Beta");
+    assert!(second.next_cursor.is_none());
+    args.expected_revision = Some(rev(0));
+    args.target = "New".into();
+    assert_eq!(preferences::put_term(&mut db, &args).unwrap(), rev(1));
+    assert_eq!(
+        preferences::put_term(&mut db, &args).unwrap_err().code,
+        ErrorCode::RevisionConflict
+    );
+    let mut settings = shared::settings(&db).unwrap().choices;
+    settings.book_translation_profile = Some("changed".into());
+    shared::update_settings(&mut db, &rev(0), &settings).unwrap();
+    args.expected_revision = Some(rev(1));
+    assert_eq!(
+        preferences::put_term(&mut db, &args).unwrap_err().code,
+        ErrorCode::RevisionConflict
+    );
 }

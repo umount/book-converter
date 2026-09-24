@@ -16,6 +16,7 @@ mod project_v1;
 mod reader;
 mod reference;
 mod settings;
+mod shared_v1;
 mod translation;
 mod util;
 
@@ -32,4 +33,5 @@ pub use project_v1::*;
 pub use reader::*;
 pub use reference::*;
 pub use settings::*;
+pub use shared_v1::*;
 pub use translation::*;

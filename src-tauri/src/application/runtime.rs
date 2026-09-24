@@ -122,7 +122,7 @@ pub fn resume_provider(
     let run = manager
         .lease(project)?
         .with_connection(|db, _| runs::get_run(db, job))?;
-    if !["book_translation", "book_metadata"].contains(&run.kind.as_str())
+    if !["book_translation", "book_metadata", "book_glossary"].contains(&run.kind.as_str())
         || !matches!(
             run.state,
             JobState::Queued | JobState::Interrupted | JobState::Failed | JobState::Cancelled
@@ -222,6 +222,29 @@ pub fn prepare_metadata_run(
             project_id: project.clone(),
             job_id,
         })
+    })
+}
+
+pub fn prepare_glossary_run(
+    manager: &ProjectManager,
+    project: &ProjectId,
+    selection: &EntitySelection,
+) -> Result<JobRef, AppError> {
+    let lease = manager.lease(project)?;
+    lease.with_connection(|db,_|{
+        ProjectRepository::new(db,crate::app::contracts::ProjectKind::Book)?;
+        let settings=shared::settings(db)?;
+        let (profile,key)=provider_profile(settings.choices.book_translation_profile.as_deref())?;
+        ChatCompletions::new(profile.clone(),key)?;
+        let ordered={let mut q=db.prepare("SELECT id FROM book_chapters ORDER BY position").map_err(storage_error)?;let rows=q.query_map([],|r|r.get::<_,String>(0)).map_err(storage_error)?;rows.collect::<Result<Vec<_>,_>>().map_err(storage_error)?};
+        let mut selected=Vec::new();
+        for id in selection.resolve(&ordered)? {
+            if db.query_row("SELECT EXISTS(SELECT 1 FROM book_source_blocks WHERE chapter_id=?1 AND kind IN ('text','caption') AND length(trim(text))>0)",[&id],|r|r.get::<_,bool>(0)).map_err(storage_error)?{selected.push(id);}
+        }
+        let snapshot=runs::RunSnapshot{settings:settings.choices,settings_revision:settings.revision,glossary_revision:shared::glossary_revision(db)?,selected_ids:selected,prompt_version:"book-glossary-v1".into(),stages:vec!["glossary".into()],provider:Some(profile),instructions:None};
+        let job_id=uuid::Uuid::new_v4().to_string();
+        runs::create_run(db,&job_id,"book_glossary",&snapshot,&now())?;
+        Ok(JobRef{project_id:project.clone(),job_id})
     })
 }
 

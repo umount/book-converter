@@ -409,3 +409,22 @@ pub async fn book_update_instructions(
     .await
     .map_err(|_| AppError::invalid("task"))?
 }
+
+#[tauri::command]
+pub async fn book_start_glossary(
+    context: State<'_, AppContext>,
+    app: tauri::AppHandle,
+    args: StartBookGlossaryArgs,
+) -> Result<JobRef, AppError> {
+    let manager = context.manager.clone();
+    let job = tauri::async_runtime::spawn_blocking(move || {
+        crate::application::runtime::prepare_glossary_run(
+            &manager,
+            &args.project_id,
+            &args.selection,
+        )
+    })
+    .await
+    .map_err(|_| AppError::invalid("task"))??;
+    dispatch_created(&context, app, job)
+}
