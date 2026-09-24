@@ -416,6 +416,27 @@ export async function invokePreview<T>(
     case "job_get":
       result = jobs.find((v) => v.job.jobId === args.jobId);
       break;
+    case "book_retarget_preview": {
+      const selected = views
+        .filter(
+          (v) =>
+            v.blocks.some((b) => b.translatedText?.includes(args.oldTarget)) ||
+            v.translation?.title.includes(args.oldTarget),
+        )
+        .slice(0, args.maxChapters);
+      result = {
+        chapters: selected.length,
+        fragments: selected.reduce(
+          (sum, v) =>
+            sum +
+            v.blocks.filter((b) => b.translatedText?.includes(args.oldTarget))
+              .length,
+          0,
+        ),
+      };
+      break;
+    }
+    case "book_start_retarget":
     case "book_start_title":
     case "book_start_translation":
     case "book_start_metadata":
@@ -426,9 +447,15 @@ export async function invokePreview<T>(
         kind: command.replace("book_start_", "book_"),
         state: "succeeded",
         revision: "1",
-        totalSteps: 3,
-        remainingSeconds: 120,
-        completedSteps: 3,
+        totalSteps:
+          command === "book_start_retarget"
+            ? Math.min(views.length, args.maxChapters)
+            : 3,
+        remainingSeconds: null,
+        completedSteps:
+          command === "book_start_retarget"
+            ? Math.min(views.length, args.maxChapters)
+            : 3,
         error: null,
       });
       result = job;

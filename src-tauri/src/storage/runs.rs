@@ -8,7 +8,18 @@ use rusqlite::{params, Connection};
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RetargetPlan {
+    pub old_target: String,
+    pub target: String,
+    pub source: String,
+    pub kind: String,
+    pub translations: Vec<(String, String, Revision)>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RunSnapshot {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub retarget: Option<RetargetPlan>,
     pub settings: ProcessingSettings,
     pub settings_revision: Revision,
     pub glossary_revision: Revision,

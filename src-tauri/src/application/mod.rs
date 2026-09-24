@@ -20,3 +20,5 @@ pub mod assistant;
 pub mod profiles;
 
 pub mod book_search;
+
+pub mod book_retarget;

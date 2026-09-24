@@ -758,3 +758,26 @@ fallback. Keep commits scoped; push only on user request.
   semantics) before deleting legacy IPC/runtime paths. Native acceptance and actual
   provider quality remain unverified; the new assistant is not yet full legacy parity.
 - Final full Rust regression passed: 336 tests, zero failures.
+
+### P05 bounded glossary corrections with explicit confirmation
+
+- Editing a book glossary target now opens an optional modal after saving. A local
+  count shows candidate fragments and chapters for the selected batch size. Closing
+  it leaves translations unchanged; only explicit confirmation creates a model job.
+- Added durable `book_retarget` jobs with chapter checkpoints and cancellation/resume.
+  Completed current translation revisions are excluded from subsequent batches for
+  the same term change. Revision guards reject delayed responses after manual edits.
+- A separate correction prompt sends affected translated lines, structural original
+  context, the old/new term and only locally matching glossary entries. Unaffected
+  lines and line endings remain unchanged. Long original blocks use explicit bounded
+  term excerpts; missing context fails safely. Summaries are corrected separately,
+  and previous-chapter tails are regenerated from the resulting body.
+- Corrections publish new translation revisions while retaining origin and existing
+  review/stale state. Candidate counts are fragments, not guaranteed word replacement
+  totals: the model can leave a candidate unchanged when no correction is necessary.
+- Fake-provider regressions cover bilingual payloads, glossary filtering, untouched
+  lines, summaries/tails, bounded selection, resume, malformed output and concurrent
+  manual changes. Browser fixture checks cover saving, counts, cancellation with no
+  job and explicit launch. No paid-provider or native Tauri acceptance performed.
+- The offer is retained while the glossary component stays open; persistent correction
+  history/reopening old offers after navigating away is not part of this slice.

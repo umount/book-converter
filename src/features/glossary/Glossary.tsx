@@ -11,7 +11,11 @@ export function Glossary({
   t,
   extract,
   canExtract,
+  onJob,
 }: {
+  onJob: (
+    job: import("../../shared/contracts/generated").JobRef,
+  ) => Promise<void>;
   projectId: string;
   t: T;
   extract: () => Promise<void>;
@@ -23,6 +27,48 @@ export function Glossary({
     [edit, setEdit] = useState<GlossaryTermView | null>(null);
   const [query, setQuery] = useState(""),
     [pinnedOnly, setPinnedOnly] = useState(false);
+  const [offer, setOffer] = useState<{
+    termId: string;
+    revision: string;
+    oldTarget: string;
+    target: string;
+  } | null>(null);
+  const [showOffer, setShowOffer] = useState(false);
+  const [estimate, setEstimate] = useState<
+    import("../../shared/contracts/generated").BookRetargetPreview | null
+  >(null);
+  const [retargetCount, setRetargetCount] = useState("10");
+  const validCount =
+    /^\d+$/.test(retargetCount) &&
+    Number(retargetCount) > 0 &&
+    Number(retargetCount) <= 4294967295;
+  useEffect(() => {
+    let alive = true;
+    setEstimate(null);
+    if (!offer || !showOffer || !validCount) return;
+    const timer = setTimeout(
+      () =>
+        void projectApi
+          .retargetPreview({
+            projectId,
+            termId: offer.termId,
+            expectedRevision: offer.revision,
+            oldTarget: offer.oldTarget,
+            maxChapters: Number(retargetCount),
+          })
+          .then((value) => {
+            if (alive) setEstimate(value);
+          })
+          .catch((e) => {
+            if (alive) setError(e);
+          }),
+      200,
+    );
+    return () => {
+      alive = false;
+      clearTimeout(timer);
+    };
+  }, [offer, showOffer, retargetCount, validCount, projectId]);
   const [filter, setFilter] = useState({ query: "", pinnedOnly: false });
   async function load(more = false) {
     setBusy(true);
@@ -69,19 +115,37 @@ export function Glossary({
     setBusy(true);
     setError(null);
     try {
-      await projectApi.putTerm({
-        projectId,
-        termId: edit.id,
-        source: edit.source,
-        target: edit.target,
-        kind: edit.kind,
-        pinned: edit.pinned,
-        expectedRevision: page.items.some((v) => v.id === edit.id)
-          ? edit.revision
-          : null,
-        expectedSettingsRevision: page.settingsRevision,
-      });
+      const saved = page.items.find((v) => v.id === edit.id);
+      const unchanged =
+        saved &&
+        saved.source === edit.source &&
+        saved.target === edit.target &&
+        saved.kind === edit.kind &&
+        saved.pinned === edit.pinned;
+      const revision = unchanged
+        ? edit.revision
+        : await projectApi.putTerm({
+            projectId,
+            termId: edit.id,
+            source: edit.source,
+            target: edit.target,
+            kind: edit.kind,
+            pinned: edit.pinned,
+            expectedRevision: page.items.some((v) => v.id === edit.id)
+              ? edit.revision
+              : null,
+            expectedSettingsRevision: page.settingsRevision,
+          });
       setEdit(null);
+      if (canExtract && saved && saved.target !== edit.target) {
+        setOffer({
+          termId: edit.id,
+          revision,
+          oldTarget: saved.target,
+          target: edit.target,
+        });
+        setShowOffer(true);
+      }
       await load();
     } catch (e) {
       setError(e);
@@ -128,6 +192,17 @@ export function Glossary({
           </button>
         </div>
       </header>
+      {offer && (
+        <button
+          disabled={busy}
+          onClick={() => {
+            setError(null);
+            setShowOffer(true);
+          }}
+        >
+          {t("retarget")}: {offer.oldTarget} → {offer.target}
+        </button>
+      )}
       <form
         className="bc-fields"
         onSubmit={(e) => {
@@ -283,6 +358,77 @@ export function Glossary({
               onClick={() => void saveTerm()}
             >
               {t("save")}
+            </button>
+          </footer>
+        </Modal>
+      )}
+      {offer && showOffer && (
+        <Modal
+          title={t("retarget")}
+          closeLabel={t("close")}
+          busy={busy}
+          onClose={() => setShowOffer(false)}
+        >
+          <div className="bc-dialog-body">
+            <p>
+              {offer.oldTarget} → {offer.target}
+            </p>
+            <p className="bc-hint">{t("retargetHint")}</p>
+            <label>
+              {t("batchCount")}
+              <input
+                type="number"
+                min="1"
+                max="4294967295"
+                value={retargetCount}
+                disabled={busy}
+                onChange={(e) => setRetargetCount(e.target.value)}
+              />
+            </label>
+            <p role="status">
+              {estimate
+                ? `${t("chapters")}: ${estimate.chapters} · ${t("retargetFragments")}: ${estimate.fragments}`
+                : validCount
+                  ? t("loading")
+                  : t("batchCount")}
+            </p>
+            {error != null && (
+              <p className="bc-error" role="alert">
+                {errorText(error, t)}
+              </p>
+            )}
+          </div>
+          <footer>
+            <button disabled={busy} onClick={() => setShowOffer(false)}>
+              {t("cancel")}
+            </button>
+            <button
+              className="primary"
+              disabled={busy || !validCount || !estimate?.chapters}
+              onClick={() =>
+                void (async () => {
+                  setBusy(true);
+                  setError(null);
+                  try {
+                    const job = await projectApi.retarget({
+                      projectId,
+                      termId: offer.termId,
+                      expectedRevision: offer.revision,
+                      oldTarget: offer.oldTarget,
+                      maxChapters: Number(retargetCount),
+                    });
+                    await onJob(job);
+                    setShowOffer(false);
+                    setEstimate(null);
+                  } catch (e) {
+                    setError(e);
+                  } finally {
+                    setBusy(false);
+                  }
+                })()
+              }
+            >
+              {t("retarget")}
             </button>
           </footer>
         </Modal>

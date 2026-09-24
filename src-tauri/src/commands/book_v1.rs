@@ -459,3 +459,16 @@ pub async fn book_start_title(context: State<'_,AppContext>, app: tauri::AppHand
     let job=tauri::async_runtime::spawn_blocking(move || crate::application::runtime::prepare_title_run(&manager,&args)).await.map_err(|_|AppError::invalid("task"))??;
     dispatch_created(&context,app,job)
 }
+
+#[tauri::command]
+pub async fn book_start_retarget(context: State<'_, AppContext>, app: tauri::AppHandle, args: StartBookRetargetArgs) -> Result<JobRef, AppError> {
+    let manager=context.manager.clone();
+    let job=tauri::async_runtime::spawn_blocking(move || crate::application::book_retarget::prepare_run(&manager,&args)).await.map_err(|_|AppError::invalid("task"))??;
+    dispatch_created(&context,app,job)
+}
+
+#[tauri::command]
+pub async fn book_retarget_preview(context: State<'_, AppContext>,args: StartBookRetargetArgs) -> Result<BookRetargetPreview,AppError> {
+    let manager=context.manager.clone();
+    tauri::async_runtime::spawn_blocking(move || manager.lease(&args.project_id)?.with_connection(|db,_|crate::application::book_retarget::preview(db,&args))).await.map_err(|_|AppError::invalid("task"))?
+}

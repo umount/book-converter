@@ -101,7 +101,7 @@ pub fn prepare_book_run(
         let (profile, key) =
             provider_profile(settings.choices.book_translation_profile.as_deref())?;
         ChatCompletions::new(profile.clone(), key)?;
-        Ok(runs::RunSnapshot {
+        Ok(runs::RunSnapshot { retarget: None,
             settings: settings.choices,
             settings_revision: settings.revision,
             glossary_revision: shared::glossary_revision(db)?,
@@ -192,7 +192,7 @@ pub fn resume_provider(
     let run = manager
         .lease(project)?
         .with_connection(|db, _| runs::get_run(db, job))?;
-    if !["book_translation", "book_metadata", "book_glossary", "book_title"].contains(&run.kind.as_str())
+    if !["book_translation", "book_metadata", "book_glossary", "book_title", "book_retarget"].contains(&run.kind.as_str())
         || !matches!(
             run.state,
             JobState::Queued | JobState::Interrupted | JobState::Failed | JobState::Cancelled
@@ -276,7 +276,7 @@ pub fn prepare_metadata_run(
                 |r| r.get(0),
             )
             .map_err(storage_error)?;
-        let snapshot = runs::RunSnapshot {
+        let snapshot = runs::RunSnapshot { retarget: None,
             settings: settings.choices,
             settings_revision: settings.revision,
             glossary_revision: shared::glossary_revision(db)?,
@@ -311,7 +311,7 @@ pub fn prepare_glossary_run(
         for id in selection.resolve(&ordered)? {
             if db.query_row("SELECT EXISTS(SELECT 1 FROM book_source_blocks WHERE chapter_id=?1 AND kind IN ('text','caption') AND length(trim(text))>0)",[&id],|r|r.get::<_,bool>(0)).map_err(storage_error)?{selected.push(id);}
         }
-        let snapshot=runs::RunSnapshot{settings:settings.choices,settings_revision:settings.revision,glossary_revision:shared::glossary_revision(db)?,selected_ids:selected,prompt_version:"book-glossary-v1".into(),stages:vec!["glossary".into()],provider:Some(profile),instructions:None};
+        let snapshot=runs::RunSnapshot{retarget:None,settings:settings.choices,settings_revision:settings.revision,glossary_revision:shared::glossary_revision(db)?,selected_ids:selected,prompt_version:"book-glossary-v1".into(),stages:vec!["glossary".into()],provider:Some(profile),instructions:None};
         let job_id=uuid::Uuid::new_v4().to_string();
         runs::create_run(db,&job_id,"book_glossary",&snapshot,&now())?;
         Ok(JobRef{project_id:project.clone(),job_id})
@@ -416,7 +416,7 @@ pub fn prepare_title_run(manager:&ProjectManager,args:&crate::app::requests::Sta
         let settings=shared::settings(db)?;
         let (profile,key)=provider_profile(settings.choices.book_translation_profile.as_deref())?;
         ChatCompletions::new(profile.clone(),key)?;
-        let snapshot=runs::RunSnapshot {
+        let snapshot=runs::RunSnapshot { retarget: None,
             settings:settings.choices,settings_revision:settings.revision,glossary_revision:shared::glossary_revision(db)?,selected_ids:vec![args.chapter_id.0.clone()],prompt_version:"book-title-v1".into(),stages:vec!["title".into()],provider:Some(profile),instructions:Some(super::book_presentation::read(db)?.instructions),
         };
         let job_id=uuid::Uuid::new_v4().to_string();

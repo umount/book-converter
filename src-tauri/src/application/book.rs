@@ -77,19 +77,22 @@ pub async fn translate_segments(
 pub(super) async fn translate_segments_with_glossary(
     provider: &dyn Provider, system: &str, segments: &[Segment], terms: &[shared::GlossaryTerm],
 ) -> Result<HashMap<String,String>,AppError> {
+    transform_segments(provider, segments, |pending| Ok(Request::Structured {
+        system: format!("{system}\nGlossary (respect pinned translations): {}",super::book_terms::payload(terms,&pending.iter().map(|s|s.text.as_str()).collect::<Vec<_>>().join("\n"),false)),
+        user: serde_json::to_string(&serde_json::json!({"segments":pending})).map_err(|_| invalid_output())?,
+    })).await
+}
+
+pub(super) async fn transform_segments(
+    provider: &dyn Provider, segments: &[Segment], request: impl Fn(&[Segment]) -> Result<Request,AppError>,
+) -> Result<HashMap<String,String>,AppError> {
     let mut accepted = HashMap::new();
     let mut pending = segments.to_vec();
     for _ in 0..3 {
         if pending.is_empty() {
             return Ok(accepted);
         }
-        let response = provider
-            .complete(Request::Structured {
-                system: format!("{system}\nGlossary (respect pinned translations): {}",super::book_terms::payload(terms,&pending.iter().map(|s|s.text.as_str()).collect::<Vec<_>>().join("\n"),false)),
-                user: serde_json::to_string(&serde_json::json!({"segments":pending}))
-                    .map_err(|_| invalid_output())?,
-            })
-            .await;
+        let response = provider.complete(request(&pending)?).await;
         let response = match response {
             Ok(response) => response,
             Err(error) if error.code == ErrorCode::InvalidOutput => continue,
@@ -147,6 +150,7 @@ pub struct BookPipeline {
     pub instructions: Option<String>,
 }
 pub enum BookOutput {
+    Retarget(super::book_retarget::RetargetOutput),
     Title {translation_id:String, revision:Revision, title:String, inputs:results::InputVersions},
     Translation(results::BookTranslation),
     Context(results::BookContext),
@@ -188,6 +192,9 @@ impl StepExecutor for BookPipeline {
         entity: &str,
         stage: &str,
     ) -> Result<String, AppError> {
+        if stage == "retarget" {
+            return lease.with_connection(|db, _| super::book_retarget::fingerprint(db, run, entity));
+        }
         if stage == "glossary" {
             return lease.with_connection(|db, _| {
                 super::book_glossary::fingerprint(db, entity, run, self.provider.as_ref())
@@ -218,6 +225,7 @@ impl StepExecutor for BookPipeline {
     ) -> Pin<Box<dyn Future<Output = Result<BookOutput, AppError>> + Send + 'a>> {
         Box::pin(async move {
             match stage {
+                "retarget" => super::book_retarget::compute(lease, run, entity, self.provider.as_ref()).await.map(BookOutput::Retarget),
                 "translation" => self.translate(lease, run, entity).await,
                 "title" => self.translate_title(lease, run, entity).await,
                 "context" => self.context(lease, entity).await,
@@ -274,6 +282,7 @@ impl StepExecutor for BookPipeline {
     }
     fn persist(&self, tx: &Transaction<'_>, output: BookOutput) -> Result<String, AppError> {
         match output {
+            BookOutput::Retarget(value) => super::book_retarget::persist(tx, value),
             BookOutput::Title {translation_id,revision,title,inputs} => results::edit_translation_title_in(tx,&translation_id,&revision,&title,Some(&inputs)).map(|value|value.0),
             BookOutput::Glossary(value) => super::book_glossary::persist(tx, value),
             BookOutput::Metadata(value) => super::book_metadata::persist(tx, value),

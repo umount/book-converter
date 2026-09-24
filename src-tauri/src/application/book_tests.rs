@@ -226,7 +226,7 @@ async fn pipeline_populates_batch_glossary_and_resumes_without_repeating_complet
             db.execute("INSERT INTO book_reference_mappings(chapter_id,reference_id) VALUES(?1,'mapped')",[chapter]).unwrap();
         }
         let settings=shared::settings(db)?;
-        runs::create_run(db,"run","book_translation",&runs::RunSnapshot{settings:settings.choices,settings_revision:settings.revision,glossary_revision:shared::glossary_revision(db)?,selected_ids,prompt_version:"book-v1".into(),stages:vec!["glossary".into(),"translation".into(),"context".into()],provider:Some(profile.clone()),instructions:None},"now")
+        runs::create_run(db,"run","book_translation",&runs::RunSnapshot{retarget:None,settings:settings.choices,settings_revision:settings.revision,glossary_revision:shared::glossary_revision(db)?,selected_ids,prompt_version:"book-v1".into(),stages:vec!["glossary".into(),"translation".into(),"context".into()],provider:Some(profile.clone()),instructions:None},"now")
     }).unwrap();
     let provider = Arc::new(Echo {
         profile,
@@ -359,7 +359,7 @@ async fn metadata_job_persists_independently_and_becomes_stale_after_source_edit
                 db,
                 "metadata",
                 "book_metadata",
-                &runs::RunSnapshot {
+                &runs::RunSnapshot { retarget: None,
                     settings: settings.choices,
                     settings_revision: settings.revision,
                     glossary_revision: shared::glossary_revision(db)?,
@@ -515,7 +515,7 @@ async fn glossary_run_resumes_without_repeating_published_chapters_or_overwritin
                 db,
                 "glossary",
                 "book_glossary",
-                &runs::RunSnapshot {
+                &runs::RunSnapshot { retarget: None,
                     settings: settings.choices,
                     settings_revision: settings.revision,
                     glossary_revision: shared::glossary_revision(db)?,
@@ -637,7 +637,7 @@ async fn title_job_sends_only_title_and_glossary_and_rejects_late_edits() {
     let provider=Arc::new(Fake::new(vec![&reply,&reply]));
     lease.with_connection(|db,_|{
         let settings=shared::settings(db)?;
-        runs::create_run(db,"title-run","book_title",&runs::RunSnapshot{settings:settings.choices,settings_revision:settings.revision,glossary_revision:shared::glossary_revision(db)?,selected_ids:vec![chapter.clone()],prompt_version:"book-title-v1".into(),stages:vec!["title".into()],provider:Some(provider.profile.clone()),instructions:Some("Keep chapter numbers".into())},"now")
+        runs::create_run(db,"title-run","book_title",&runs::RunSnapshot{retarget:None,settings:settings.choices,settings_revision:settings.revision,glossary_revision:shared::glossary_revision(db)?,selected_ids:vec![chapter.clone()],prompt_version:"book-title-v1".into(),stages:vec!["title".into()],provider:Some(provider.profile.clone()),instructions:Some("Keep chapter numbers".into())},"now")
     }).unwrap();
     let pipeline=BookPipeline{provider:provider.clone(),instructions:Some("Keep chapter numbers".into())};
     durable::execute(&manager,&project.id,"title-run",&pipeline,Arc::new(AtomicBool::new(false)),|_|{}).await.unwrap();

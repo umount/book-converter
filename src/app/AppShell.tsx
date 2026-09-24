@@ -237,7 +237,11 @@ function Shell({
       ) {
         e.preventDefault();
         setShowSearch(true);
-        requestAnimationFrame(() => document.querySelector<HTMLInputElement>(".bc-book-search input")?.focus());
+        requestAnimationFrame(() =>
+          document
+            .querySelector<HTMLInputElement>(".bc-book-search input")
+            ?.focus(),
+        );
       }
       if (e.key.toLowerCase() === "s") {
         e.preventDefault();
@@ -670,6 +674,10 @@ function Shell({
                     projectId={project.id}
                     t={t}
                     canExtract={project.kind === "book"}
+                    onJob={async (job) => {
+                      await jobs.refresh(job);
+                      setShowJobs(true);
+                    }}
                     extract={() => run("glossary")}
                   />
                 ) : project.kind === "manga" ? (

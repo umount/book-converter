@@ -271,7 +271,7 @@ fn manga_results_and_edits_preserve_revisions_and_reject_dangling_assets() {
 #[test]
 fn run_recovery_keeps_successful_steps_and_excludes_concurrent_mutators() {
     let mut db = book();
-    let snapshot = runs::RunSnapshot {
+    let snapshot = runs::RunSnapshot { retarget: None,
         settings: shared::settings(&db).unwrap().choices,
         settings_revision: rev(0),
         glossary_revision: rev(0),

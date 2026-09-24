@@ -118,6 +118,8 @@ pub fn run() {
             commands::book_update_translation_block,
             commands::book_update_translation_title,
             commands::book_start_title,
+            commands::book_start_retarget,
+            commands::book_retarget_preview,
 
             commands::manga_list_pages,
             commands::project_list,

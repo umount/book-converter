@@ -86,6 +86,10 @@ export function createProjectApi(transport: Transport) {
       call<C.Revision>("book_update_block", args),
     editTitle: (args: C.UpdateTranslationTitleArgs) =>
       call<C.Revision>("book_update_translation_title", args),
+    retargetPreview: (args: C.StartBookRetargetArgs) =>
+      call<C.BookRetargetPreview>("book_retarget_preview", args),
+    retarget: (args: C.StartBookRetargetArgs) =>
+      call<C.JobRef>("book_start_retarget", args),
     translateTitle: (args: C.StartBookTitleArgs) =>
       call<C.JobRef>("book_start_title", args),
     editTranslation: (args: C.UpdateTranslationBlockArgs) =>

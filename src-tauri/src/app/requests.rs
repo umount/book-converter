@@ -638,6 +638,8 @@ pub fn typescript() -> String {
         UpdateTranslationBlockArgs::decl(&config),
         UpdateTranslationTitleArgs::decl(&config),
         StartBookTitleArgs::decl(&config),
+        StartBookRetargetArgs::decl(&config),
+        BookRetargetPreview::decl(&config),
         GlossaryListArgs::decl(&config),
         ProcessingChoices::decl(&config),
         ProjectSettingsView::decl(&config),
@@ -839,3 +841,17 @@ pub struct BookSearchMatch {pub chapter_id:ChapterId,pub block_id:BlockId,pub ti
 #[derive(Clone, Serialize, Deserialize, TS)]
 #[serde(rename_all="camelCase")]
 pub struct BookSearchPage {pub matches:Vec<BookSearchMatch>,pub next_cursor:Option<String>}
+
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[serde(rename_all="camelCase", deny_unknown_fields)]
+pub struct StartBookRetargetArgs {
+    pub project_id: ProjectId,
+    pub term_id: String,
+    pub expected_revision: Revision,
+    pub old_target: String,
+    pub max_chapters: u32,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[serde(rename_all="camelCase")]
+pub struct BookRetargetPreview { pub chapters: u32, pub fragments: u32 }
