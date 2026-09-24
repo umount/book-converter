@@ -731,3 +731,24 @@ Suggested continuation prompt:
 - Legacy runtime paths are removed; no double writes or permanent transition adapters.
 - Tests, builds, Linux smoke and external dependencies have verified results.
 - English documentation describes implemented behavior and explicit OCR/SFX limitations.
+
+## Future idea: local glossary matching across word forms
+
+User note (2026-09-24): consider morphology-aware glossary selection when translating
+from English or other inflected source languages. This is a future improvement,
+not a requirement to introduce a new dependency during the current refactor.
+
+- Keep selection local and send only relevant entries, never the entire glossary.
+- Match source-language word forms to glossary entries: for example, English
+  `sword` / `swords` or `cultivate` / `cultivated` / `cultivating`. English has
+  inflection even though noun declension is limited compared with Russian.
+- Evaluate language-specific lemmatization or morphological dictionaries (possibly
+  Hunspell), preserving exact matching for names and user-defined terminology.
+  Avoid unrelated substring/stem matches and test ambiguous forms in context.
+- Distinguish source matching from target-language generation: the model should
+  inflect canonical target terms naturally. When selecting terms for corrections
+  of translated lines, consider target-language forms as well.
+- Keep Chinese term matching independent of space-delimited word assumptions;
+  do not impose an English morphology strategy on all project languages.
+- Choose tools after evaluating actual language pairs, novel terminology, local
+  dictionary coverage, packaging cost and precision/recall on representative text.
