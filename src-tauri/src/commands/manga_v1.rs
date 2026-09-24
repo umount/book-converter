@@ -41,7 +41,7 @@ fn list_pages(db: &mut Connection, args: &ListMangaPagesArgs) -> Result<PageSumm
         (-1, -1)
     };
     let mut query = tx.prepare(
-        "SELECT p.id,p.volume_id,p.position,p.original_asset_id,p.width,p.height,p.revision FROM manga_pages p JOIN manga_volumes v ON v.id=p.volume_id WHERE (?1 IS NULL OR p.volume_id=?1) AND (v.position,p.position)>(?2,?3) ORDER BY v.position,p.position LIMIT ?4",
+        "SELECT p.id,p.volume_id,p.position,p.original_asset_id,p.width,p.height,p.revision,(SELECT asset_id FROM manga_page_previews WHERE page_id=p.id) FROM manga_pages p JOIN manga_volumes v ON v.id=p.volume_id WHERE (?1 IS NULL OR p.volume_id=?1) AND (v.position,p.position)>(?2,?3) ORDER BY v.position,p.position LIMIT ?4",
     ).map_err(storage_error)?;
     let mut items = query
         .query_map(
@@ -52,6 +52,7 @@ fn list_pages(db: &mut Connection, args: &ListMangaPagesArgs) -> Result<PageSumm
                     volume_id: VolumeId(r.get(1)?),
                     position: r.get(2)?,
                     original_asset_id: AssetId(r.get(3)?),
+                    thumbnail_asset_id: r.get::<_, Option<String>>(7)?.map(AssetId),
                     width: r.get(4)?,
                     height: r.get(5)?,
                     revision: Revision(r.get::<_, i64>(6)?.to_string()),
@@ -78,6 +79,8 @@ mod tests {
     fn pagination_crosses_volume_boundaries_without_skipping_or_mixing_domains() {
         let mut db = Connection::open_in_memory().unwrap();
         db.execute_batch(include_str!("../storage/schema.sql"))
+            .unwrap();
+        db.execute_batch(include_str!("../storage/schema_extensions.sql"))
             .unwrap();
         db.execute(
             "INSERT INTO project_settings(singleton,kind,target_language) VALUES(1,'manga','ru')",

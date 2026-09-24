@@ -184,3 +184,5 @@ mod tests {
         assert_eq!(not_found().status(), StatusCode::NOT_FOUND);
     }
 }
+
+pub mod manga_images;

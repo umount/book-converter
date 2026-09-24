@@ -66,7 +66,7 @@ export function MangaWorkspace({ projectId, t }: { projectId: string; t: T }) {
             >
               <img
                 loading="lazy"
-                src={assetUrl(projectId, p.originalAssetId)}
+                src={assetUrl(projectId, p.thumbnailAssetId ?? p.originalAssetId)}
                 alt=""
               />
               <span>

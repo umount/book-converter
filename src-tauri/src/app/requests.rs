@@ -511,6 +511,7 @@ pub struct PageSummary {
     pub volume_id: VolumeId,
     pub position: u32,
     pub original_asset_id: AssetId,
+    pub thumbnail_asset_id: Option<AssetId>,
     pub width: u32,
     pub height: u32,
     pub revision: Revision,

@@ -265,17 +265,25 @@ impl<'a> ProjectRepository<'a> {
         if page.revision.value()? != 0 {
             return Err(AppError::invalid("revision"));
         }
+        let tx = self.connection.transaction().map_err(storage_error)?;
         // Dimension equality is checked inside the insert, not with a racy preflight read.
-        let count = self.connection.execute("INSERT INTO manga_pages(id,volume_id,position,original_asset_id,width,height) SELECT ?1,?2,?3,id,?5,?6 FROM assets WHERE id=?4 AND width=?5 AND height=?6",params![page.id.0,page.volume_id.0,page.position,page.original_asset_id.0,page.width,page.height]).map_err(storage_error)?;
+        let count = tx.execute("INSERT INTO manga_pages(id,volume_id,position,original_asset_id,width,height) SELECT ?1,?2,?3,id,?5,?6 FROM assets WHERE id=?4 AND width=?5 AND height=?6",params![page.id.0,page.volume_id.0,page.position,page.original_asset_id.0,page.width,page.height]).map_err(storage_error)?;
         if count != 1 {
             return Err(AppError::invalid("originalAsset"));
         }
-        Ok(())
+        if let Some(thumbnail) = &page.thumbnail_asset_id {
+            tx.execute(
+                "INSERT INTO manga_page_previews(page_id,asset_id) VALUES(?1,?2)",
+                params![page.id.0, thumbnail.0],
+            )
+            .map_err(storage_error)?;
+        }
+        tx.commit().map_err(storage_error)
     }
 
     pub fn pages(&self, volume_id: &str) -> Result<Vec<PageSummary>, AppError> {
         self.require(ProjectKind::Manga)?;
-        let mut query = self.connection.prepare("SELECT id,volume_id,position,original_asset_id,width,height,revision FROM manga_pages WHERE volume_id=?1 ORDER BY position").map_err(storage_error)?;
+        let mut query = self.connection.prepare("SELECT id,volume_id,position,original_asset_id,width,height,revision,(SELECT asset_id FROM manga_page_previews WHERE page_id=manga_pages.id) FROM manga_pages WHERE volume_id=?1 ORDER BY position").map_err(storage_error)?;
         let rows = query
             .query_map([volume_id], |r| {
                 Ok(PageSummary {
@@ -283,6 +291,9 @@ impl<'a> ProjectRepository<'a> {
                     volume_id: crate::app::contracts::VolumeId(r.get(1)?),
                     position: r.get(2)?,
                     original_asset_id: crate::app::contracts::AssetId(r.get(3)?),
+                    thumbnail_asset_id: r
+                        .get::<_, Option<String>>(7)?
+                        .map(crate::app::contracts::AssetId),
                     width: r.get(4)?,
                     height: r.get(5)?,
                     revision: Revision(r.get::<_, i64>(6)?.to_string()),
@@ -299,19 +310,7 @@ mod tests {
     use crate::app::contracts::{AssetId, ChapterId, PageId, VolumeId};
 
     fn fixture(kind: ProjectKind) -> Connection {
-        let db = Connection::open_in_memory().unwrap();
-        super::super::configure(&db).unwrap();
-        db.execute_batch(include_str!("schema.sql")).unwrap();
-        db.execute(
-            "INSERT INTO project_settings(singleton,kind,target_language) VALUES(1,?1,'ru')",
-            [if kind == ProjectKind::Book {
-                "book"
-            } else {
-                "manga"
-            }],
-        )
-        .unwrap();
-        db
+        super::super::tests::database(kind)
     }
 
     fn block(id: &str, position: u32, content: BookBlockContent) -> BookBlockView {
@@ -394,6 +393,7 @@ mod tests {
             id: PageId("p1".into()),
             volume_id: VolumeId("volume".into()),
             position: 0,
+            thumbnail_asset_id: None,
             original_asset_id: AssetId("a".repeat(64)),
             width: 32,
             height: 49,

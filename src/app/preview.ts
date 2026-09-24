@@ -33,6 +33,7 @@ const mangaPages = Array.from({ length: 1000 }, (_, i) => ({
   volumeId: `volume-${Math.floor(i / 100)}`,
   position: i % 100,
   originalAssetId: "preview-page",
+  thumbnailAssetId: "preview-page",
   width: 640,
   height: 900,
   revision: "0",

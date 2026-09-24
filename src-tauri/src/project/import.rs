@@ -296,19 +296,20 @@ fn insert_comic_page(
         volumes.insert(parent.clone(), (id, 0));
     }
     let (volume, position) = volumes.get_mut(&parent).expect("inserted volume");
+    let prepared = crate::assets::manga_images::prepare(bytes).map_err(fail)?;
     let asset = store
-        .publish(db, bytes, self::extension(bytes)?)
+        .publish(db, &prepared.original, prepared.extension)
         .map_err(fail)?;
-    let (width, height) = image::ImageReader::new(std::io::Cursor::new(&bytes))
-        .with_guessed_format()
-        .map_err(fail)?
-        .into_dimensions()
+    let thumbnail = store
+        .publish(db, &prepared.thumbnail, "png")
         .map_err(fail)?;
+    let (width, height) = (prepared.width, prepared.height);
     ProjectRepository::new(db, ProjectKind::Manga)?.insert_page(&PageSummary {
         id: PageId(uuid()),
         volume_id: VolumeId(volume.clone()),
         position: *position,
         original_asset_id: AssetId(asset),
+        thumbnail_asset_id: Some(AssetId(thumbnail)),
         width,
         height,
         revision: Revision("0".into()),

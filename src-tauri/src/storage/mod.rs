@@ -33,7 +33,7 @@ fn create_with_lock(path:&Path,kind:ProjectKind,target_language:&str,locked:bool
         configure(&connection)?;
         let tx = connection.transaction()?;
         tx.execute_batch(include_str!("schema.sql"))?;
-        tx.execute_batch(include_str!("book_presentation.sql"))?;
+        tx.execute_batch(include_str!("schema_extensions.sql"))?;
         tx.execute(
             "INSERT INTO project_settings(singleton,kind,target_language,languages_locked) VALUES(1,?1,?2,?3)",
             (
@@ -64,7 +64,7 @@ pub fn open(path: &Path) -> anyhow::Result<Connection> {
     let version: u32 = connection.pragma_query_value(None, "user_version", |row| row.get(0))?;
     anyhow::ensure!(version == 1, "Unsupported project database version");
     configure(&connection)?;
-    connection.execute_batch(include_str!("book_presentation.sql"))?;
+    connection.execute_batch(include_str!("schema_extensions.sql"))?;
     Ok(connection)
 }
 
@@ -77,7 +77,7 @@ pub(super) mod tests {
         connection
             .execute_batch(include_str!("schema.sql"))
             .unwrap();
-        connection.execute_batch(include_str!("book_presentation.sql")).unwrap();
+        connection.execute_batch(include_str!("schema_extensions.sql")).unwrap();
         connection
             .execute(
                 "INSERT INTO project_settings(singleton,kind,target_language) VALUES(1,?1,'ru')",

@@ -444,3 +444,18 @@ fallback. Keep commits scoped; push only on user request.
   Strict Clippy passed. Browser fixture verified creating a named profile and assigning
   it only to the assistant role. No credential or network request was used in QA.
   Provider streaming/native response quality acceptance remains open.
+
+### P08 canonical orientation and thumbnails
+
+- Manga import decodes one page at a time with explicit dimension/output-allocation
+  limits. EXIF rotation is applied once and normalized pixels are stored losslessly;
+  unrotated originals retain their exact bytes. External source files are untouched.
+- Every newly imported page references a registered PNG preview no larger than
+  200×240. The virtual list uses previews; existing version-1 pages without previews
+  remain readable. Preview assets participate in archive snapshots and FK validation.
+- Added a real JPEG/EXIF orientation regression: a 400×200 image rotates to 200×400,
+  creates a 120×240 preview and does not rotate again on reimport. Synthetic corrupt
+  data is rejected. The first full run passed 309/310 tests; the remaining test used
+  an outdated hand-built schema fixture and was switched to the shared current fixture.
+  Native process memory/latency budgets remain unmeasured; decoder limits are not a
+  substitute for those platform acceptance measurements.
