@@ -239,6 +239,6 @@ that dense or vertical text is complete.
 The adapter rejects truncated responses, duplicate region IDs/order, empty text,
 unknown region categories, noncontiguous reading order and out-of-bounds geometry.
 Accepted coordinates map back to canonical pixels. It returns request-local IDs;
-the future result-publishing service owns durable region IDs and edit reconciliation.
+the result-publishing service assigns durable IDs and reconciles manual edits.
 It produces no masks, cleanup, translation or lettering, and enables no processing
 button until the remaining capability and persistence stages are implemented.

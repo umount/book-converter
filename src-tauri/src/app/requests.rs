@@ -252,6 +252,7 @@ pub struct UpdateMangaOrderArgs {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct MangaStageOptions {
+    pub max_pages: u32,
     pub force: bool,
 }
 

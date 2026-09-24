@@ -246,7 +246,7 @@ impl Drop for Reservation {
     }
 }
 
-fn validate_credential_destination(
+pub(crate) fn validate_credential_destination(
     saved: &ProviderProfile,
     configured: &ProviderProfile,
 ) -> Result<(), AppError> {

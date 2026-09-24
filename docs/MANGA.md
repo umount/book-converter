@@ -1,7 +1,7 @@
 # Manga workflow requirements
 
 Updated 2026-09-24. This is the target workflow; automatic processing is not implemented.
-Books and backend cleanup come first. See [execution status](REFACTORING_STATUS.md)
+Book scope is frozen and superseded backend cleanup is complete. Manga work is active. See [execution status](REFACTORING_STATUS.md)
 and [model/platform assessment](MANGA_TOOLING.md).
 
 ## Domain and workspace
@@ -71,3 +71,13 @@ is removed, bounded image memory, correct geometry after crop/resize, selective 
 stale-result rejection, restart/resume and portable archives. Validate actual Tauri image
 loading and model quality on representative samples. Manga assistant actions must call
 manga services and must never dispatch book chapter operations.
+
+## Implemented recognition backend
+
+An explicit bounded recognition-stage job now persists page geometry and OCR text,
+with cancellation and checkpointed resume. It requires the manga recognition profile
+and rejects unsupported stages; it does not run the complete translation pipeline.
+Reruns retain matched manual text and preserve unmatched edited regions for review.
+Original assets remain immutable. No automatic mask or inpainting result is generated
+from a text rectangle. Full-processing UI remains unavailable pending the remaining
+capabilities and real model quality verification.

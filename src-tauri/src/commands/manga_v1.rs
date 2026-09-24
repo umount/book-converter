@@ -180,3 +180,48 @@ mod tests {
         assert!(list_volumes(&mut book_db).is_err());
     }
 }
+
+#[tauri::command]
+pub async fn manga_start_stage(
+    context: tauri::State<'_, AppContext>,
+    app: tauri::AppHandle,
+    args: crate::app::requests::StartMangaStageArgs,
+) -> Result<crate::app::contracts::JobRef, AppError> {
+    let manager = context.manager.clone();
+    let job = tauri::async_runtime::spawn_blocking(move || {
+        crate::application::manga::runtime::prepare(&manager, &args)
+    })
+    .await
+    .map_err(|_| AppError::invalid("task"))??;
+    super::book_v1::dispatch_created(&context, app, job)
+}
+
+pub(super) fn dispatch(
+    context: &AppContext,
+    app: tauri::AppHandle,
+    project: crate::app::contracts::ProjectId,
+    job: String,
+) -> Result<(), AppError> {
+    use tauri::Emitter;
+    let pipeline =
+        crate::application::manga::runtime::resume_provider(&context.manager, &project, &job)?;
+    let cancel = context.book_jobs.reserve(&project, &job)?;
+    let manager = context.manager.clone();
+    let runtime = context.book_jobs.clone();
+    tauri::async_runtime::spawn(async move {
+        let _reservation = crate::application::runtime::Reservation {
+            runtime,
+            project: project.clone(),
+            job: job.clone(),
+        };
+        if let Err(error) =
+            crate::jobs::durable::execute(&manager, &project, &job, &pipeline, cancel, |event| {
+                let _ = app.emit("project-event", event);
+            })
+            .await
+        {
+            tracing::warn!(project = project.as_str(), job, code = ?error.code, "Manga job stopped");
+        }
+    });
+    Ok(())
+}

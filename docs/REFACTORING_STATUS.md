@@ -11,7 +11,7 @@ P05: in_progress. Translation, context, editing, reference, export and metadata 
 P06: in_progress. New shell, wizard, structural editor and supporting screens wired; native acceptance remains.
 P07: in_progress. Book assistant, guarded proposals and persisted history implemented.
 P08: partial. Import/read-only page workspace available; model processing not implemented.
-P09: in_progress. Bounded vision adapter and coordinate validation; persistence and real quality acceptance remain.
+P09: in_progress. Bounded vision adapter, durable recognition and edit reconciliation; inspector and real quality acceptance remain.
 P10–P13: pending.
 
 ## Baseline (2026-09-23)
@@ -892,3 +892,28 @@ production build, generated contracts check and strict all-target Clippy passed.
 Validation: all 177 Rust library tests and strict all-target Clippy pass.
 Recognition tests cover inverse crop/resize mapping, malformed regions, invalid order,
 inline image requests and truncated fake-provider responses.
+
+## P09 durable recognition (2026-09-24)
+
+- Added bounded page admission and the explicit recognition-stage IPC. Other stages
+  fail as unavailable. Recognition requires a separately selected profile; it never
+  falls back to the book model. Resume validates the locally configured credential
+  destination against the saved profile before constructing a provider.
+- Recognition runs use the shared durable page-step runner, cancellation, startup
+  recovery and measured progress/ETA. Published steps are skipped on resume.
+- Original assets are path-validated, hash-checked and decoded one at a time; geometry
+  and text publish as separate detection/recognition results in the step transaction.
+  Revisions guard against source/settings/glossary edits and concurrent publication.
+- Unambiguous mutual overlap preserves durable region IDs and manually edited text.
+  Unmatched manual regions remain visible and mark results as needing review. Raw
+  OCR and effective regions remain in immutable result history. Rectangles never
+  become erasure masks. Automatic publication does not increment the page input
+  revision, so it does not invalidate its own checkpoint; human edits still do.
+- Tests cover restart/resume without duplicate calls, stale replies, cancellation,
+  matched and unmatched manual edits, atomic conflict rollback and admission guards.
+- This is backend recognition only. No full-processing button is enabled: inspector,
+  capability preflight, automatic pixel masks and real OCR/runtime acceptance remain.
+
+Validation for durable recognition: 183 Rust library tests, strict all-target Clippy,
+frontend tests/build and generated contract check passed. All recognition requests
+used fake providers and synthetic local assets; no paid API request was made.

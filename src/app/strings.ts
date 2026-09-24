@@ -255,6 +255,7 @@ const en = {
     "The term is saved. Correct matching fragments in this many chapters, including summaries? Nothing runs until you confirm.",
   translateTitle: "Translate title",
   translatedChapterTitle: "Translated chapter title",
+  manga_recognition: "Manga recognition",
   book_glossary: "Term extraction",
 };
 type Key = keyof typeof en;
@@ -515,6 +516,7 @@ const ru: Record<Key, string> = {
     "Термин сохранён. Исправить подходящие фрагменты в указанном количестве глав, включая саммари? Без подтверждения перевод не меняется.",
   translateTitle: "Перевести заголовок",
   translatedChapterTitle: "Переведённый заголовок главы",
+  manga_recognition: "Распознавание манги",
   book_glossary: "Извлечение терминов",
 };
 const zh: Record<Key, string> = {
@@ -759,6 +761,7 @@ const zh: Record<Key, string> = {
     "术语已保存。是否修正指定数量章节及摘要中的相关片段？确认前不会修改译文。",
   translateTitle: "翻译标题",
   translatedChapterTitle: "翻译后的章节标题",
+  manga_recognition: "漫画识别",
   book_glossary: "提取术语",
 };
 export type T = (key: Key) => string;

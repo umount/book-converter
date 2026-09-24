@@ -1,2 +1,8 @@
 //! Manga-specific automatic processing adapters, independent of book operations.
 pub mod recognition;
+pub mod regions;
+pub mod pipeline;
+pub mod runtime;
+
+#[cfg(test)]
+mod tests;

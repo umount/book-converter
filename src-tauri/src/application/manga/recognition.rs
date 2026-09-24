@@ -40,6 +40,9 @@ pub struct RecognitionInput {
     data_url: String,
 }
 impl RecognitionInput {
+    pub fn dimensions(&self) -> (u32, u32) {
+        (self.mapping.page_width, self.mapping.page_height)
+    }
     /// Canonical assets are already orientation-normalized by manga import.
     pub fn from_canonical(bytes: &[u8]) -> Result<Self, AppError> {
         if bytes.len() > 32 * 1024 * 1024 {
