@@ -4,6 +4,12 @@ import type {
   ProjectSummary,
 } from "../shared/contracts/generated";
 import { errorText, type T } from "./strings";
+function remainingTime(seconds: number, t: T): string {
+  if (seconds < 60) return `${seconds} ${t("etaSeconds")}`;
+  const minutes = Math.ceil(seconds / 60);
+  if (minutes < 60) return `${minutes} ${t("etaMinutes")}`;
+  return `${Math.floor(minutes / 60)} ${t("etaHours")} ${minutes % 60} ${t("etaMinutes")}`;
+}
 export function JobPanel({
   jobs,
   catalog,
@@ -25,7 +31,14 @@ export function JobPanel({
     <section className="bc-jobs">
       <header>
         <strong>{t("jobs")}</strong>
-        <button onClick={close}>{t("close")}</button>
+        <button
+          className="bc-icon-button"
+          aria-label={t("close")}
+          title={t("close")}
+          onClick={close}
+        >
+          ×
+        </button>
       </header>
       {!jobs.length && <p className="bc-hint">{t("noJobs")}</p>}
       {jobs.map((job) => (
@@ -40,7 +53,8 @@ export function JobPanel({
             {t(
               job.kind === "book_translation" ||
                 job.kind === "book_metadata" ||
-                job.kind === "book_glossary" || job.kind === "book_title"
+                job.kind === "book_glossary" ||
+                job.kind === "book_title"
                 ? job.kind
                 : "processing",
             )}
@@ -53,6 +67,13 @@ export function JobPanel({
           <span>
             {t(job.state)} · {job.completedSteps}/{job.totalSteps}
           </span>
+          {["running", "queued"].includes(job.state) && (
+            <span className="bc-hint">
+              {job.remainingSeconds == null
+                ? t("estimatingTime")
+                : `${t("remainingTime")}: ${remainingTime(job.remainingSeconds, t)}`}
+            </span>
+          )}
           {["running", "queued"].includes(job.state) && (
             <button disabled={busy} onClick={() => cancel(job.job)}>
               {t("cancel")}

@@ -180,6 +180,7 @@ pub async fn book_update_translation_block(
 fn job_view(db: &rusqlite::Connection, project: &ProjectId, id: &str) -> Result<JobView, AppError> {
     let run = runs::get_run(db, id)?;
     let completed=db.query_row("SELECT COUNT(*) FROM job_steps AS step WHERE run_id=?1 AND state='succeeded' AND NOT EXISTS(SELECT 1 FROM job_steps AS newer WHERE newer.run_id=step.run_id AND newer.entity_kind=step.entity_kind AND newer.entity_id=step.entity_id AND newer.stage=step.stage AND newer.attempt>step.attempt)",[id],|r|r.get::<_,u32>(0)).map_err(storage_error)?;
+    let remaining_seconds = runs::remaining_seconds(db, &run)?;
     Ok(JobView {
         job: JobRef {
             project_id: project.clone(),
@@ -191,6 +192,7 @@ fn job_view(db: &rusqlite::Connection, project: &ProjectId, id: &str) -> Result<
         total_steps: u32::try_from(run.snapshot.selected_ids.len() * run.snapshot.stages.len())
             .map_err(|_| AppError::invalid("jobSize"))?,
         completed_steps: completed,
+        remaining_seconds,
         error: run.terminal_error,
     })
 }

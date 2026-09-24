@@ -427,6 +427,7 @@ export async function invokePreview<T>(
         state: "succeeded",
         revision: "1",
         totalSteps: 3,
+        remainingSeconds: 120,
         completedSteps: 3,
         error: null,
       });

@@ -601,6 +601,7 @@ pub struct JobView {
     pub revision: Revision,
     pub total_steps: u32,
     pub completed_steps: u32,
+    pub remaining_seconds: Option<u32>,
     pub error: Option<AppError>,
 }
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]

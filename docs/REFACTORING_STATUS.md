@@ -681,3 +681,16 @@ fallback. Keep commits scoped; push only on user request.
   Language-fragment details remain in the reader; this slice does not add a
   book-wide language-issue index/filter or claim native desktop acceptance.
 - Frontend tests/build, generated-contract check and diff whitespace checks passed.
+
+### P06 job remaining-time estimate
+
+- Job snapshots expose remaining seconds for queued/running jobs, using per-stage
+  averages from the current run or the latest 30 successful samples with the same
+  job kind, processing settings and provider. Unknown stages show an estimating
+  state; failed/cancelled/interrupted jobs do not display a running ETA.
+- Counts use the latest attempt for each unit of work. Paused wall time is excluded.
+  Estimates refresh at step boundaries; they are approximate, not a countdown and
+  do not predict chapter length or future provider throttling.
+- Full Rust suite: 334 passed. Strict all-target Clippy, frontend tests/build and
+  generated-contract check passed. Added coverage for unknown samples, stage
+  weighting, current-run preference, superseded attempts and changed settings.

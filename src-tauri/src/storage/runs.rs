@@ -227,3 +227,101 @@ pub fn interrupt_running(db: &mut Connection, now: &str) -> Result<usize, AppErr
     tx.commit().map_err(storage_error)?;
     Ok(changed)
 }
+
+/// Remaining processing time, refreshed at step boundaries (not a wall-clock countdown).
+/// Prefer this run's samples; otherwise use the last 30 comparable stage samples.
+pub fn remaining_seconds(db: &Connection, run: &RunRecord) -> Result<Option<u32>, AppError> {
+    if run.state == JobState::Succeeded {
+        return Ok(Some(0));
+    }
+    if !matches!(run.state, JobState::Queued | JobState::Running) {
+        return Ok(None);
+    }
+    estimate_remaining(
+        db,
+        &run.id,
+        &run.snapshot.stages,
+        run.snapshot.selected_ids.len(),
+    )
+}
+
+fn estimate_remaining(
+    db: &Connection,
+    id: &str,
+    stages: &[String],
+    count: usize,
+) -> Result<Option<u32>, AppError> {
+    let mut remaining_ms = 0.0_f64;
+    for stage in stages {
+        let completed: usize = db.query_row(
+            "SELECT COUNT(*) FROM job_steps s WHERE s.run_id=?1 AND s.stage=?2 AND s.state='succeeded'
+             AND NOT EXISTS(SELECT 1 FROM job_steps n WHERE n.run_id=s.run_id AND n.entity_kind=s.entity_kind
+             AND n.entity_id=s.entity_id AND n.stage=s.stage AND n.attempt>s.attempt)",
+            params![id, stage], |r| r.get(0)).map_err(storage_error)?;
+        let remaining = count.saturating_sub(completed);
+        if remaining == 0 {
+            continue;
+        }
+        let average: Option<f64> = db.query_row(
+            "SELECT AVG(duration_ms) FROM (
+                SELECT s.duration_ms FROM job_steps s JOIN job_runs r ON r.id=s.run_id
+                JOIN job_runs current ON current.id=?1
+                WHERE s.stage=?2 AND s.state='succeeded' AND s.duration_ms IS NOT NULL
+                AND r.kind=current.kind
+                AND json_extract(r.settings_snapshot,'$.settings')=json_extract(current.settings_snapshot,'$.settings')
+                AND json_extract(r.settings_snapshot,'$.provider') IS json_extract(current.settings_snapshot,'$.provider')
+                AND (s.run_id=?1 OR NOT EXISTS(SELECT 1 FROM job_steps own
+                    WHERE own.run_id=?1 AND own.stage=?2 AND own.state='succeeded' AND own.duration_ms IS NOT NULL))
+                ORDER BY s.rowid DESC LIMIT 30
+             )", params![id, stage], |r| r.get(0)).map_err(storage_error)?;
+        let Some(average) = average else {
+            return Ok(None);
+        };
+        remaining_ms += average * remaining as f64;
+    }
+    Ok(Some(
+        (remaining_ms / 1000.0).ceil().min(u32::MAX as f64) as u32
+    ))
+}
+
+#[cfg(test)]
+mod eta_tests {
+    use super::*;
+    #[test]
+    fn estimates_each_stage_prefers_current_samples_and_counts_latest_attempts() {
+        let db = Connection::open_in_memory().unwrap();
+        db.execute_batch("CREATE TABLE job_runs(id TEXT,kind TEXT,settings_snapshot TEXT);
+            CREATE TABLE job_steps(run_id TEXT,entity_kind TEXT,entity_id TEXT,stage TEXT,attempt INTEGER,state TEXT,duration_ms INTEGER);
+            INSERT INTO job_runs VALUES('old','book_translation','{\"settings\":{}}'),('new','book_translation','{\"settings\":{}}');
+            INSERT INTO job_steps VALUES('old','chapter','a','translation',1,'succeeded',10000);").unwrap();
+        let stages = vec!["translation".into(), "context".into()];
+        assert_eq!(estimate_remaining(&db, "new", &stages, 3).unwrap(), None);
+        db.execute_batch(
+            "INSERT INTO job_steps VALUES('old','chapter','a','context',1,'succeeded',2000);",
+        )
+        .unwrap();
+        assert_eq!(
+            estimate_remaining(&db, "new", &stages, 3).unwrap(),
+            Some(36)
+        );
+        db.execute_batch(
+            "INSERT INTO job_steps VALUES('new','chapter','a','translation',1,'succeeded',4000);",
+        )
+        .unwrap();
+        assert_eq!(
+            estimate_remaining(&db, "new", &stages, 3).unwrap(),
+            Some(14)
+        );
+        db.execute_batch(
+            "INSERT INTO job_steps VALUES('new','chapter','a','translation',2,'failed',NULL);",
+        )
+        .unwrap();
+        assert_eq!(
+            estimate_remaining(&db, "new", &stages, 3).unwrap(),
+            Some(18)
+        );
+        db.execute_batch("UPDATE job_runs SET settings_snapshot='{\"settings\":{\"model\":\"other\"}}' WHERE id='old';").unwrap();
+        assert_eq!(estimate_remaining(&db, "new", &stages, 3).unwrap(), None);
+        assert_eq!(estimate_remaining(&db, "new", &stages, 0).unwrap(), Some(0));
+    }
+}
