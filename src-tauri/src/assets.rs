@@ -18,7 +18,7 @@ use tauri::http::{header, Request, Response, StatusCode};
 use tauri::{Runtime, UriSchemeContext};
 
 use crate::book::source::{image_mime, percent_decode};
-use crate::session::project_dir;
+use crate::paths::project_dir;
 
 /// The scheme the frontend builds its image URLs with.
 pub(crate) const SCHEME: &str = "bookasset";

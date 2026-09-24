@@ -3,8 +3,7 @@
 //!
 //! Supports TXT, FB2, PDF and EPUB. When a TXT layout has no recognizable chapter
 //! headings, `needs_delimiter` is set so the caller can fall back to a
-//! model-inferred delimiter (`parser::build_delimiter_prompt` +
-//! `parser::parse_chapters_with`).
+//! single-chapter fallback without discarding source text.
 
 use std::path::Path;
 
@@ -32,7 +31,7 @@ pub struct LoadedBook {
     pub meta: BookMeta,
     pub chapters: Vec<Chapter>,
     pub report: ParseReport,
-    /// TXT only: no chapter pattern matched — needs a model-inferred delimiter.
+    /// TXT only: no chapter pattern matched; import uses a single chapter.
     pub needs_delimiter: bool,
     /// The decode produced replacement characters — the encoding guess is likely
     /// wrong (garbled text). Only set by `load_book` (which owns the raw bytes).
@@ -66,6 +65,14 @@ pub fn load_book(path: &Path) -> Result<LoadedBook> {
     let decoded = read_book_file(path)?;
     let mut book = load_book_text(&decoded.text, decoded.encoding)?;
     book.encoding_had_errors = decoded.had_errors;
+    if path
+        .extension()
+        .is_some_and(|ext| ext.eq_ignore_ascii_case("pdf"))
+    {
+        book.cover = std::fs::read(path)
+            .ok()
+            .and_then(|bytes| super::pdf::cover(&bytes));
+    }
     if book.chapters.is_empty()
         && path
             .extension()
@@ -158,7 +165,13 @@ mod tests {
         let font = doc.add_object(
             dictionary! {"Type" => "Font", "Subtype" => "Type1", "BaseFont" => "Helvetica"},
         );
-        let resources = doc.add_object(dictionary! {"Font" => dictionary! {"F1" => font}});
+        let mut jpeg = std::io::Cursor::new(Vec::new());
+        image::DynamicImage::new_rgb8(2, 2)
+            .write_to(&mut jpeg, image::ImageFormat::Jpeg)
+            .unwrap();
+        let jpeg = jpeg.into_inner();
+        let cover = doc.add_object(Stream::new(dictionary! {"Type" => "XObject", "Subtype" => "Image", "Width" => 2, "Height" => 2, "ColorSpace" => "DeviceRGB", "BitsPerComponent" => 8, "Filter" => "DCTDecode"}, jpeg.clone()));
+        let resources = doc.add_object(dictionary! {"Font" => dictionary! {"F1" => font}, "XObject" => dictionary! {"Cover" => cover}});
         let texts = [
             "Before the voyage we waited at the harbour with our letters and luggage.",
             "On arrival we walked through the garden and listened to the quiet birds.",
@@ -179,7 +192,7 @@ mod tests {
             .unwrap();
             let contents = doc.add_object(Stream::new(dictionary! {}, content));
             pages.push(doc.add_object(
-                dictionary! {"Type" => "Page", "Parent" => pages_id, "Contents" => contents},
+                dictionary! {"Type" => "Page", "Parent" => pages_id, "Contents" => contents, "Resources" => resources},
             ));
         }
         doc.objects.insert(pages_id, dictionary! {"Type" => "Pages", "Kids" => pages.iter().copied().map(Object::Reference).collect::<Vec<_>>(), "Count" => 3, "Resources" => resources, "MediaBox" => vec![0.into(), 0.into(), 612.into(), 792.into()]}.into());
@@ -202,6 +215,7 @@ mod tests {
         let loaded = load_book(&path);
         std::fs::remove_file(&path).unwrap();
         let loaded = loaded.unwrap();
+        assert_eq!(loaded.cover, Some(("image/jpeg".into(), jpeg)));
         assert!(!loaded.needs_delimiter);
         assert_eq!(loaded.chapters.len(), 3);
         assert_eq!(loaded.chapters[1].title, "Arrival");

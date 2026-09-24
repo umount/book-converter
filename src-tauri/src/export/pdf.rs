@@ -350,7 +350,7 @@ mod tests {
             index: 1,
             number: Some(1),
             title: "Страница 1".into(),
-            body: "[[img:ab12]]".into(),
+            body: crate::export::ChapterBody::Blocks(vec![crate::export::ExportBlock::Image("ab12".into())]),
         }];
         let meta = OutputMeta {
             title: "Манга".into(),

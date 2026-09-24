@@ -177,7 +177,7 @@ fn predecessor(db: &rusqlite::Connection, chapter: &str) -> Result<Option<Contin
     let mut q=db.prepare("SELECT translated_text FROM book_translation_blocks JOIN book_source_blocks b ON b.id=source_block_id WHERE translation_id=?1 ORDER BY b.position").map_err(storage_error)?;
     let text=q.query_map([&translation],|r|r.get::<_,String>(0)).map_err(storage_error)?.collect::<Result<Vec<_>,_>>().map_err(storage_error)?.into_iter().filter(|s|!s.is_empty()).collect::<Vec<_>>().join("\n\n");
     let summary: Option<String> = db.query_row("SELECT ctx.summary FROM book_contexts ctx JOIN book_translations t ON t.id=ctx.translation_id JOIN book_chapters c ON c.id=t.chapter_id WHERE c.position<(SELECT position FROM book_chapters WHERE id=?1) AND t.status IN ('ready','needs_review') AND t.target_language=(SELECT target_language FROM project_settings WHERE singleton=1) AND trim(ctx.summary)!='' AND t.revision=(SELECT MAX(revision) FROM book_translations WHERE chapter_id=c.id AND target_language=t.target_language) ORDER BY c.position DESC LIMIT 1",[chapter],|r|r.get(0)).optional().map_err(storage_error)?;
-    Ok(Some(Continuity {id,summary:summary.unwrap_or_default(),previous_tail:text.chars().rev().take(1200).collect::<String>().chars().rev().collect()}))
+    Ok(Some(Continuity {id,summary:summary.unwrap_or_default(),previous_tail:crate::textutil::closing_excerpt(&text,1200)}))
 }
 
 impl StepExecutor for BookPipeline {
@@ -419,14 +419,7 @@ impl BookPipeline {
         }
         let summary: Summary =
             serde_json::from_str(&response.text).map_err(|_| invalid_output())?;
-        let tail = text
-            .chars()
-            .rev()
-            .take(1200)
-            .collect::<Vec<_>>()
-            .into_iter()
-            .rev()
-            .collect();
+        let tail = crate::textutil::closing_excerpt(&text, 1200);
         Ok(BookOutput::Context(results::BookContext {
             id: uuid::Uuid::new_v4().to_string(),
             translation_id: id,
@@ -457,7 +450,8 @@ mod continuity_tests {
         }
         let context=predecessor(&db,"next").unwrap().unwrap();
         assert_eq!(context.summary,"Накопленное саммари");
-        assert_eq!(context.previous_tail.chars().count(),1200);
+        assert!(context.previous_tail.chars().count() <= 1200);
+        assert!(context.previous_tail.starts_with("Полный текст."));
         assert!(context.previous_tail.ends_with("ФИНАЛ РЕФЕРЕНСА"));
         assert!(reference.ends_with(&context.previous_tail));
         db.execute("DELETE FROM book_contexts WHERE translation_id='reference'",[]).unwrap();

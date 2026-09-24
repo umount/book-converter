@@ -36,7 +36,7 @@ impl ProjectManager {
                     continue;
                 }
                 let id = entry.file_name().to_string_lossy().into_owned();
-                if crate::session::validate_project_id(&id).is_err() {
+                if crate::paths::validate_project_id(&id).is_err() {
                     continue;
                 }
                 let Ok(bytes) = std::fs::read(entry.path().join("project.json")) else {

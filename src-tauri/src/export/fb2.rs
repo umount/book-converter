@@ -16,11 +16,6 @@ pub struct Cover {
 }
 
 impl Cover {
-    /// `data:` URL for showing the cover in the UI.
-    pub fn data_url(&self) -> String {
-        format!("data:{};base64,{}", self.content_type, self.base64)
-    }
-
     /// File extension implied by the content type (for the FB2 binary id).
     fn ext(&self) -> &str {
         match self.content_type.as_str() {
@@ -29,30 +24,6 @@ impl Cover {
             "image/webp" => "webp",
             _ => "jpg",
         }
-    }
-}
-
-/// Metadata found in a source FB2 that we can carry over / show: the annotation
-/// (summary) and the cover image.
-#[derive(Debug, Clone, Default)]
-pub struct Fb2Head {
-    /// `<book-title>` as written in this file, in its own language.
-    pub title: Option<String>,
-    pub annotation: Option<String>,
-    pub cover: Option<Cover>,
-}
-
-/// Extract the title, annotation (as plain text) and cover image from FB2 XML.
-pub fn extract_head(xml: &str) -> Fb2Head {
-    Fb2Head {
-        title: slice_first(xml, "book-title")
-            .map(|t| tags_to_text(&t))
-            .map(|t| t.trim().to_string())
-            .filter(|t| !t.is_empty()),
-        annotation: slice_first(xml, "annotation")
-            .map(|a| tags_to_text(&a))
-            .filter(|s| !s.trim().is_empty()),
-        cover: extract_cover(xml),
     }
 }
 
@@ -168,48 +139,6 @@ pub fn render(chapters: &[TranslatedChapter], meta: &OutputMeta) -> String {
     out
 }
 
-/// Find the first image `<binary>` block and return it as a `Cover`.
-fn extract_cover(xml: &str) -> Option<Cover> {
-    for block in slice_all(xml, "binary") {
-        let ct = attr(&block, "content-type")?;
-        if !ct.starts_with("image/") {
-            continue;
-        }
-        // inner text = base64 between the opening tag's '>' and '</binary>'
-        let start = block.find('>')? + 1;
-        let end = block.rfind("</binary>")?;
-        let base64: String = block[start..end].split_whitespace().collect();
-        if base64.is_empty() {
-            continue;
-        }
-        return Some(Cover {
-            content_type: ct.to_string(),
-            base64,
-        });
-    }
-    None
-}
-
-/// Read an attribute value from a tag string.
-fn attr<'a>(tag: &'a str, name: &str) -> Option<&'a str> {
-    let key = format!("{name}=\"");
-    let start = tag.find(&key)? + key.len();
-    let end = tag[start..].find('"')? + start;
-    Some(&tag[start..end])
-}
-
-/// Convert a fragment of FB2 markup to plain text (paragraph breaks preserved).
-fn tags_to_text(xml: &str) -> String {
-    let with_breaks = xml.replace("</p>", "\n").replace("<empty-line/>", "\n");
-    let re = regex::Regex::new(r"<[^>]+>").expect("valid regex");
-    let text = re.replace_all(&with_breaks, "");
-    text.lines()
-        .map(str::trim)
-        .filter(|l| !l.is_empty())
-        .collect::<Vec<_>>()
-        .join("\n")
-}
-
 /// Escape XML text content.
 fn esc(s: &str) -> String {
     s.replace('&', "&amp;")
@@ -224,35 +153,6 @@ fn slug(s: &str) -> String {
         .collect::<String>()
         .trim_matches('-')
         .to_string()
-}
-
-/// First `<tag …>…</tag>` block (raw), if present.
-fn slice_first(xml: &str, tag: &str) -> Option<String> {
-    let open = format!("<{tag}");
-    let close = format!("</{tag}>");
-    let start = xml.find(&open)?;
-    let end = xml[start..].find(&close)? + start + close.len();
-    Some(xml[start..end].to_string())
-}
-
-/// All `<tag …>…</tag>` blocks (raw), in order.
-fn slice_all(xml: &str, tag: &str) -> Vec<String> {
-    let open = format!("<{tag}");
-    let close = format!("</{tag}>");
-    let mut out = Vec::new();
-    let mut pos = 0;
-    while let Some(rel) = xml[pos..].find(&open) {
-        let start = pos + rel;
-        match xml[start..].find(&close) {
-            Some(rel_end) => {
-                let end = start + rel_end + close.len();
-                out.push(xml[start..end].to_string());
-                pos = end;
-            }
-            None => break,
-        }
-    }
-    out
 }
 
 #[cfg(test)]
@@ -313,7 +213,7 @@ mod tests {
             index: 1,
             number: Some(1),
             title: "Глава 1".into(),
-            body: "До.\n\n[[img:ab12]]\n\nПосле.".into(),
+            body: crate::export::ChapterBody::Blocks(vec![crate::export::ExportBlock::Text("До.".into()),crate::export::ExportBlock::Image("ab12".into()),crate::export::ExportBlock::Text("После.".into())]),
         }];
         let xml = render(&chapters, &meta);
         assert!(xml.contains("<p><image l:href=\"#imgab12\"/></p>"));
@@ -329,7 +229,7 @@ mod tests {
             index: 1,
             number: Some(1),
             title: "Глава 1".into(),
-            body: "До.\n\n[[img:ab12]]\n\nПосле.".into(),
+            body: crate::export::ChapterBody::Blocks(vec![crate::export::ExportBlock::Text("До.".into()),crate::export::ExportBlock::Image("ab12".into()),crate::export::ExportBlock::Text("После.".into())]),
         }];
         let xml = render(&chapters, &OutputMeta::default());
         assert!(xml.contains("<p>До.</p>"));
@@ -337,16 +237,5 @@ mod tests {
         assert!(!xml.contains("[[img:"));
     }
 
-    #[test]
-    fn extracts_annotation_and_cover() {
-        let src = r##"<FictionBook><description><title-info>
-<annotation><p>Первый абзац.</p><p>Второй.</p></annotation></title-info></description>
-<body/><binary id="c.jpg" content-type="image/jpeg">QUJDRA==</binary></FictionBook>"##;
-        let head = extract_head(src);
-        assert_eq!(head.annotation.as_deref(), Some("Первый абзац.\nВторой."));
-        let cover = head.cover.unwrap();
-        assert_eq!(cover.content_type, "image/jpeg");
-        assert_eq!(cover.base64, "QUJDRA==");
-        assert!(cover.data_url().starts_with("data:image/jpeg;base64,"));
-    }
+
 }

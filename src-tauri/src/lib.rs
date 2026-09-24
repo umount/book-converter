@@ -1,7 +1,7 @@
 //! book-converter — application core (Rust) for translating book-length works
-//! between languages via the DeepSeek API. GUI is Tauri + React.
+//! between languages via provider profiles. GUI is Tauri + React.
 //!
-//! The language pair is a user setting, not a build-time fact: nothing here is
+//! The language pair is fixed at project creation: nothing here is
 //! written for one pair or one book (see `DECISIONS.md`, "Universal converter").
 //!
 //! Architecture and design: see `docs/ARCHITECTURE.md` and `docs/DECISIONS.md`.
@@ -12,27 +12,19 @@ pub mod app;
 pub mod application;
 pub mod project;
 pub mod assets;
-mod assistant;
 mod book;
 mod commands;
 mod config;
-mod dto;
 mod export;
-mod glossary;
 mod i18n;
 pub mod jobs;
 pub mod models;
 mod language;
-mod orchestrator;
 mod paths;
-mod reference;
 mod retarget;
-mod session;
 mod settings;
-mod state;
 pub mod storage;
 mod textutil;
-mod translator;
 
 /// Full product name, shown in the window title and the About dialog. The
 /// package/bundle id stays `book-converter`; this is the human-facing name.
@@ -80,8 +72,6 @@ pub fn run() {
             }
             Ok(())
         })
-        .manage(commands::AppState::new())
-        .manage(std::sync::Arc::new(assistant::AssistantRuntime::new()))
         .invoke_handler(tauri::generate_handler![
             commands::model_list,
             commands::model_download,
@@ -131,40 +121,6 @@ pub fn run() {
             commands::project_archive_export,
             commands::project_archive_import,
 
-            commands::load_source,
-            commands::open_project,
-            commands::list_projects,
-            commands::load_reference,
-            commands::get_reference_info,
-            commands::backfill_reference_head,
-            commands::bootstrap_glossary,
-            commands::harvest_glossary,
-            commands::use_reference_as_base,
-            commands::start_translation,
-            commands::pause_translation,
-            commands::reset_translation,
-            commands::translate_chapter,
-            commands::translate_chapter_title,
-            commands::update_chapter_translation,
-            commands::replace_in_book,
-            commands::search_book,
-            commands::get_progress,
-            commands::get_glossary_page,
-            commands::chapter_terms,
-            commands::update_term,
-            commands::delete_term,
-            commands::retarget_terms,
-            commands::export_book,
-            commands::get_book_details,
-            commands::translate_title,
-            commands::set_summary,
-            commands::set_book_prompt,
-            commands::generate_summary,
-            commands::set_cover,
-            commands::list_chapters,
-            commands::get_chapter,
-            commands::set_chapter_prompt,
-            commands::set_chapter_context,
             commands::get_setting,
             commands::set_setting,
             commands::set_api_key,
@@ -172,20 +128,10 @@ pub fn run() {
             commands::provider_profiles_list,
             commands::provider_profile_save,
             commands::get_app_info,
-            commands::delete_project,
-            commands::export_project,
-            commands::import_project,
             commands::assistant_project_view,
             commands::assistant_project_send,
             commands::assistant_project_confirm,
             commands::assistant_project_cancel,
-            commands::assistant_history,
-            commands::assistant_clear,
-            commands::assistant_state,
-            commands::assistant_send,
-            commands::assistant_approve,
-            commands::assistant_set_auto_run,
-            commands::assistant_cancel,
         ])
         .run(tauri::generate_context!())
         .expect("failed to start the Tauri application");

@@ -400,7 +400,7 @@ mod tests {
         let covered = std::fs::read_to_string(&args.destination).unwrap();
         assert!(covered.contains("Manual export title"));
         assert!(covered.contains("Manual annotation"));
-        assert!(crate::export::fb2::extract_head(&covered).cover.is_some());
+        assert!(crate::book::load::load_book_text(&covered, "UTF-8").unwrap().cover.is_some());
         args.format = BookExportFormat::Txt;
         args.destination = temp.0.join("output.txt").to_string_lossy().into_owned();
         export_book(&manager, &args).unwrap();
@@ -449,8 +449,8 @@ mod tests {
             body: ChapterBody::Blocks(vec![ExportBlock::Text("[[img:ab12]]".into())]),
         }];
         let meta = OutputMeta::default();
-        assert!(export::render(&chapters, OutputFormat::Txt, &meta).contains("[[img:ab12]]"));
-        let xml = export::render(&chapters, OutputFormat::Fb2, &meta);
+        assert!(export::txt::render(&chapters).contains("[[img:ab12]]"));
+        let xml = export::fb2::render(&chapters, &meta);
         assert!(xml.contains("<p>[[img:ab12]]</p>"));
         assert!(!xml.contains("<image "));
     }

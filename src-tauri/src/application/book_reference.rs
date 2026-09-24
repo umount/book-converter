@@ -267,14 +267,7 @@ fn adopt(tx: &Transaction<'_>) -> Result<(), AppError> {
         if ids.is_empty() {
             continue;
         }
-        let tail = text
-            .chars()
-            .rev()
-            .take(1200)
-            .collect::<String>()
-            .chars()
-            .rev()
-            .collect::<String>();
+        let tail = crate::textutil::closing_excerpt(&text, 1200);
         let blocks = ids
             .into_iter()
             .enumerate()

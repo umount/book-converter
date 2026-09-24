@@ -1,6 +1,8 @@
 //! App-wide settings commands.
 
-use crate::dto::err;
+fn err(error: impl std::fmt::Display) -> String {
+    error.to_string()
+}
 
 /// Global settings DB (app-wide, survives restarts).
 fn settings_db() -> std::path::PathBuf {
@@ -15,9 +17,6 @@ fn settings_db() -> std::path::PathBuf {
 pub struct EffectiveConfig {
     pub model: String,
     pub base_url: String,
-    pub source_lang: String,
-    pub target_lang: String,
-    pub max_chunk_chars: usize,
     pub max_retries: usize,
     pub temperature: f32,
     pub request_timeout_secs: u64,
@@ -42,8 +41,6 @@ pub async fn get_effective_config() -> Result<EffectiveConfig, String> {
     for (key, var) in [
         ("model", "DEEPSEEK_MODEL"),
         ("base_url", "DEEPSEEK_BASE_URL"),
-        ("source_lang", "SOURCE_LANG"),
-        ("target_lang", "TARGET_LANG"),
     ] {
         if std::env::var(var).is_ok() {
             env_locked.push(key.to_string());
@@ -52,9 +49,6 @@ pub async fn get_effective_config() -> Result<EffectiveConfig, String> {
     Ok(EffectiveConfig {
         model: cfg.model,
         base_url: cfg.base_url,
-        source_lang: cfg.source_lang,
-        target_lang: cfg.target_lang,
-        max_chunk_chars: cfg.max_chunk_chars,
         max_retries: cfg.max_retries,
         temperature: cfg.temperature,
         request_timeout_secs: cfg.request_timeout_secs,
@@ -112,7 +106,12 @@ pub async fn get_setting(key: String) -> Result<Option<String>, String> {
 /// Persist an app setting. Secrets go through [`set_api_key`] instead.
 #[tauri::command]
 pub async fn set_setting(key: String, value: String) -> Result<(), String> {
-    if key == crate::config::API_KEY_SETTING || key.starts_with("ai_credential:") || key.starts_with("ai_profile:") || key.starts_with("ai_profile_revision:") || key.starts_with("ai_profile_name:") {
+    if key == crate::config::API_KEY_SETTING
+        || key.starts_with("ai_credential:")
+        || key.starts_with("ai_profile:")
+        || key.starts_with("ai_profile_revision:")
+        || key.starts_with("ai_profile_name:")
+    {
         return Err("use_set_api_key".into());
     }
     crate::settings::set(&settings_db(), &key, &value).map_err(err)

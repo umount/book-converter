@@ -20,11 +20,6 @@ pub struct Config {
     /// Model: "deepseek-chat" or "deepseek-reasoner".
     pub model: String,
 
-    /// Source language, e.g. "Chinese".
-    pub source_lang: String,
-    /// Target language, e.g. "Russian".
-    pub target_lang: String,
-
     /// Sampling temperature. Kept low for faithful translation: high values
     /// (DeepSeek's nominal 1.3) make long chapter outputs degenerate into
     /// gibberish near the end.
@@ -33,8 +28,6 @@ pub struct Config {
     /// even when the output is well under the token cap.
     pub request_timeout_secs: u64,
 
-    /// Max chunk size in characters (fallback splitting of long chapters).
-    pub max_chunk_chars: usize,
     /// Max tokens the model may generate per reply (DeepSeek V4: up to 384K).
     pub max_output_tokens: u32,
     /// Number of retries on network errors / 429 / 5xx.
@@ -48,11 +41,8 @@ impl std::fmt::Debug for Config {
             .field("api_key", &if self.has_key() { "<set>" } else { "<unset>" })
             .field("base_url", &self.base_url)
             .field("model", &self.model)
-            .field("source_lang", &self.source_lang)
-            .field("target_lang", &self.target_lang)
             .field("temperature", &self.temperature)
             .field("request_timeout_secs", &self.request_timeout_secs)
-            .field("max_chunk_chars", &self.max_chunk_chars)
             .field("max_output_tokens", &self.max_output_tokens)
             .field("max_retries", &self.max_retries)
             .finish()
@@ -65,11 +55,8 @@ impl Default for Config {
             api_key: String::new(),
             base_url: "https://api.deepseek.com".into(),
             model: "deepseek-chat".into(),
-            source_lang: "Chinese".into(),
-            target_lang: "Russian".into(),
             temperature: 0.3,
             request_timeout_secs: 600,
-            max_chunk_chars: 10000,
             max_output_tokens: 384_000,
             max_retries: 5,
         }
@@ -91,19 +78,7 @@ impl Config {
 
         let mut cfg = Config::default();
 
-        // The translation language pair is a user setting (chosen in the UI,
-        // persisted in the settings DB), so the tool is not tied to one pair.
         let sdb = crate::settings::db_path();
-        if let Ok(Some(v)) = crate::settings::get(&sdb, "source_lang") {
-            if !v.trim().is_empty() {
-                cfg.source_lang = v;
-            }
-        }
-        if let Ok(Some(v)) = crate::settings::get(&sdb, "target_lang") {
-            if !v.trim().is_empty() {
-                cfg.target_lang = v;
-            }
-        }
 
         // Advanced generation settings, also chosen in the UI (Settings page).
         if let Ok(Some(v)) = crate::settings::get(&sdb, "model") {
@@ -114,13 +89,6 @@ impl Config {
         if let Ok(Some(v)) = crate::settings::get(&sdb, "base_url") {
             if !v.trim().is_empty() {
                 cfg.base_url = v;
-            }
-        }
-        if let Ok(Some(v)) = crate::settings::get(&sdb, "max_chunk_chars") {
-            if let Ok(n) = v.trim().parse::<usize>() {
-                if n > 0 {
-                    cfg.max_chunk_chars = n;
-                }
             }
         }
         if let Ok(Some(v)) = crate::settings::get(&sdb, "max_retries") {
@@ -153,32 +121,7 @@ impl Config {
         if let Ok(base) = std::env::var("DEEPSEEK_BASE_URL") {
             cfg.base_url = base;
         }
-        if let Ok(v) = std::env::var("SOURCE_LANG") {
-            cfg.source_lang = v;
-        }
-        if let Ok(v) = std::env::var("TARGET_LANG") {
-            cfg.target_lang = v;
-        }
         cfg
-    }
-
-    /// Overlay a project's stored language pair. Empty / missing values keep
-    /// the global setting, so older projects without meta keys still work.
-    pub fn with_langs(mut self, source: Option<&str>, target: Option<&str>) -> Self {
-        if let Some(v) = source.map(str::trim).filter(|v| !v.is_empty()) {
-            self.source_lang = v.to_string();
-        }
-        if let Some(v) = target.map(str::trim).filter(|v| !v.is_empty()) {
-            self.target_lang = v.to_string();
-        }
-        self
-    }
-
-    /// Global config with this project's `source_lang` / `target_lang` overlaid.
-    pub fn load_for(store: &crate::state::Store) -> Self {
-        let source = store.get_meta("source_lang").ok().flatten();
-        let target = store.get_meta("target_lang").ok().flatten();
-        Self::load().with_langs(source.as_deref(), target.as_deref())
     }
 
     /// True when an API key is present.
@@ -255,25 +198,5 @@ mod tests {
         assert!(!printed.contains("secret"), "{printed}");
         assert!(printed.contains("<set>"));
         assert!(format!("{:?}", Config::default()).contains("<unset>"));
-    }
-
-    #[test]
-    fn with_langs_overlays_nonempty_only() {
-        let cfg = Config::default().with_langs(Some("Japanese"), Some("German"));
-        assert_eq!(cfg.source_lang, "Japanese");
-        assert_eq!(cfg.target_lang, "German");
-
-        let kept = Config::default().with_langs(Some("  "), None);
-        assert_eq!(kept.source_lang, "Chinese");
-        assert_eq!(kept.target_lang, "Russian");
-    }
-
-    #[test]
-    fn load_for_overlays_project_langs() {
-        let store = crate::state::Store::open(":memory:").unwrap();
-        store.set_translation_langs("Korean", "French").unwrap();
-        let cfg = Config::load_for(&store);
-        assert_eq!(cfg.source_lang, "Korean");
-        assert_eq!(cfg.target_lang, "French");
     }
 }

@@ -1,17 +1,4 @@
-//! Propagate a glossary rename into the already-translated text **and** into
-//! rolling continuity context (`rolling_summary` / `prev_tail` / book-level
-//! `running_summary`), so a later chapter retranslate does not reintroduce the
-//! old rendering from the prompt context.
-//!
-//! A plain find/replace breaks inflected languages: the old rendering appears in
-//! many grammatical forms ("Сюй Цина", "Сюй Цину") and changing a name's gender
-//! must ripple onto agreeing words ("сказала" → "сказал"). So we do it with the
-//! model, but only on the paragraphs that actually mention the old rendering —
-//! cheap, and it keeps the rest of the text untouched.
-//!
-//! This module holds the pure, testable pieces: which paragraphs are candidates,
-//! and the rewrite prompt. The job orchestration (threading, events) lives in
-//! `commands`.
+//! Local candidate matching for bounded glossary corrections.
 
 /// A stem of a single-word `target`: drop a trailing soft/vowel character that
 /// inflection typically replaces ("Аня" → "ан", so it matches "Ани"/"Аню").
@@ -63,24 +50,6 @@ pub fn paragraph_mentions(paragraph: &str, old_target: &str) -> bool {
     false
 }
 
-/// Build the (system, user) prompt to rewrite one paragraph, replacing every
-/// form of `old_target` with the correctly inflected form of `new_target` and
-/// fixing gender/number/case agreement of the surrounding words.
-pub fn rewrite_prompt(
-    target_lang: &str,
-    kind: &str,
-    old_target: &str,
-    new_target: &str,
-    paragraph: &str,
-) -> (String, String) {
-    let system = format!(
-        "You are editing an existing {target_lang} translation of a book. In the paragraph below, a {kind} that was previously rendered as \"{old_target}\" must now be rendered as \"{new_target}\".\n\
-         Replace EVERY mention of it, including all inflected/declined forms, with the correct grammatical form of \"{new_target}\". Adjust the surrounding words so that grammatical gender, number and case agree (for example past-tense verbs and adjectives that refer to it). Do not translate, rephrase, or change anything else — keep all other wording identical.\n\
-         Output only the corrected paragraph: no quotes, no notes, no explanations."
-    );
-    (system, paragraph.to_string())
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -103,12 +72,5 @@ mod tests {
         assert!(!paragraph_mentions("Совсем другой текст.", "Сюй Цин"));
         assert!(!paragraph_mentions("", "Аня"));
         assert!(!paragraph_mentions("что-то", ""));
-    }
-
-    #[test]
-    fn prompt_mentions_both_renderings() {
-        let (sys, user) = rewrite_prompt("Russian", "person", "Сюй Цин", "Иван", "Сюй Цин ушёл.");
-        assert!(sys.contains("Сюй Цин") && sys.contains("Иван"));
-        assert_eq!(user, "Сюй Цин ушёл.");
     }
 }

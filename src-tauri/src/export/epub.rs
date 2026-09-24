@@ -163,7 +163,7 @@ mod tests {
             index: 1,
             number: Some(1),
             title: "Страница 1".into(),
-            body: "[[img:ab12]]".into(),
+            body: crate::export::ChapterBody::Blocks(vec![crate::export::ExportBlock::Image("ab12".into())]),
         }];
         let meta = OutputMeta {
             images: HashMap::from([(
@@ -207,7 +207,7 @@ mod tests {
             index: 1,
             number: Some(1),
             title: "Глава 1".into(),
-            body: "До.\n\n[[img:ab12]]\n\nПосле.".into(),
+            body: crate::export::ChapterBody::Blocks(vec![crate::export::ExportBlock::Text("До.".into()),crate::export::ExportBlock::Image("ab12".into()),crate::export::ExportBlock::Text("После.".into())]),
         }];
         let out = dir.join("book.epub");
         export(&chapters, &OutputMeta::default(), &out).unwrap();

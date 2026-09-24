@@ -378,14 +378,7 @@ pub fn persist(tx: &Transaction<'_>, value: RetargetOutput) -> Result<String, Ap
             .filter(|s| !s.is_empty())
             .collect::<Vec<_>>()
             .join("\n\n");
-        let tail = body
-            .chars()
-            .rev()
-            .take(1200)
-            .collect::<String>()
-            .chars()
-            .rev()
-            .collect::<String>();
+        let tail = crate::textutil::closing_excerpt(&body, 1200);
         tx.execute(
             "UPDATE book_contexts SET summary=?1,previous_tail=?2 WHERE translation_id=?3",
             params![summary, tail, id],

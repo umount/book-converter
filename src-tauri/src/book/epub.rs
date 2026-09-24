@@ -166,49 +166,6 @@ fn asset_id(bytes: &[u8]) -> String {
         .collect()
 }
 
-/// Copy the images `assets` point at out of the `.epub` into `dest_dir`, named
-/// `<id>.<ext>`. Already-present files are left alone, so re-opening a project
-/// costs no unzipping. Returns how many files were written.
-pub fn extract_assets(path: &Path, assets: &[AssetRef], dest_dir: &Path) -> Result<usize> {
-    if assets.is_empty() {
-        return Ok(0);
-    }
-    std::fs::create_dir_all(dest_dir)
-        .with_context(|| format!("creating {}", dest_dir.display()))?;
-    let file = std::fs::File::open(path).with_context(|| format!("opening {}", path.display()))?;
-    let mut zip = ZipArchive::new(file).with_context(|| format!("epub zip {}", path.display()))?;
-    let mut written = 0usize;
-    for asset in assets {
-        let out = dest_dir.join(asset_file_name(asset));
-        if out.exists() {
-            continue;
-        }
-        let Ok(bytes) = zip_bytes(&mut zip, &asset.href) else {
-            continue;
-        };
-        if std::fs::write(&out, &bytes).is_ok() {
-            written += 1;
-        }
-    }
-    Ok(written)
-}
-
-/// On-disk name of an extracted asset: content id plus a real extension, so the
-/// file is openable outside the app and the webview can guess nothing wrong.
-pub fn asset_file_name(asset: &AssetRef) -> String {
-    format!("{}.{}", asset.id, image_ext(&asset.content_type))
-}
-
-fn image_ext(content_type: &str) -> &'static str {
-    match content_type {
-        "image/png" => "png",
-        "image/gif" => "gif",
-        "image/webp" => "webp",
-        "image/svg+xml" => "svg",
-        _ => "jpg",
-    }
-}
-
 /// Directory part of a zip entry name (`""` at the archive root).
 fn dir_of(name: &str) -> String {
     name.rsplit_once('/')
@@ -963,7 +920,7 @@ fn bytes_to_text(bytes: &[u8]) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::super::blocks::{markers_in, BlockKind};
+    use super::super::blocks::BlockKind;
     use super::*;
     use std::io::{Cursor, Write};
     use zip::write::SimpleFileOptions;
@@ -1139,7 +1096,7 @@ mod tests {
         let body = &book.chapters[3].body;
         assert!(body.starts_with("Before the plate."));
         assert!(body.ends_with("After the plate."));
-        assert_eq!(markers_in(body).len(), 1);
+        assert_eq!(body.lines().filter(|line| line.starts_with("[[img:")).count(), 1);
     }
 
     /// Prose chapters cost no block rows: their only block is the body itself.
@@ -1167,28 +1124,6 @@ mod tests {
         let book = load_archive(zip).unwrap();
         let ids: HashSet<&String> = book.assets.iter().map(|a| &a.id).collect();
         assert_eq!(ids.len(), book.assets.len(), "asset ids are unique");
-    }
-
-    #[test]
-    fn extract_assets_writes_each_image_once() {
-        let dir = std::env::temp_dir().join(format!("bc_epub_assets_{}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&dir);
-        let epub = dir.join("book.epub");
-        std::fs::create_dir_all(&dir).unwrap();
-        std::fs::write(&epub, sample_epub_bytes()).unwrap();
-
-        let book = load(&epub).unwrap();
-        let assets = dir.join("assets");
-        assert_eq!(
-            extract_assets(&epub, &book.assets, &assets).unwrap(),
-            book.assets.len()
-        );
-        for asset in &book.assets {
-            assert!(assets.join(asset_file_name(asset)).exists());
-        }
-        // Re-running is free: nothing is rewritten.
-        assert_eq!(extract_assets(&epub, &book.assets, &assets).unwrap(), 0);
-        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]

@@ -82,6 +82,7 @@ fn book(
         return Err(AppError::invalid("bookFormat"));
     }
     let mut loaded = crate::book::load_book(path).map_err(fail)?;
+    tracing::debug!(format = ?loaded.format, encoding = %loaded.encoding, "book source decoded");
     let mut warnings = Vec::new();
     if loaded.encoding_had_errors {
         warnings.push("import.encodingUncertain".into());
