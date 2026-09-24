@@ -107,10 +107,11 @@ impl<'a> ProjectRepository<'a> {
         let tx = self.connection.transaction().map_err(storage_error)?;
         let chapter = tx
             .query_row(
-                "SELECT id,position,source_title,revision,status,origin,needs_review FROM book_chapter_states WHERE id=?1",
+                "SELECT id,position,source_title,revision,status,origin,needs_review,(SELECT NULLIF(trim(translated_title),'') FROM book_translations WHERE chapter_id=book_chapter_states.id AND target_language=(SELECT target_language FROM project_settings WHERE singleton=1) ORDER BY revision DESC LIMIT 1) FROM book_chapter_states WHERE id=?1",
                 [id],
                 |r| {
                     Ok(ChapterSummary {
+                        translated_title:r.get(7)?,
                         status:r.get(4)?,origin:r.get(5)?,needs_review:r.get(6)?,
                         id: crate::app::contracts::ChapterId(r.get(0)?),
                         position: r.get(1)?,
@@ -338,6 +339,7 @@ mod tests {
         let mut db = fixture(ProjectKind::Book);
         let mut repo = ProjectRepository::new(&mut db, ProjectKind::Book).unwrap();
         let chapter = ChapterSummary {
+            translated_title:None,
             status:"pending".into(),origin:None,needs_review:false,
             id: ChapterId("chapter".into()),
             position: 0,

@@ -261,10 +261,22 @@ pub(crate) fn validate_credential_destination(
 pub fn prepare_metadata_run(
     manager: &ProjectManager,
     project: &ProjectId,
+    summary_only: bool,
 ) -> Result<JobRef, AppError> {
+    let descriptor = manager.open(project)?;
     let lease = manager.lease(project)?;
+    let missing = lease.with_connection(|db,_| db.query_row("SELECT COUNT(*)=0 FROM book_source_metadata",[],|r|r.get::<_,bool>(0)).map_err(storage_error))?;
+    if missing {
+        let original = descriptor.source.original_path.as_ref().and_then(|p| crate::book::load_book(std::path::Path::new(p)).ok()).map(|b| b.meta);
+        lease.with_connection(|db,_| {
+            let title = original.as_ref().and_then(|m|m.title.clone()).unwrap_or(descriptor.name.clone());
+            db.execute("INSERT OR IGNORE INTO book_source_metadata(singleton,title,author,summary) VALUES(1,?1,?2,?3)",rusqlite::params![title,original.as_ref().and_then(|m|m.author.as_ref()),original.as_ref().and_then(|m|m.summary.as_ref())]).map_err(storage_error)?;
+            Ok(())
+        })?;
+    }
     lease.with_connection(|db, _| {
         ProjectRepository::new(db, crate::app::contracts::ProjectKind::Book)?;
+        db.execute("UPDATE book_source_metadata SET title=?1 WHERE singleton=1 AND (title IS NULL OR trim(title)='')", [&descriptor.name]).map_err(storage_error)?;
         let settings = shared::settings(db)?;
         let (profile, key) =
             provider_profile(settings.choices.book_translation_profile.as_deref())?;
@@ -281,10 +293,10 @@ pub fn prepare_metadata_run(
             settings_revision: settings.revision,
             glossary_revision: shared::glossary_revision(db)?,
             selected_ids: vec![first],
-            prompt_version: "book-metadata-v1".into(),
+            prompt_version: "book-metadata-v2".into(),
             stages: vec!["metadata".into()],
             provider: Some(profile),
-            instructions: None,
+            instructions: summary_only.then(|| "summary_only".into()),
         };
         let job_id = uuid::Uuid::new_v4().to_string();
         runs::create_run(db, &job_id, "book_metadata", &snapshot, &now())?;

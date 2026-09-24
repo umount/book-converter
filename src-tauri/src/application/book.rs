@@ -204,6 +204,7 @@ impl StepExecutor for BookPipeline {
             return lease.with_connection(|db, _| {
                 digest(&(
                     super::book_metadata::fingerprint(db)?,
+                    &run.snapshot.instructions,
                     &run.snapshot.prompt_version,
                     self.provider.profile(),
                 ))

@@ -105,6 +105,7 @@ fn book(
         .or_else(|| crate::language::detect_from_words(&sample))
         .and_then(language_code)
         .map(String::from);
+    db.execute("INSERT INTO book_source_metadata(singleton,title,author,summary) VALUES(1,?1,?2,?3)", rusqlite::params![loaded.meta.title,loaded.meta.author,loaded.meta.summary]).map_err(fail)?;
     let store = AssetStore::new(directory).map_err(fail)?;
     if let Some((_, bytes)) = &loaded.cover {
         let id = crate::application::book_presentation::publish_cover(db, directory, bytes)?;
@@ -182,6 +183,7 @@ fn book(
             .collect::<Vec<_>>();
         ProjectRepository::new(db, ProjectKind::Book)?.insert_chapter(
             &ChapterSummary {
+                translated_title: None,
                 status: "pending".into(), origin: None, needs_review: false,
                 id: ChapterId(chapter_id.clone()),
                 position: position as u32,

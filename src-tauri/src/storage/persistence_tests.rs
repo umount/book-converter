@@ -834,6 +834,7 @@ fn title_revision_preserves_reference_body_origin_and_context() {
     results::save_context(&db,&results::BookContext{id:"ctx".into(),translation_id:value.id.clone(),translation_revision:rev(0),summary:"Summary".into(),previous_tail:"Tail".into(),predecessor_id:None}).unwrap();
     assert_eq!(results::edit_translation_title(&mut db,&value.id,&rev(0),"Исправленный заголовок").unwrap(),rev(1));
     let view=super::repository::ProjectRepository::new(&mut db,ProjectKind::Book).unwrap().chapter("chapter").unwrap();
+    assert_eq!(view.chapter.translated_title.as_deref(),Some("Исправленный заголовок"));
     let title=view.translation.unwrap();assert_eq!(title.title,"Исправленный заголовок");assert_eq!(title.origin,"reference");assert_eq!(title.status,"ready");assert_eq!(view.blocks[0].translated_text.as_deref(),Some("Translated"));
     let context:(String,String,i64)=db.query_row("SELECT summary,previous_tail,translation_revision FROM book_contexts WHERE translation_id=?1",[&title.id],|r|Ok((r.get(0)?,r.get(1)?,r.get(2)?))).unwrap();assert_eq!(context,("Summary".into(),"Tail".into(),1));
     assert_eq!(results::edit_translation_title(&mut db,&value.id,&rev(0),"Late title").unwrap_err().code,ErrorCode::RevisionConflict);

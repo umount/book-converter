@@ -330,7 +330,13 @@ async fn metadata_job_persists_independently_and_becomes_stale_after_source_edit
             &self,
             request: Request,
         ) -> Pin<Box<dyn Future<Output = Result<Completion, AppError>> + Send + '_>> {
-            assert!(matches!(request, Request::Structured { .. }));
+            let Request::Structured { user, system } = request else { panic!("metadata must be structured") };
+            let supplied: serde_json::Value = serde_json::from_str(&user).unwrap();
+            assert!(supplied.get("title").is_some());
+            assert!(supplied.get("author").is_some());
+            assert!(supplied.get("annotation").is_some());
+            assert!(supplied["excerpt"].as_str().is_some_and(|text| !text.is_empty()));
+            assert!(system.contains("Translate the supplied source title and author"));
             Box::pin(async {
                 Ok(Completion {
                     text: r#"{"title":"Test title","author":"","summary":"Test summary"}"#.into(),
@@ -347,6 +353,8 @@ async fn metadata_job_persists_independently_and_becomes_stale_after_source_edit
         .unwrap()
         .with_connection(|db, _| {
             assert!(super::book_metadata::read(db)?.is_none());
+            let source = super::book_presentation::read(db)?;
+            assert!(source.source_title.as_ref().is_some_and(|title| !title.is_empty()));
             let chapter: String = db
                 .query_row(
                     "SELECT id FROM book_chapters ORDER BY position LIMIT 1",

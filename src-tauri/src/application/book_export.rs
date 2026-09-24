@@ -282,15 +282,18 @@ fn snapshot(
         OutputMeta {
             title: presentation
                 .title
-                .or_else(|| metadata.as_ref().map(|m| m.title.clone()))
+                .or_else(|| metadata.as_ref().map(|m| m.title.clone()).filter(|s| !s.trim().is_empty()))
+                .or(presentation.source_title)
                 .unwrap_or_default(),
             author: presentation
                 .author
-                .or_else(|| metadata.as_ref().map(|m| m.author.clone()))
+                .or_else(|| metadata.as_ref().map(|m| m.author.clone()).filter(|s| !s.trim().is_empty()))
+                .or(presentation.source_author)
                 .unwrap_or_default(),
             annotation: presentation
                 .summary
-                .or_else(|| metadata.map(|m| m.summary))
+                .or_else(|| metadata.map(|m| m.summary).filter(|s| !s.trim().is_empty()))
+                .or(presentation.source_summary)
                 .filter(|s| !s.is_empty()),
             cover,
             lang: settings.choices.target_language,

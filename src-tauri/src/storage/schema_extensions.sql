@@ -27,3 +27,10 @@ SELECT c.id,c.position,c.source_title,c.revision,
 FROM book_chapters c
 LEFT JOIN book_translations t ON t.id=(SELECT id FROM book_translations WHERE chapter_id=c.id AND target_language=(SELECT target_language FROM project_settings WHERE singleton=1) ORDER BY revision DESC LIMIT 1)
 LEFT JOIN job_steps s ON s.rowid=(SELECT rowid FROM job_steps WHERE entity_kind='chapter' AND entity_id=c.id AND stage IN ('translation','glossary','context') ORDER BY rowid DESC LIMIT 1);
+
+CREATE TABLE IF NOT EXISTS book_source_metadata (
+ singleton INTEGER PRIMARY KEY CHECK(singleton=1), title TEXT, author TEXT, summary TEXT
+);
+CREATE TRIGGER IF NOT EXISTS book_source_metadata_kind_guard BEFORE INSERT ON book_source_metadata
+WHEN (SELECT kind FROM project_settings WHERE singleton=1)!='book'
+BEGIN SELECT RAISE(ABORT, 'Book metadata requires book project'); END;

@@ -496,6 +496,7 @@ pub struct InspectManifestArgs {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ChapterSummary {
+    pub translated_title: Option<String>,
     pub status: String,
     pub origin: Option<String>,
     pub needs_review: bool,
@@ -706,6 +707,7 @@ pub fn typescript() -> String {
         InspectSourceArgs::decl(&config),
         CreateProjectArgs::decl(&config),
         ImportSessionArgs::decl(&config),
+        StartBookMetadataArgs::decl(&config),
         ProjectArgs::decl(&config),
         ArchiveExportArgs::decl(&config),
         ArchiveImportArgs::decl(&config),
@@ -813,6 +815,9 @@ mod tests {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct BookPresentation {
+    pub source_title: Option<String>,
+    pub source_author: Option<String>,
+    pub source_summary: Option<String>,
     pub title: Option<String>,
     pub author: Option<String>,
     pub summary: Option<String>,
@@ -885,3 +890,11 @@ pub struct StartBookRetargetArgs {
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
 #[serde(rename_all="camelCase")]
 pub struct BookRetargetPreview { pub chapters: u32, pub fragments: u32 }
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct StartBookMetadataArgs {
+    pub project_id: ProjectId,
+    #[serde(default)]
+    pub summary_only: bool,
+}
