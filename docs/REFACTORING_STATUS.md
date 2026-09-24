@@ -357,3 +357,22 @@ fallback. Keep commits scoped; push only on user request.
   (including export), then the redesigned assistant using the new domain APIs.
   The current visual direction is retained per user feedback. Language choices stay
   fixed at project creation. These remaining stages are not yet implemented.
+
+### Book details, cover and shared instructions
+
+- Added revision-guarded human-owned title/author/annotation overrides and global
+  translation instructions, separately from AI-generated metadata. New batch
+  snapshots freeze the combined book/run instructions. Prompt changes advance the
+  settings revision and mark existing ready translations for review without deleting them.
+- Cover selection validates image content/size, stores immutable project assets,
+  supports removal and survives reopen/archive transfer. EPUB source covers are
+  preserved on import. Structured exporters use manual overrides and verify cover
+  hashes before embedding. Additive format-1 table initialization supports existing
+  new-format projects; no legacy data is revived or reset.
+- The overview saves drafts before navigation/Ctrl+S/close, exposes generated-value
+  fallback and protects stale writes. Browser fixture check verified editing the
+  book prompt, switching to the reader and returning with the saved text intact.
+- Evidence: 306 library tests passed; extended structural export tests passed with
+  manual metadata and an embedded FB2 cover. Frontend tests/build passed. Clippy's
+  redundant struct-update finding was removed before the final check. Native file
+  chooser and packaged app acceptance remain unverified.

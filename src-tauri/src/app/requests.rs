@@ -643,6 +643,9 @@ pub fn typescript() -> String {
         UpdateBookBlockArgs::decl(&config),
         UpdateChapterInstructionsArgs::decl(&config),
         TranslationOptions::decl(&config),
+        BookPresentation::decl(&config),
+        UpdateBookPresentationArgs::decl(&config),
+        SetBookCoverArgs::decl(&config),
         StartBookTranslationArgs::decl(&config),
         BookReferenceImportArgs::decl(&config),
         BookMetadataView::decl(&config),
@@ -734,4 +737,32 @@ mod tests {
         request.as_object_mut().unwrap().remove("expectedRevision");
         assert!(serde_json::from_value::<UpdateBookBlockArgs>(request).is_err());
     }
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct BookPresentation {
+    pub title: Option<String>,
+    pub author: Option<String>,
+    pub summary: Option<String>,
+    pub instructions: String,
+    pub cover_asset_id: Option<String>,
+    pub revision: Revision,
+}
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct UpdateBookPresentationArgs {
+    pub project_id: ProjectId,
+    pub title: Option<String>,
+    pub author: Option<String>,
+    pub summary: Option<String>,
+    pub instructions: String,
+    pub expected_revision: Revision,
+}
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct SetBookCoverArgs {
+    pub project_id: ProjectId,
+    pub path: Option<String>,
+    pub expected_revision: Revision,
 }

@@ -203,21 +203,58 @@ fn snapshot(
         return Err(AppError::invalid("selection"));
     }
     let metadata = super::book_metadata::read(&tx)?.filter(|m| m.current);
+    let presentation = super::book_presentation::read(&tx)?;
+    let cover = presentation
+        .cover_asset_id
+        .as_ref()
+        .map(|id| -> Result<crate::export::fb2::Cover, AppError> {
+            use base64::Engine;
+            let (relative, mime, size): (String, String, u64) = tx
+                .query_row(
+                    "SELECT relative_path,mime,byte_length FROM assets WHERE id=?1",
+                    [id],
+                    |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
+                )
+                .map_err(storage_error)?;
+            let extension = match mime.as_str() {
+                "image/png" => "png",
+                "image/jpeg" => "jpg",
+                "image/gif" => "gif",
+                "image/webp" => "webp",
+                _ => return Err(AppError::invalid("assetMime")),
+            };
+            if relative != format!("assets/{id}.{extension}") {
+                return Err(AppError::invalid("assetPath"));
+            }
+            let bytes = AssetStore::read_path(&directory.join(relative)).map_err(storage_error)?;
+            if bytes.len() as u64 != size || format!("{:x}", Sha256::digest(&bytes)) != *id {
+                return Err(AppError::invalid("assetHash"));
+            }
+            Ok(crate::export::fb2::Cover {
+                content_type: mime,
+                base64: base64::engine::general_purpose::STANDARD.encode(bytes),
+            })
+        })
+        .transpose()?;
+
     Ok((
         chapters,
         OutputMeta {
-            title: metadata
-                .as_ref()
-                .map(|m| m.title.clone())
+            title: presentation
+                .title
+                .or_else(|| metadata.as_ref().map(|m| m.title.clone()))
                 .unwrap_or_default(),
-            author: metadata
-                .as_ref()
-                .map(|m| m.author.clone())
+            author: presentation
+                .author
+                .or_else(|| metadata.as_ref().map(|m| m.author.clone()))
                 .unwrap_or_default(),
-            annotation: metadata.map(|m| m.summary).filter(|s| !s.is_empty()),
+            annotation: presentation
+                .summary
+                .or_else(|| metadata.map(|m| m.summary))
+                .filter(|s| !s.is_empty()),
+            cover,
             lang: settings.choices.target_language,
             images,
-            ..Default::default()
         },
     ))
 }
@@ -293,6 +330,39 @@ mod tests {
         let text = std::fs::read_to_string(&args.destination).unwrap();
         assert_eq!(text.matches("<image ").count(), 3);
         assert_eq!(text.matches("<binary ").count(), 1);
+        let cover_path = temp.0.join("cover.png");
+        image::RgbImage::new(3, 4).save(&cover_path).unwrap();
+        manager
+            .lease(&project.id)
+            .unwrap()
+            .with_connection(|db, directory| {
+                let details = super::super::book_presentation::read(db)?;
+                let details = super::super::book_presentation::update(
+                    db,
+                    &crate::app::requests::UpdateBookPresentationArgs {
+                        project_id: project.id.clone(),
+                        title: Some("Manual export title".into()),
+                        author: Some("Manual author".into()),
+                        summary: Some("Manual annotation".into()),
+                        instructions: String::new(),
+                        expected_revision: details.revision,
+                    },
+                )?;
+                super::super::book_presentation::cover(
+                    db,
+                    directory,
+                    cover_path.to_str(),
+                    &details.revision,
+                )?;
+                Ok(())
+            })
+            .unwrap();
+        args.destination = temp.0.join("covered.fb2").to_string_lossy().into_owned();
+        export_book(&manager, &args).unwrap();
+        let covered = std::fs::read_to_string(&args.destination).unwrap();
+        assert!(covered.contains("Manual export title"));
+        assert!(covered.contains("Manual annotation"));
+        assert!(crate::export::fb2::extract_head(&covered).cover.is_some());
         args.format = BookExportFormat::Txt;
         args.destination = temp.0.join("output.txt").to_string_lossy().into_owned();
         export_book(&manager, &args).unwrap();

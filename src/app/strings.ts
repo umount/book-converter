@@ -79,6 +79,15 @@ const en = {
   noJobs: "No processing jobs",
   translateChapter: "Translate chapter",
   translateBatch: "Translate batch",
+  bookTitle: "Book title",
+  cover: "Cover",
+  chooseCover: "Choose cover",
+  removeCover: "Remove cover",
+  useGenerated: "Use generated value",
+  bookPrompt: "Book translation instructions",
+  bookPromptHint:
+    "Applied to the next batch. Earlier translations remain available for review. Stop an active batch before changing its instructions.",
+
   batchCount: "Chapters per batch",
   noEligibleChapters: "No untranslated text chapters in this selection.",
   batchHint:
@@ -248,6 +257,15 @@ const ru: Record<Key, string> = {
   noJobs: "Нет заданий обработки",
   translateChapter: "Перевести главу",
   translateBatch: "Перевести партию",
+  bookTitle: "Название книги",
+  cover: "Обложка",
+  chooseCover: "Выбрать обложку",
+  removeCover: "Удалить обложку",
+  useGenerated: "Использовать сгенерированное",
+  bookPrompt: "Общий промпт книги",
+  bookPromptHint:
+    "Применяется к следующей партии. Предыдущие переводы сохраняются для проверки. Перед изменением инструкций остановите текущую партию.",
+
   batchCount: "Глав в партии",
   noEligibleChapters: "В выбранной области нет непереведённых текстовых глав.",
   batchHint:
@@ -409,6 +427,15 @@ const zh: Record<Key, string> = {
   noJobs: "暂无处理任务",
   translateChapter: "翻译章节",
   translateBatch: "翻译本批次",
+  bookTitle: "书名",
+  cover: "封面",
+  chooseCover: "选择封面",
+  removeCover: "移除封面",
+  useGenerated: "使用生成值",
+  bookPrompt: "全书翻译说明",
+  bookPromptHint:
+    "应用于下一批次。已有译文将保留供检查。修改说明前请停止当前批次。",
+
   batchCount: "每批章节数",
   noEligibleChapters: "所选范围内没有待翻译的文本章节。",
   batchHint: "本批次完成后停止。开始下一批前请检查译文和术语表。",

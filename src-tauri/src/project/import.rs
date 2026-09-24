@@ -105,6 +105,11 @@ fn book(
         .and_then(language_code)
         .map(String::from);
     let store = AssetStore::new(directory).map_err(fail)?;
+    if let Some((_, bytes)) = &loaded.cover {
+        let id = crate::application::book_presentation::publish_cover(db,directory,bytes)?;
+        db.execute("INSERT INTO book_presentation(singleton,cover_asset_id) VALUES(1,?1)",[id]).map_err(fail)?;
+    }
+
     let mut assets = HashMap::new();
     if !loaded.assets.is_empty() {
         let mut archive =

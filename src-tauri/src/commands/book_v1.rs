@@ -428,3 +428,19 @@ pub async fn book_start_glossary(
     .map_err(|_| AppError::invalid("task"))??;
     dispatch_created(&context, app, job)
 }
+
+#[tauri::command]
+pub async fn book_presentation_get(context: State<'_, AppContext>, args: ProjectArgs) -> Result<BookPresentation, AppError> {
+    let manager=context.manager.clone();
+    tauri::async_runtime::spawn_blocking(move || manager.lease(&args.project_id)?.with_connection(|db,_| crate::application::book_presentation::read(db))).await.map_err(|_|AppError::invalid("task"))?
+}
+#[tauri::command]
+pub async fn book_presentation_update(context: State<'_, AppContext>, args: UpdateBookPresentationArgs) -> Result<BookPresentation, AppError> {
+    let manager=context.manager.clone();
+    tauri::async_runtime::spawn_blocking(move || manager.lease(&args.project_id)?.with_connection(|db,_| crate::application::book_presentation::update(db,&args))).await.map_err(|_|AppError::invalid("task"))?
+}
+#[tauri::command]
+pub async fn book_cover_set(context: State<'_, AppContext>, args: SetBookCoverArgs) -> Result<BookPresentation, AppError> {
+    let manager=context.manager.clone();
+    tauri::async_runtime::spawn_blocking(move || manager.lease(&args.project_id)?.with_connection(|db,directory| crate::application::book_presentation::cover(db,directory,args.path.as_deref(),&args.expected_revision))).await.map_err(|_|AppError::invalid("task"))?
+}

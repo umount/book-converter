@@ -1,9 +1,9 @@
+import { BookOverview } from "./BookOverview";
 import { useEffect, useState } from "react";
 import { open, save } from "@tauri-apps/plugin-dialog";
 import { projectApi } from "../../shared/api/projects";
 import type {
   BookExportFormat,
-  BookMetadataView,
   BookReferenceView,
   BookReplacePreview,
   ChapterSummary,
@@ -19,13 +19,19 @@ export type BookTool =
   | "replace"
   | "export"
   | "instructions";
-export function BookTools({
+export function BookTools(props: Parameters<typeof Tools>[0]) {
+  return props.tool === "overview" ? (
+    <BookOverview key={props.project.id} {...props} />
+  ) : (
+    <Tools {...props} />
+  );
+}
+function Tools({
   tool,
   project,
   chapters,
   session,
   t,
-  run,
   refresh,
   registerFlush,
 }: {
@@ -38,8 +44,7 @@ export function BookTools({
   refresh: () => Promise<void>;
   registerFlush: (flush: (() => Promise<void>) | null) => void;
 }) {
-  const [metadata, setMetadata] = useState<BookMetadataView | null>(null),
-    [reference, setReference] = useState<BookReferenceView | null>(null);
+  const [reference, setReference] = useState<BookReferenceView | null>(null);
   const [search, setSearch] = useState(""),
     [replacement, setReplacement] = useState(""),
     [matchCase, setMatchCase] = useState(false),
@@ -74,18 +79,13 @@ export function BookTools({
   }
   useEffect(() => {
     let alive = true;
-    setMetadata(null);
     setReference(null);
     const request =
-      tool === "overview"
-        ? projectApi.metadata({ projectId: project.id }).then((v) => {
-            if (alive) setMetadata(v);
+      tool === "reference"
+        ? projectApi.reference({ projectId: project.id }).then((v) => {
+            if (alive) setReference(v);
           })
-        : tool === "reference"
-          ? projectApi.reference({ projectId: project.id }).then((v) => {
-              if (alive) setReference(v);
-            })
-          : Promise.resolve();
+        : Promise.resolve();
     void request.catch((e) => {
       if (alive) setError(e);
     });
@@ -143,45 +143,6 @@ export function BookTools({
   return (
     <div className="bc-tool">
       <h2>{t(tool === "overview" ? "metadata" : tool)}</h2>
-      {tool === "overview" && (
-        <>
-          <p className="bc-hint">{project.source.displayName}</p>
-          {metadata ? (
-            <>
-              <h3>{metadata.title}</h3>
-              {metadata.author && (
-                <p>
-                  {t("author")}: {metadata.author}
-                </p>
-              )}
-              <p className="bc-summary">{metadata.summary}</p>
-              {!metadata.current && (
-                <p className="bc-warning">{t("staleMetadata")}</p>
-              )}
-            </>
-          ) : (
-            <p>{t("noMetadata")}</p>
-          )}
-          <button
-            disabled={busy}
-            onClick={() => void act(() => run("metadata"))}
-          >
-            {t("generateMetadata")}
-          </button>
-          <button
-            disabled={busy}
-            onClick={() =>
-              void act(async () =>
-                setMetadata(
-                  await projectApi.metadata({ projectId: project.id }),
-                ),
-              )
-            }
-          >
-            {t("refresh")}
-          </button>
-        </>
-      )}
       {tool === "instructions" && (
         <>
           <p className="bc-hint">{t("instructionHint")}</p>

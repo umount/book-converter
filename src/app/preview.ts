@@ -173,6 +173,22 @@ export async function invokePreview<T>(
       result = view.chapter.revision;
       break;
     }
+    case "book_presentation_get":
+      result = previewPresentation;
+      break;
+    case "book_presentation_update":
+      if (args.expectedRevision !== previewPresentation.revision)
+        throw { code: "revision_conflict" };
+      previewPresentation = {
+        ...previewPresentation,
+        title: args.title,
+        author: args.author,
+        summary: args.summary,
+        instructions: args.instructions,
+        revision: String(Number(previewPresentation.revision) + 1),
+      };
+      result = previewPresentation;
+      break;
     case "book_metadata_get":
       result = {
         title: "Сад за морем",
@@ -251,3 +267,13 @@ export async function invokePreview<T>(
   }
   return structuredClone(result) as T;
 }
+
+let previewPresentation: import("../shared/contracts/generated").BookPresentation =
+  {
+    title: null,
+    author: null,
+    summary: null,
+    instructions: "",
+    coverAssetId: null,
+    revision: "0",
+  };

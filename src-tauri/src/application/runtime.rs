@@ -109,7 +109,16 @@ pub fn prepare_book_run(
             prompt_version: "book-segments-v1".into(),
             stages: vec!["translation".into(), "context".into()],
             provider: Some(profile),
-            instructions: options.instructions.clone(),
+            instructions: Some(
+                [
+                    super::book_presentation::read(db)?.instructions,
+                    options.instructions.clone().unwrap_or_default(),
+                ]
+                .into_iter()
+                .filter(|s| !s.trim().is_empty())
+                .collect::<Vec<_>>()
+                .join("\n\n"),
+            ),
         })
     })?;
     let job_id = uuid::Uuid::new_v4().to_string();
