@@ -27,6 +27,12 @@ export function JobPanel({
   cancel: (job: JobRef) => void;
   resume: (job: JobRef) => void;
 }) {
+  const activeStates = ["running", "cancelling", "queued"];
+  const orderedJobs = [...jobs].sort((a, b) => {
+    const rank = (job: JobView) => job.state === "queued" ? 1 : activeStates.includes(job.state) ? 0 : 2;
+    return rank(a) - rank(b);
+  });
+  const current = orderedJobs.find(job => activeStates.includes(job.state));
   return (
     <section className="bc-jobs">
       <header>
@@ -45,120 +51,108 @@ export function JobPanel({
           ×
         </button>
       </header>
-      {!jobs.length && <p className="bc-hint">{t("noJobs")}</p>}
-      {jobs.map((job) => (
-        <div className="bc-job" key={`${job.job.projectId}/${job.job.jobId}`}>
-          <div className="bc-job-heading">
-            <strong>
-              {t(
-                job.kind === "book_translation" ||
-                  job.kind === "book_metadata" ||
-                  job.kind === "book_glossary" ||
-                  job.kind === "book_title" ||
-                  job.kind === "book_retarget" ||
-                  job.kind === "manga_recognition" ||
-                  job.kind === "manga_translation" ||
-                  job.kind === "manga_masks" ||
-                  job.kind === "manga_inpainting" ||
-                  job.kind === "manga_lettering" ||
-                  job.kind === "manga_automatic" ||
-                  job.kind === "manga_rebuild"
-                  ? job.kind
-                  : "processing",
-              )}
-            </strong>
-            {job.currentPageNumber != null && (
-              <span className="bc-job-chapter">
-                {job.currentVolumeTitle} · {t("page")} {job.currentPageNumber}
-              </span>
-            )}
-            {job.currentChapterNumber != null && (
-              <span className="bc-job-chapter">
-                {t("jobChapter")} {job.currentChapterNumber}:{" "}
-                {job.currentChapterTitle}
-              </span>
-            )}
-            {["running", "queued"].includes(job.state) && job.currentStage && (
-              <span className="bc-hint">
+      {current && <progress
+        className="bc-jobs-progress"
+        aria-label={t("processing")}
+        value={current.completedSteps}
+        max={Math.max(1, current.totalSteps)}
+      />}
+      <div className="bc-jobs-body">
+        {!jobs.length && <p className="bc-hint">{t("noJobs")}</p>}
+        {orderedJobs.map((job) => (
+          <div className={`bc-job${job.state === "succeeded" ? " bc-job-complete" : ""}`} key={`${job.job.projectId}/${job.job.jobId}`}>
+            <div className="bc-job-heading">
+              <strong>
                 {t(
-                  job.currentStage === "recognition"
-                    ? "mangaRecognition"
-                    : job.currentStage === "masks"
-                      ? "mangaMasks"
-                      : job.currentStage === "lettering"
-                        ? "mangaLettering"
-                        : job.currentStage === "inpainting"
-                          ? "mangaInpainting"
-                          : job.currentStage === "context"
-                            ? "jobContext"
-                            : job.currentStage === "glossary"
-                              ? "book_glossary"
-                              : job.currentStage === "title"
-                                ? "book_title"
-                                : job.currentStage === "metadata"
-                                  ? "book_metadata"
-                                  : job.currentStage === "retarget"
-                                    ? "book_retarget"
-                                    : "translation",
+                  job.kind === "book_translation" ||
+                    job.kind === "book_metadata" ||
+                    job.kind === "book_glossary" ||
+                    job.kind === "book_title" ||
+                    job.kind === "book_retarget" ||
+                    job.kind === "manga_recognition" ||
+                    job.kind === "manga_translation" ||
+                    job.kind === "manga_masks" ||
+                    job.kind === "manga_inpainting" ||
+                    job.kind === "manga_lettering" ||
+                    job.kind === "manga_automatic" ||
+                    job.kind === "manga_rebuild"
+                    ? job.kind
+                    : "processing",
                 )}
+              </strong>
+              {job.currentPageNumber != null && (
+                <span className="bc-job-chapter">
+                  {job.currentVolumeTitle} · {t("page")} {job.currentPageNumber}
+                </span>
+              )}
+              {job.currentChapterNumber != null && (
+                <span className="bc-job-chapter">
+                  {t("jobChapter")} {job.currentChapterNumber}:{" "}
+                  {job.currentChapterTitle}
+                </span>
+              )}
+              {["running", "queued"].includes(job.state) && job.currentStage && (
+                <span className="bc-hint">
+                  {t(
+                    job.currentStage === "recognition"
+                      ? "mangaRecognition"
+                      : job.currentStage === "masks"
+                        ? "mangaMasks"
+                        : job.currentStage === "lettering"
+                          ? "mangaLettering"
+                          : job.currentStage === "inpainting"
+                            ? "mangaInpainting"
+                            : job.currentStage === "context"
+                              ? "jobContext"
+                              : job.currentStage === "glossary"
+                                ? "book_glossary"
+                                : job.currentStage === "title"
+                                  ? "book_title"
+                                  : job.currentStage === "metadata"
+                                    ? "book_metadata"
+                                    : job.currentStage === "retarget"
+                                      ? "book_retarget"
+                                      : "translation",
+                  )}
+                </span>
+              )}
+              {["running", "queued"].includes(job.state) && (
+                <button disabled={busy} onClick={() => cancel(job.job)}>
+                  {t("cancel")}
+                </button>
+              )}
+              {["failed", "cancelled", "interrupted"].includes(job.state) && (
+                <button disabled={busy} onClick={() => resume(job.job)}>
+                  {t("resume")}
+                </button>
+              )}
+            </div>
+            <div className="bc-job-progress">
+              <span>
+                {t(job.state)}{job.state !== "succeeded" && <> ·{" "}
+                {Math.round((job.completedSteps / Math.max(1, job.totalSteps)) * 100)}
+                % ·{" "}
+                {job.totalPages != null
+                  ? `${t("pages")}: ${job.completedPages}/${job.totalPages}`
+                  : job.totalChapters != null
+                    ? `${t("chapters")}: ${job.completedChapters}/${job.totalChapters}`
+                    : `${t("jobStages")}: ${job.completedSteps}/${job.totalSteps}`}
+              </>}
               </span>
-            )}
-            {["running", "queued"].includes(job.state) && (
-              <button disabled={busy} onClick={() => cancel(job.job)}>
-                {t("cancel")}
-              </button>
-            )}
-            {["failed", "cancelled", "interrupted"].includes(job.state) && (
-              <button disabled={busy} onClick={() => resume(job.job)}>
-                {t("resume")}
-              </button>
+              {["running", "queued"].includes(job.state) && (
+                <span className="bc-hint">
+                  {job.remainingSeconds == null
+                    ? t("estimatingTime")
+                    : `${t("remainingTime")}: ${remainingTime(job.remainingSeconds, t)}`}
+                </span>
+              )}
+            </div>
+            {job.error && (
+              <span className="bc-error">{errorText(job.error, t)}</span>
             )}
           </div>
-          <div className="bc-job-progress">
-            <progress
-              aria-label={t("processing")}
-              value={
-                job.completedPages ??
-                job.completedChapters ??
-                job.completedSteps
-              }
-              max={Math.max(
-                1,
-                job.totalPages ?? job.totalChapters ?? job.totalSteps,
-              )}
-            />
-            <span>
-              {t(job.state)} ·{" "}
-              {Math.round(
-                ((job.completedPages ??
-                  job.completedChapters ??
-                  job.completedSteps) /
-                  Math.max(
-                    1,
-                    job.totalPages ?? job.totalChapters ?? job.totalSteps,
-                  )) *
-                  100,
-              )}
-              % ·{" "}
-              {job.totalPages != null
-                ? `${t("pages")}: ${job.completedPages}/${job.totalPages}`
-                : job.totalChapters != null
-                  ? `${t("chapters")}: ${job.completedChapters}/${job.totalChapters}`
-                  : `${t("jobStages")}: ${job.completedSteps}/${job.totalSteps}`}
-            </span>
-            {["running", "queued"].includes(job.state) && (
-              <span className="bc-hint">
-                {job.remainingSeconds == null
-                  ? t("estimatingTime")
-                  : `${t("remainingTime")}: ${remainingTime(job.remainingSeconds, t)}`}
-              </span>
-            )}
-          </div>
-          {job.error && (
-            <span className="bc-error">{errorText(job.error, t)}</span>
-          )}
-        </div>
-      ))}
+        ))}
+      </div>
     </section>
   );
 }

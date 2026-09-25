@@ -125,7 +125,7 @@ impl Provider for Echo {
             let Request::Structured { user, system } = request else {
                 panic!("structured request expected")
             };
-            let text = if system.starts_with("Extract at most") {
+            let text = if system.starts_with("Extract recurring names") {
                 let payload: serde_json::Value = serde_json::from_str(&user).unwrap();
                 assert_eq!(payload["bookInstructions"], "Keep the established names.");
                 assert!(payload["referenceExcerpt"].as_str().unwrap().starts_with("Mapped reference"));
@@ -333,6 +333,13 @@ async fn metadata_job_persists_independently_and_becomes_stale_after_source_edit
         ) -> Pin<Box<dyn Future<Output = Result<Completion, AppError>> + Send + '_>> {
             let Request::Structured { user, system } = request else { panic!("metadata must be structured") };
             let supplied: serde_json::Value = serde_json::from_str(&user).unwrap();
+            if system.starts_with("Repair only") {
+                assert!(supplied["lines"].as_array().unwrap().iter().any(|line| line["text"].as_str().unwrap().contains("中文")));
+                return Box::pin(async { Ok(Completion {
+                    text: r#"{"lines":[{"n":0,"text":"Тестовое название"},{"n":2,"text":"Тестовое описание"}]}"#.into(),
+                    finish_reason: "stop".into(), usage: Usage::default(), tool_calls: vec![],
+                }) });
+            }
             assert!(supplied.get("title").is_some());
             assert!(supplied.get("author").is_some());
             assert!(supplied.get("annotation").is_some());
@@ -340,7 +347,7 @@ async fn metadata_job_persists_independently_and_becomes_stale_after_source_edit
             assert!(system.contains("Translate the supplied source title and author"));
             Box::pin(async {
                 Ok(Completion {
-                    text: r#"{"title":"Test title","author":"","summary":"Test summary"}"#.into(),
+                    text: r#"{"title":"中文标题","author":"","summary":"中文简介"}"#.into(),
                     finish_reason: "stop".into(),
                     usage: Usage::default(),
                     tool_calls: vec![],
@@ -383,6 +390,20 @@ async fn metadata_job_persists_independently_and_becomes_stale_after_source_edit
             )
         })
         .unwrap();
+    // An unrepairable source-language response must not publish metadata.
+    let invalid_provider = Fake::new(vec![
+        r#"{"title":"中文标题","author":"","summary":"中文简介"}"#,
+        "invalid repair",
+    ]);
+    let lease = manager.lease(&project.id).unwrap();
+    let run = lease.with_connection(|db, _| runs::get_run(db, "metadata")).unwrap();
+    let error = match super::book_metadata::compute(&lease, &run, &invalid_provider).await {
+        Ok(_) => panic!("foreign-language metadata must not be accepted"),
+        Err(error) => error,
+    };
+    assert_eq!(error.params["field"], "metadataLanguage");
+    lease.with_connection(|db, _| { assert!(super::book_metadata::read(db)?.is_none()); Ok(()) }).unwrap();
+    drop(lease);
     let pipeline = BookPipeline {
         provider: Arc::new(MetadataProvider(profile)),
         instructions: None,
@@ -403,7 +424,8 @@ async fn metadata_job_persists_independently_and_becomes_stale_after_source_edit
         .with_connection(|db, _| {
             let value = super::book_metadata::read(db)?.unwrap();
             assert!(value.current);
-            assert_eq!(value.title, "Test title");
+            assert_eq!(value.title, "Тестовое название");
+            assert_eq!(value.summary, "Тестовое описание");
             assert_eq!(
                 db.query_row("SELECT COUNT(*) FROM book_translations", [], |r| r
                     .get::<_, i64>(0))

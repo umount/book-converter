@@ -1,5 +1,14 @@
 import type { Lang } from "../i18n";
 const en = {
+  metadataLanguageError: "The model returned book details in the wrong language. Please retry.",
+  glossaryOutputError: "Glossary extraction failed: the model returned invalid terms or an incomplete response. Retry the job.",
+  providerTransportError: "Could not reach the translation provider. Check the connection and provider timeout.",
+  providerHttpError: "The translation provider rejected the request.",
+  providerResponseError: "The translation provider returned an invalid response.",
+  translationOutputError: "The model did not return all required translation segments. Retry the job.",
+  glossaryFinishError: "The glossary response was interrupted or exceeded the output token limit.",
+  glossaryJsonError: "The glossary response does not match the required JSON format.",
+
   mangaModels: "Manga models",
   modelDownloadHint:
     "Weights are downloaded from Hugging Face only when requested and cached locally. Closing this dialog keeps the download running. After an app restart, resume it here.",
@@ -361,6 +370,15 @@ const en = {
 };
 type Key = keyof typeof en;
 const ru: Record<Key, string> = {
+  metadataLanguageError: "Модель вернула описание книги не на языке перевода. Повторите задание.",
+  glossaryOutputError: "Не удалось извлечь глоссарий: модель вернула некорректные термины или неполный ответ. Повторите задание.",
+  providerTransportError: "Не удалось связаться с провайдером перевода. Проверьте соединение и тайм-аут провайдера.",
+  providerHttpError: "Провайдер перевода отклонил запрос.",
+  providerResponseError: "Провайдер перевода вернул некорректный ответ.",
+  translationOutputError: "Модель не вернула все необходимые фрагменты перевода. Повторите задание.",
+  glossaryFinishError: "Ответ с глоссарием прерван или превысил лимит выходных токенов.",
+  glossaryJsonError: "Ответ с глоссарием не соответствует требуемому формату JSON.",
+
   mangaModels: "Модели для манги",
   modelDownloadHint:
     "Веса скачиваются с Hugging Face только по запросу и хранятся локально. Закрытие этого окна не прерывает загрузку. После перезапуска приложения продолжите её здесь.",
@@ -723,6 +741,15 @@ const ru: Record<Key, string> = {
   book_glossary: "Извлечение терминов",
 };
 const zh: Record<Key, string> = {
+  metadataLanguageError: "模型返回的书籍信息语言不正确。请重试。",
+  glossaryOutputError: "术语提取失败：模型返回了无效术语或不完整的响应。请重试任务。",
+  providerTransportError: "无法连接翻译服务。请检查网络和超时设置。",
+  providerHttpError: "翻译服务拒绝了请求。",
+  providerResponseError: "翻译服务返回了无效响应。",
+  translationOutputError: "模型未返回所有必需的翻译片段。请重试任务。",
+  glossaryFinishError: "术语响应被中断或超出了输出令牌限制。",
+  glossaryJsonError: "术语响应不符合所需的 JSON 格式。",
+
   mangaModels: "漫画模型",
   modelDownloadHint:
     "仅按需从 Hugging Face 下载权重并缓存到本地。关闭此窗口不会中断下载；重启应用后可在此继续。",
@@ -1068,8 +1095,23 @@ export function errorText(error: unknown, t: T): string {
     messageKey?: string;
     params?: {
       field?: string;
+      status?: string;
+      reason?: string;
+      finishReason?: string;
     };
   } | null;
+  if (e?.params?.field === "metadataLanguage") return t("metadataLanguageError");
+  if (e?.messageKey === "errors.glossaryOutput") {
+    const reasons: Record<string, Key> = {
+      finish: "glossaryFinishError", json: "glossaryJsonError",
+    };
+    const reason = reasons[e.params?.reason ?? ""];
+    return t(reason ?? "glossaryOutputError") + (e.params?.finishReason ? ` (${e.params.finishReason})` : "");
+  }
+  if (e?.messageKey === "errors.providerHttp") return `${t("providerHttpError")}${e.params?.status ? ` HTTP ${e.params.status}` : ""}`;
+  if (e?.messageKey === "errors.providerTransport") return t("providerTransportError");
+  if (["errors.providerResponse", "errors.providerChoices", "errors.providerResponseSize"].includes(e?.messageKey ?? "")) return t("providerResponseError");
+  if (e?.messageKey === "errors.translationSegments") return t("translationOutputError");
   if (e?.code === "unsupported_version") return t("unsupported");
   if (e?.code === "revision_conflict") return t("conflict");
   if (e?.messageKey === "errors.apiKeyRequired") return t("noKey");
@@ -1089,7 +1131,9 @@ export function errorText(error: unknown, t: T): string {
     ? error.message
     : typeof error === "string"
       ? error
-      : t("error");
+      : e?.messageKey
+        ? `${t("error")} (${e.messageKey}${e.params?.field ? `: ${e.params.field}` : ""})`
+        : t("error");
 }
 export const languages = [
   "en",
