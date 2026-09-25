@@ -30,7 +30,7 @@ impl Drop for NativeWorker {
 }
 
 static WORKERS: Semaphore = Semaphore::const_new(1);
-const MAX_RESPONSE: u64 = 4096;
+const MAX_RESPONSE: u64 = 128 * 1024;
 
 /// Dropping this future cancels a queued worker or kills its running process.
 /// Caller owns a unique temporary output directory and discards it on cancellation;
@@ -155,7 +155,7 @@ mod tests {
         for (script,success) in [
             ("cat >/dev/null\nprintf '%s' '{\"version\":1,\"width\":4,\"height\":3,\"load_millis\":0,\"inference_millis\":0}'",true),
             ("cat >/dev/null\nexit 4",false),
-            ("cat >/dev/null\nprintf '%5000s' x",false),
+            ("cat >/dev/null\nprintf '%140000s' x",false),
             ("cat >/dev/null\nprintf '%s' '{\"version\":2,\"width\":4,\"height\":3,\"load_millis\":0,\"inference_millis\":0}'",false),
         ] {
             let fixture=Fixture::new(script);

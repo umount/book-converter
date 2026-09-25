@@ -7,10 +7,14 @@ license = "MIT"
 
 [features]
 default = []
-onnx = ["dep:ort"]
+onnx = ["dep:ort", "lettering"]
+lettering = ["dep:fontdue", "dep:rustybuzz", "dep:unicode-linebreak"]
 worker = ["dep:tokio"]
 
 [dependencies]
+fontdue = { version = "0.9.4", optional = true }
+rustybuzz = { version = "0.20.1", optional = true }
+unicode-linebreak = { version = "0.1.5", optional = true }
 tokio = { version = "1", features = ["process", "io-util", "time", "rt", "macros", "sync"], optional = true }
 image = { version = "0.25", default-features = false, features = ["png", "jpeg"] }
 sha2 = "0.10"

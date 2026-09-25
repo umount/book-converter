@@ -12,6 +12,10 @@ pub enum Error {
     Dimensions,
     #[error("invalid worker request")]
     Request,
+    #[error("font does not cover the translated text")]
+    FontCoverage,
+    #[error("translated text does not fit its region")]
+    TextOverflow,
     #[error("worker timed out")]
     Timeout,
     #[error("worker failed")]
@@ -310,3 +314,10 @@ mod tests {
         );
     }
 }
+
+#[cfg(feature = "lettering")]
+mod fit;
+#[cfg(feature = "lettering")]
+pub mod lettering;
+
+pub mod text;

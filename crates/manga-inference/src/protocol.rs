@@ -8,7 +8,7 @@ use std::{
     path::{Path, PathBuf},
 };
 
-pub const MAX_REQUEST_BYTES: u64 = 64 * 1024;
+pub const MAX_REQUEST_BYTES: u64 = 2 * 1024 * 1024;
 pub const MAX_ASSET_BYTES: u64 = 32 * 1024 * 1024;
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -54,8 +54,16 @@ impl Asset {
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(tag = "stage", rename_all = "snake_case", deny_unknown_fields)]
 pub enum Operation {
-    Masks { regions: Vec<Crop>, margin: u32 },
-    Inpainting { mask: Asset },
+    Masks {
+        regions: Vec<Crop>,
+        margin: u32,
+    },
+    Inpainting {
+        mask: Asset,
+    },
+    Lettering {
+        regions: Vec<crate::text::TextRegion>,
+    },
 }
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -86,6 +94,9 @@ impl Request {
             {
                 Err(Error::Request)
             }
+            Operation::Lettering { regions } if regions.len() > crate::page::MAX_REGIONS => {
+                Err(Error::Request)
+            }
             Operation::Inpainting { mask }
                 if !mask.path.is_absolute() || mask.path == self.output =>
             {
@@ -103,6 +114,8 @@ pub struct Response {
     pub height: u32,
     pub load_millis: u64,
     pub inference_millis: u64,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub layouts: Vec<crate::text::TextLayout>,
 }
 
 /// Never overwrite an asset or follow an existing output symlink. The parent

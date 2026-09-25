@@ -96,9 +96,18 @@ fn worker() -> Result<(), Box<dyn std::error::Error>> {
     }
     let started = std::time::Instant::now();
     let original = request.input.read()?.to_rgb8();
-    onnx::initialize(&request.runtime)?;
+    if !matches!(&request.operation, Operation::Lettering { .. }) {
+        onnx::initialize(&request.runtime)?;
+    }
+    let mut layouts = Vec::new();
     let loaded;
     let output = match request.operation {
+        Operation::Lettering { regions } => {
+            loaded = started.elapsed();
+            let rendered = manga_inference::lettering::render(&original, &regions)?;
+            layouts = rendered.layouts;
+            image::DynamicImage::ImageRgb8(rendered.image)
+        }
         Operation::Masks { regions, margin } => {
             let mut model = onnx::TextMask::load(&request.model)?;
             loaded = started.elapsed();
@@ -125,6 +134,7 @@ fn worker() -> Result<(), Box<dyn std::error::Error>> {
         "{}",
         serde_json::to_string(&Response {
             version: 1,
+            layouts,
             width: output.width(),
             height: output.height(),
             load_millis: loaded.as_millis() as u64,
