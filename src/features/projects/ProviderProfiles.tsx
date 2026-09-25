@@ -37,6 +37,12 @@ export function ProviderProfiles({
         if (alive) {
           setProfiles(p);
           setSettings(s);
+          if (!p.length) setDraft({
+            id: crypto.randomUUID(), name: "",
+            baseUrl: defaults?.base_url ?? "", model: defaults?.model ?? "",
+            temperature: 0.3, maxOutputTokens: 4096, timeoutSeconds: 120,
+            networkRetries: 2, hasKey: false, revision: "0",
+          });
         }
       })
       .catch((e) => {
@@ -70,7 +76,7 @@ export function ProviderProfiles({
           "assistantProfile",
         ] as const);
   return (
-    <details className="bc-provider-profiles">
+    <details className="bc-provider-profiles" open={project?.kind === "manga" ? true : undefined}>
       <summary>{t("providerProfiles")}</summary>
       {error != null && (
         <p className="bc-error" role="alert">
@@ -79,58 +85,9 @@ export function ProviderProfiles({
       )}
       {notice && <p role="status">{notice}</p>}
       <fieldset disabled={busy}>
-        {settings && project && (
-          <>
-            <h3>
-              {t("projectProviders")} · {project.name}
-            </h3>
-            {roles.map((role) => (
-              <label key={role}>
-                {t(role)}
-                <select
-                  value={settings.choices[role] ?? ""}
-                  onChange={(e) =>
-                    setSettings({
-                      ...settings,
-                      choices: {
-                        ...settings.choices,
-                        [role]: e.target.value || null,
-                      },
-                    })
-                  }
-                >
-                  <option value="">{t("defaultProvider")}</option>
-                  {profiles.map((p) => (
-                    <option key={p.id} value={p.id}>
-                      {p.name} · {p.model}
-                    </option>
-                  ))}
-                  {settings.choices[role] &&
-                    !profiles.some((p) => p.id === settings.choices[role]) && (
-                      <option value={settings.choices[role]!}>
-                        {t("missingProfile")}
-                      </option>
-                    )}
-                </select>
-              </label>
-            ))}
-            <button
-              onClick={() =>
-                void act(async () => {
-                  const revision = await projectApi.updateSettings({
-                    projectId: project.id,
-                    choices: settings.choices,
-                    expectedRevision: settings.revision,
-                  });
-                  setSettings({ ...settings, revision });
-                })
-              }
-            >
-              {t("applyRoles")}
-            </button>
-          </>
-        )}
         <h3>{t("providerProfiles")}</h3>
+        {profiles.length === 0 && <p className="bc-hint">{t("noProviderProfiles")}</p>}
+        {project?.kind === "manga" && <p className="bc-hint">{t("mangaProfileSetupHint")}</p>}
         <label>
           {t("choose")}
           <select
@@ -172,6 +129,7 @@ export function ProviderProfiles({
             <label>
               {t("profileName")}
               <input
+                autoFocus
                 value={draft.name}
                 onChange={(e) => setDraft({ ...draft, name: e.target.value })}
               />
@@ -259,6 +217,57 @@ export function ProviderProfiles({
               }
             >
               {t("saveProfile")}
+            </button>
+          </>
+        )}
+        {settings && project && (
+          <>
+            <h3>
+              {t("projectProviders")} · {project.name}
+            </h3>
+            {roles.map((role) => (
+              <label key={role}>
+                {t(role)}
+                <select
+                  value={settings.choices[role] ?? ""}
+                  onChange={(e) =>
+                    setSettings({
+                      ...settings,
+                      choices: {
+                        ...settings.choices,
+                        [role]: e.target.value || null,
+                      },
+                    })
+                  }
+                >
+                  <option value="">{t(role === "mangaRecognitionProfile" || role === "mangaTranslationProfile" ? "choose" : "defaultProvider")}</option>
+                  {profiles.map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.name} · {p.model}
+                    </option>
+                  ))}
+                  {settings.choices[role] &&
+                    !profiles.some((p) => p.id === settings.choices[role]) && (
+                      <option value={settings.choices[role]!}>
+                        {t("missingProfile")}
+                      </option>
+                    )}
+                </select>
+              </label>
+            ))}
+            <button
+              onClick={() =>
+                void act(async () => {
+                  const revision = await projectApi.updateSettings({
+                    projectId: project.id,
+                    choices: settings.choices,
+                    expectedRevision: settings.revision,
+                  });
+                  setSettings({ ...settings, revision });
+                })
+              }
+            >
+              {t("applyRoles")}
             </button>
           </>
         )}
