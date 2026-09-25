@@ -1,9 +1,11 @@
 import { useEffect, useRef, useState } from "react";
+import { Channel } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-dialog";
 import { desktopInvoke } from "../../shared/api/desktop";
 import { projectApi } from "../../shared/api/projects";
 import type {
   ImportPreview,
+  ImportProgress,
   ProjectDescriptor,
   ProjectKind,
 } from "../../shared/contracts/generated";
@@ -29,6 +31,7 @@ export function CreateProject({
   const [metadata, setMetadata] = useState(true),
     [busy, setBusy] = useState(false),
     [error, setError] = useState<unknown>(null);
+  const [progress, setProgress] = useState<ImportProgress | null>(null);
   const targetTouched = useRef(false);
   useEffect(() => {
     let alive = true;
@@ -66,7 +69,10 @@ export function CreateProject({
         await projectApi.cancelImport({ importId: preview.importId });
         setPreview(null);
       }
-      const next = await projectApi.inspectSource({ kind, path });
+      setProgress({ stage: "scanning", completed: 0, total: null });
+      const channel = new Channel<ImportProgress>();
+      channel.onmessage = setProgress;
+      const next = await projectApi.inspectSource({ kind, path }, channel);
       setPreview(next);
       setName(next.suggestedName);
       setSource(next.detectedLanguage ?? "");
@@ -74,6 +80,7 @@ export function CreateProject({
       setError(e);
     } finally {
       setBusy(false);
+      setProgress(null);
     }
   }
   async function cancel() {
@@ -86,11 +93,13 @@ export function CreateProject({
       setError(e);
     } finally {
       setBusy(false);
+      setProgress(null);
     }
   }
   async function create() {
     if (!preview || !source || !target || !name.trim()) return;
     setBusy(true);
+    setProgress({ stage: "creating", completed: 0, total: null });
     setError(null);
     try {
       const project = await projectApi.create({
@@ -106,6 +115,7 @@ export function CreateProject({
       setError(e);
     } finally {
       setBusy(false);
+      setProgress(null);
     }
   }
   return (
@@ -129,6 +139,33 @@ export function CreateProject({
         </>
       }
     >
+      {busy && progress && (
+        <div className="bc-import-progress" role="status" aria-live="polite">
+          <strong>
+            {t(
+              progress.stage === "pages"
+                ? "importPages"
+                : progress.stage === "finalizing"
+                  ? "importFinalizing"
+                  : progress.stage === "creating"
+                    ? "importCreating"
+                    : "importScanning",
+            )}
+          </strong>
+          <progress
+            aria-label={t("importProgress")}
+            value={progress.total ? progress.completed : undefined}
+            max={progress.total || undefined}
+          />
+          {progress.total != null && (
+            <span>
+              {progress.completed} / {progress.total} ·{" "}
+              {Math.floor((progress.completed * 100) / progress.total)}%
+            </span>
+          )}
+          <span className="bc-hint">{t("importWorking")}</span>
+        </div>
+      )}
       {!preview && (
         <>
           <p>{t("chooseKind")}</p>

@@ -611,7 +611,7 @@ function Shell({
           </button>
         </div>
       )}
-      {library || (!project && !state.loading) ? (
+      {(library && !state.loading) || (!project && !state.loading) ? (
         <ProjectLibrary
           catalog={catalog}
           busy={busy}
@@ -891,7 +891,10 @@ function Shell({
             )}
             <div className="bc-content">
               {state.loading ? (
-                <p className="bc-empty">{t("loading")}</p>
+                <div className="bc-empty" role="status" aria-live="polite">
+                  <p>{t("loading")}</p>
+                  <progress aria-label={t("loading")} />
+                </div>
               ) : (
                 project &&
                 (panel === "glossary" ? (
@@ -910,6 +913,8 @@ function Shell({
                   />
                 ) : project.kind === "manga" ? (
                   <MangaWorkspace
+                    onSettings={()=>setSettings(true)}
+                    setupVersion={Number(settings)}
                     key={project.id}
                     projectId={project.id}
                     t={t}

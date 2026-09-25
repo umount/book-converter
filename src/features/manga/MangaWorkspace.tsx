@@ -11,11 +11,39 @@ import type {
 } from "../../shared/contracts/generated";
 import { assetUrl } from "../../shared/api/assets";
 import { errorText, type T } from "../../app/strings";
-export function MangaWorkspace({ projectId, t }: { projectId: string; t: T }) {
-  return <MangaProjectWorkspace key={projectId} projectId={projectId} t={t} />;
+export function MangaWorkspace({
+  projectId,
+  t,
+  onSettings,
+  setupVersion,
+}: {
+  projectId: string;
+  t: T;
+  onSettings: () => void;
+  setupVersion: number;
+}) {
+  return (
+    <MangaProjectWorkspace
+      key={projectId}
+      projectId={projectId}
+      t={t}
+      onSettings={onSettings}
+      setupVersion={setupVersion}
+    />
+  );
 }
 
-function MangaProjectWorkspace({ projectId, t }: { projectId: string; t: T }) {
+function MangaProjectWorkspace({
+  projectId,
+  t,
+  onSettings,
+  setupVersion,
+}: {
+  projectId: string;
+  t: T;
+  onSettings: () => void;
+  setupVersion: number;
+}) {
   const [volumes, setVolumes] = useState<MangaVolumeSummary[]>([]);
   const [volumeId, setVolumeId] = useState("");
   const [loading, setLoading] = useState(true);
@@ -127,6 +155,8 @@ function MangaProjectWorkspace({ projectId, t }: { projectId: string; t: T }) {
       </aside>
       <div className="bc-manga-page">
         <ProcessingStatus
+          onSettings={onSettings}
+          setupVersion={setupVersion}
           projectId={projectId}
           pageIds={loading ? [] : pages.slice(selected).map((p) => p.id)}
           t={t}

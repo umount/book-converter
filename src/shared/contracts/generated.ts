@@ -64,6 +64,7 @@ export type MangaRegionView = { id: RegionId, pageId: PageId, readingOrder: numb
 export type MangaPageView = { renderedAssetId: AssetId | null, page: PageSummary, regions: Array<MangaRegionView>, recognition: MangaRecognitionSummary | null, };
 export type MangaRecognitionSummary = { revision: Revision, current: boolean, needsReview: boolean, };
 export type ImportPreview = { importId: ImportId, kind: ProjectKind, source: SourceDescriptor, suggestedName: string, detectedLanguage: string | null, warnings: Array<string>, };
+export type ImportProgress = { stage: string, completed: number, total: number | null, };
 export type ProjectSummary = { descriptor: ProjectDescriptor, progress: DomainProgress, };
 export type DomainProgress = { "kind": "book", chapters: number, translated: number, } | { "kind": "manga", pages: number, lettered: number, approved: number, };
 export type LanguagePair = { source: string | null, target: string, };

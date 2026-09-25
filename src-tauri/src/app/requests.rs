@@ -584,6 +584,14 @@ pub struct MangaPageView {
     pub recognition: Option<MangaRecognitionSummary>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+pub struct ImportProgress {
+    pub stage: String,
+    pub completed: u32,
+    pub total: Option<u32>,
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ImportPreview {
@@ -712,6 +720,7 @@ pub fn typescript() -> String {
         MangaRegionView::decl(&config),
         MangaPageView::decl(&config),
         MangaRecognitionSummary::decl(&config),
+        ImportProgress::decl(&config),
         ImportPreview::decl(&config),
         ProjectSummary::decl(&config),
         DomainProgress::decl(&config),

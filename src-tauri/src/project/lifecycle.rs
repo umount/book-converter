@@ -150,6 +150,19 @@ impl ProjectManager {
         kind: ProjectKind,
         path: &Path,
     ) -> Result<ImportPreview, AppError> {
+        self.inspect_source_with_progress(kind, path, &mut |_| {})
+    }
+    pub fn inspect_source_with_progress(
+        &self,
+        kind: ProjectKind,
+        path: &Path,
+        progress: &mut dyn FnMut(crate::app::requests::ImportProgress),
+    ) -> Result<ImportPreview, AppError> {
+        progress(crate::app::requests::ImportProgress {
+            stage: "scanning".into(),
+            completed: 0,
+            total: None,
+        });
         self.prepare()?;
         let id = ProjectId::new();
         let import_id = uuid::Uuid::new_v4().to_string();
@@ -158,7 +171,13 @@ impl ProjectManager {
         let result = (|| {
             let mut db = storage::create_staged(&directory.join("project.db"), kind)
                 .map_err(storage_error)?;
-            let (language, warnings) = super::import::normalize(kind, path, &directory, &mut db)?;
+            let (language, warnings) =
+                super::import::normalize(kind, path, &directory, &mut db, progress)?;
+            progress(crate::app::requests::ImportProgress {
+                stage: "finalizing".into(),
+                completed: 0,
+                total: None,
+            });
             db.execute_batch("PRAGMA wal_checkpoint(TRUNCATE)")
                 .map_err(storage_error)?;
             drop(db);
@@ -168,11 +187,14 @@ impl ProjectManager {
                 .unwrap_or("Source")
                 .to_string();
             let source = SourceDescriptor {
-                format: if path.is_dir() {"directory".into()} else {path
-                    .extension()
-                    .and_then(|s| s.to_str())
-                    .unwrap_or("directory")
-                    .to_ascii_lowercase()},
+                format: if path.is_dir() {
+                    "directory".into()
+                } else {
+                    path.extension()
+                        .and_then(|s| s.to_str())
+                        .unwrap_or("directory")
+                        .to_ascii_lowercase()
+                },
                 display_name: display_name.clone(),
                 original_path: Some(path.to_string_lossy().into_owned()),
             };
@@ -347,7 +369,9 @@ impl ProjectManager {
     pub fn validate_export_directory(&self, directory: &Path) -> Result<(), AppError> {
         let directory = directory.canonicalize().map_err(storage_error)?;
         let root = self.root.canonicalize().map_err(storage_error)?;
-        if directory.starts_with(root) { return Err(AppError::invalid("destination")); }
+        if directory.starts_with(root) {
+            return Err(AppError::invalid("destination"));
+        }
         Ok(())
     }
 

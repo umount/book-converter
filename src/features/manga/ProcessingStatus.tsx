@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { modelApi } from "../../shared/api/models";
 import { projectApi } from "../../shared/api/projects";
 import type {
   MangaPreflight,
@@ -33,10 +34,14 @@ const reasons: Record<string, Parameters<T>[0]> = {
 export function ProcessingStatus({
   projectId,
   pageIds,
+  onSettings,
+  setupVersion,
   t,
 }: {
   projectId: string;
   pageIds: string[];
+  onSettings: () => void;
+  setupVersion: number;
   t: T;
 }) {
   const [count, setCount] = useState(10);
@@ -48,7 +53,6 @@ export function ProcessingStatus({
   const [error, setError] = useState<unknown>(null);
   useEffect(() => {
     let active = true;
-    setResult(null);
     setError(null);
     void projectApi
       .mangaPreflight({ projectId })
@@ -61,7 +65,7 @@ export function ProcessingStatus({
     return () => {
       active = false;
     };
-  }, [projectId, version]);
+  }, [projectId, version, setupVersion]);
   useEffect(() => {
     let alive = true;
     let generation = 0;
@@ -96,6 +100,42 @@ export function ProcessingStatus({
     };
   }, [projectId, version]);
   const ready = result?.requirements.every((item) => item.available) ?? false;
+  const missing = [
+    ...new Set(
+      result?.requirements
+        .filter((item) => !item.available)
+        .map((item) => item.reasonKey ?? "mangaCapabilityUnavailable") ?? [],
+    ),
+  ];
+  const waitingForMask = missing.includes("mangaMaskModelRequired");
+  const waitingForCleanup = missing.includes("mangaCleanupModelRequired");
+  useEffect(() => {
+    if (!waitingForMask && !waitingForCleanup) return;
+    let alive = true;
+    const timer = setInterval(() => {
+      void modelApi
+        .list()
+        .then((models) => {
+          const downloaded = (id: string) =>
+            models.some(
+              (model) => model.model.id === id && model.status === "downloaded",
+            );
+          if (
+            alive &&
+            (!waitingForMask || downloaded("comic-text-mask-resnet18")) &&
+            (!waitingForCleanup || downloaded("lama-onnx-fp32"))
+          ) {
+            clearInterval(timer);
+            setVersion((value) => value + 1);
+          }
+        })
+        .catch(() => {});
+    }, 2000);
+    return () => {
+      alive = false;
+      clearInterval(timer);
+    };
+  }, [waitingForMask, waitingForCleanup]);
   async function start() {
     setStarting(true);
     setError(null);
@@ -147,6 +187,34 @@ export function ProcessingStatus({
           </span>
         )}
       </div>
+      {!result && error == null && (
+        <p role="status" className="bc-hint">
+          {t("mangaCheckingSetup")}
+        </p>
+      )}
+      {missing.length > 0 && (
+        <div className="bc-manga-setup" role="status">
+          <strong>{t("mangaSetupRequired")}</strong>
+          <ul>
+            {missing.map((reason) => (
+              <li key={reason}>
+                {t(reasons[reason] ?? "mangaCapabilityUnavailable")}
+              </li>
+            ))}
+          </ul>
+          <button onClick={onSettings}>{t("settings")}</button>
+        </div>
+      )}
+      {ready && !activeJob && !pageIds.length && (
+        <p role="status" className="bc-hint">
+          {t("loading")}
+        </p>
+      )}
+      {ready && (!Number.isInteger(count) || count < 1) && (
+        <p role="status" className="bc-warning">
+          {t("mangaCountRequired")}
+        </p>
+      )}
       {error != null && (
         <p role="alert" className="bc-error">
           {errorText(error, t)}

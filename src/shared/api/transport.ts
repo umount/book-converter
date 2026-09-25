@@ -24,8 +24,11 @@ export function createProjectApi(transport: Transport) {
     assistantCancel: (args: C.ProjectArgs) =>
       call<void>("assistant_project_cancel", args),
     list: () => transport.invoke<C.ProjectSummary[]>("project_list"),
-    inspectSource: (args: C.InspectSourceArgs) =>
-      call<C.ImportPreview>("project_inspect_source", args),
+    inspectSource: (args: C.InspectSourceArgs, onProgress: unknown) =>
+      transport.invoke<C.ImportPreview>("project_inspect_source", {
+        args,
+        onProgress,
+      }),
     create: (args: C.CreateProjectArgs) =>
       call<C.ProjectDescriptor>("project_create", args),
     cancelImport: (args: C.ImportSessionArgs) =>

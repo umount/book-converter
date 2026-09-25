@@ -25,10 +25,24 @@ pub async fn project_list(
 pub async fn project_inspect_source(
     context: tauri::State<'_, AppContext>,
     args: InspectSourceArgs,
+    on_progress: tauri::ipc::Channel<ImportProgress>,
 ) -> Result<ImportPreview, AppError> {
     let manager = context.manager.clone();
     tauri::async_runtime::spawn_blocking(move || {
-        manager.inspect_source(args.kind, std::path::Path::new(&args.path))
+        let mut last = std::time::Instant::now();
+        manager.inspect_source_with_progress(
+            args.kind,
+            std::path::Path::new(&args.path),
+            &mut |value| {
+                if value.completed == 0
+                    || value.total == Some(value.completed)
+                    || last.elapsed() >= std::time::Duration::from_millis(100)
+                {
+                    let _ = on_progress.send(value);
+                    last = std::time::Instant::now();
+                }
+            },
+        )
     })
     .await
     .map_err(|_| AppError::invalid("task"))?

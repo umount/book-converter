@@ -8,7 +8,7 @@ use crate::{
         requests::{ChapterSummary, PageSummary},
     },
     assets::store::AssetStore,
-    storage::repository::{ProjectRepository, storage_error},
+    storage::repository::{storage_error, ProjectRepository},
 };
 use rusqlite::Connection;
 use std::{collections::HashMap, io::Read, path::Path};
@@ -19,10 +19,11 @@ pub(super) fn normalize(
     path: &Path,
     directory: &Path,
     db: &mut Connection,
+    progress: &mut dyn FnMut(crate::app::requests::ImportProgress),
 ) -> Result<(Option<String>, Vec<String>), AppError> {
     match kind {
         ProjectKind::Book => book(path, directory, db),
-        ProjectKind::Manga => comic(path, directory, db).map(|_| (None, vec![])),
+        ProjectKind::Manga => comic(path, directory, db, progress).map(|_| (None, vec![])),
     }
 }
 fn fail(_: impl std::fmt::Display) -> AppError {
@@ -105,7 +106,11 @@ fn book(
         .or_else(|| crate::language::detect_from_words(&sample))
         .and_then(language_code)
         .map(String::from);
-    db.execute("INSERT INTO book_source_metadata(singleton,title,author,summary) VALUES(1,?1,?2,?3)", rusqlite::params![loaded.meta.title,loaded.meta.author,loaded.meta.summary]).map_err(fail)?;
+    db.execute(
+        "INSERT INTO book_source_metadata(singleton,title,author,summary) VALUES(1,?1,?2,?3)",
+        rusqlite::params![loaded.meta.title, loaded.meta.author, loaded.meta.summary],
+    )
+    .map_err(fail)?;
     let store = AssetStore::new(directory).map_err(fail)?;
     if let Some((_, bytes)) = &loaded.cover {
         let id = crate::application::book_presentation::publish_cover(db, directory, bytes)?;
@@ -184,7 +189,9 @@ fn book(
         ProjectRepository::new(db, ProjectKind::Book)?.insert_chapter(
             &ChapterSummary {
                 translated_title: None,
-                status: "pending".into(), origin: None, needs_review: false,
+                status: "pending".into(),
+                origin: None,
+                needs_review: false,
                 id: ChapterId(chapter_id.clone()),
                 position: position as u32,
                 title: chapter.title.clone(),
@@ -192,7 +199,11 @@ fn book(
             },
             &blocks,
         )?;
-        db.execute("UPDATE book_chapters SET display_number=?1 WHERE id=?2", rusqlite::params![chapter.number.map(|n| n as i64),chapter_id]).map_err(storage_error)?;
+        db.execute(
+            "UPDATE book_chapters SET display_number=?1 WHERE id=?2",
+            rusqlite::params![chapter.number.map(|n| n as i64), chapter_id],
+        )
+        .map_err(storage_error)?;
     }
     Ok((language, warnings))
 }
@@ -241,9 +252,14 @@ pub(super) fn natural_cmp(left: &str, right: &str) -> std::cmp::Ordering {
         .then_with(|| left.cmp(right))
 }
 
-fn comic(path: &Path, directory: &Path, db: &mut Connection) -> Result<(), AppError> {
+fn comic(
+    path: &Path,
+    directory: &Path,
+    db: &mut Connection,
+    progress: &mut dyn FnMut(crate::app::requests::ImportProgress),
+) -> Result<(), AppError> {
     if path.is_dir() {
-        return comic_folder(path, directory, db);
+        return comic_folder(path, directory, db, progress);
     }
     let extension = path
         .extension()
@@ -279,9 +295,12 @@ fn comic(path: &Path, directory: &Path, db: &mut Connection) -> Result<(), AppEr
     }
     entries.sort_by(|a, b| natural_cmp(&a.0, &b.0));
     let mut volumes = HashMap::new();
-    for (name, index) in entries {
+    let total = entries.len() as u32;
+    report(progress, 0, total);
+    for (done, (name, index)) in entries.into_iter().enumerate() {
         let bytes = read_image(archive.by_index(index).map_err(fail)?)?;
         insert_comic_page(db, directory, &mut volumes, &name, &bytes)?;
+        report(progress, done as u32 + 1, total);
     }
     Ok(())
 }
@@ -331,7 +350,12 @@ fn insert_comic_page(
     Ok(())
 }
 
-fn comic_folder(path: &Path, directory: &Path, db: &mut Connection) -> Result<(), AppError> {
+fn comic_folder(
+    path: &Path,
+    directory: &Path,
+    db: &mut Connection,
+    progress: &mut dyn FnMut(crate::app::requests::ImportProgress),
+) -> Result<(), AppError> {
     fn collect(
         root: &Path,
         current: &Path,
@@ -380,7 +404,9 @@ fn comic_folder(path: &Path, directory: &Path, db: &mut Connection) -> Result<()
     }
     files.sort_by(|a, b| natural_cmp(a, b));
     let mut volumes = HashMap::new();
-    for name in files {
+    let total = files.len() as u32;
+    report(progress, 0, total);
+    for (done, name) in files.into_iter().enumerate() {
         let source = path.join(&name);
         if std::fs::symlink_metadata(&source)
             .map_err(fail)?
@@ -391,8 +417,22 @@ fn comic_folder(path: &Path, directory: &Path, db: &mut Connection) -> Result<()
         }
         let bytes = read_image(std::fs::File::open(source).map_err(fail)?)?;
         insert_comic_page(db, directory, &mut volumes, &name, &bytes)?;
+        report(progress, done as u32 + 1, total);
     }
     Ok(())
+}
+
+
+fn report(
+    progress: &mut dyn FnMut(crate::app::requests::ImportProgress),
+    completed: u32,
+    total: u32,
+) {
+    progress(crate::app::requests::ImportProgress {
+        stage: "pages".into(),
+        completed,
+        total: Some(total),
+    });
 }
 
 #[cfg(test)]
@@ -416,7 +456,17 @@ mod folder_tests {
         }
         let mut db =
             crate::storage::create(&target.join("project.db"), ProjectKind::Manga, "ru").unwrap();
-        comic(&source, &target, &mut db).unwrap();
+        {
+            let mut updates = Vec::new();
+            comic(&source, &target, &mut db, &mut |value| updates.push(value)).unwrap();
+            assert_eq!(updates.first().unwrap().completed, 0);
+            let last = updates.last().unwrap();
+            assert_eq!(last.total, Some(last.completed));
+            assert!(last.completed > 0);
+            assert!(updates
+                .windows(2)
+                .all(|pair| pair[0].completed <= pair[1].completed));
+        }
         let widths=db.prepare("SELECT p.width FROM manga_pages p JOIN manga_volumes v ON v.id=p.volume_id ORDER BY v.position,p.position").unwrap().query_map([],|r|r.get::<_,u32>(0)).unwrap().collect::<Result<Vec<_>,_>>().unwrap();
         assert_eq!(widths, [30, 20, 10]);
         std::fs::remove_dir_all(&source).unwrap();
@@ -436,7 +486,7 @@ mod folder_tests {
         {
             std::fs::create_dir_all(&source).unwrap();
             std::os::unix::fs::symlink(&target, source.join("outside")).unwrap();
-            assert!(comic(&source, &target, &mut db).is_err());
+            assert!(comic(&source, &target, &mut db, &mut |_| {}).is_err());
         }
         drop(db);
         std::fs::remove_dir_all(root).unwrap();

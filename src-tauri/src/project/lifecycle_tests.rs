@@ -265,3 +265,29 @@ fn reset_requires_quiescence_preserves_settings_and_runs_once() {
     );
     assert!(old.exists());
 }
+
+#[test]
+fn manga_import_reports_real_page_progress_and_finalization() {
+    let f = Fixture::new();
+    let mut events = Vec::new();
+    f.manager
+        .inspect_source_with_progress(
+            ProjectKind::Manga,
+            &source("two-volumes.cbz"),
+            &mut |event| events.push(event),
+        )
+        .unwrap();
+    assert_eq!(events.first().unwrap().stage, "scanning");
+    assert_eq!(events.last().unwrap().stage, "finalizing");
+    let pages: Vec<_> = events
+        .iter()
+        .filter(|event| event.stage == "pages")
+        .collect();
+    assert_eq!(pages.first().unwrap().completed, 0);
+    let last = pages.last().unwrap();
+    assert!(last.completed > 0);
+    assert_eq!(last.total, Some(last.completed));
+    assert!(pages
+        .windows(2)
+        .all(|pair| pair[1].completed == pair[0].completed + 1));
+}
