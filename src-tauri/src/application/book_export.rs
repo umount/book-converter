@@ -156,7 +156,13 @@ fn snapshot(
                 |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
             )
             .map_err(storage_error)?;
-        let translation: Option<(String,String)> = tx.query_row("SELECT id,translated_title FROM book_translations WHERE chapter_id=?1 AND target_language=?2 AND status='ready' AND (provenance='reference' OR (source_revision=?3 AND settings_revision=?4 AND glossary_revision=?5)) ORDER BY revision DESC LIMIT 1", rusqlite::params![id, settings.choices.target_language, source_revision, settings.revision.value()?, glossary.value()?], |r| Ok((r.get(0)?,r.get(1)?))).optional().map_err(storage_error)?;
+        // Export the saved translation shown in the editor. Revision freshness is a
+        // processing concern: glossary changes must not hide already translated chapters.
+        let translation: Option<(String, String)> = if args.incomplete_policy == IncompletePolicy::Reject {
+            tx.query_row("SELECT id,translated_title FROM book_translations WHERE chapter_id=?1 AND target_language=?2 AND status='ready' AND (provenance='reference' OR (source_revision=?3 AND settings_revision=?4 AND glossary_revision=?5)) ORDER BY revision DESC LIMIT 1", rusqlite::params![id, settings.choices.target_language, source_revision, settings.revision.value()?, glossary.value()?], |r| Ok((r.get(0)?,r.get(1)?))).optional().map_err(storage_error)?
+        } else {
+            tx.query_row("SELECT id,translated_title FROM book_translations WHERE chapter_id=?1 AND target_language=?2 ORDER BY revision DESC LIMIT 1", rusqlite::params![id, settings.choices.target_language], |r| Ok((r.get(0)?,r.get(1)?))).optional().map_err(storage_error)?
+        };
         let mut translated = HashMap::<String, String>::new();
         if let Some((translation_id, _)) = &translation {
             let mut q = tx.prepare("SELECT source_block_id,translated_text FROM book_translation_blocks WHERE translation_id=?1").map_err(storage_error)?;
@@ -580,6 +586,7 @@ mod tests {
         assert!(!output.contains("Original text."));
         manager.lease(&project.id).unwrap().with_connection(|db, _| {
             db.execute("UPDATE book_translations SET status='needs_review' WHERE chapter_id IN (SELECT id FROM book_chapters WHERE position=0)", []).unwrap();
+            db.execute("UPDATE book_translations SET provenance='model',glossary_revision=0,settings_revision=0", []).unwrap();
             db.execute("INSERT INTO book_chapters(id,position,source_title) VALUES ('empty-volume',3,'第一卷 夜游神'),('later',4,'Untranslated later')", []).unwrap();
             db.execute("INSERT INTO book_source_blocks(id,chapter_id,position,kind,text) VALUES ('later-text','later',0,'text','Later original text')", []).unwrap();
             Ok(())
@@ -598,10 +605,20 @@ mod tests {
         export_book(&manager, &args).unwrap();
         let partial = read_fb2_zip(Path::new(&args.destination), "partial.fb2");
         assert!(partial.contains("Последняя глава."));
-        assert!(!partial.contains("КОНЕЦ ПОЛНОГО ПЕРЕВОДА"));
+        assert!(partial.contains("КОНЕЦ ПОЛНОГО ПЕРЕВОДА"));
         assert!(!partial.contains("Later original text"));
         assert!(!partial.contains("第一卷 夜游神"));
         assert_eq!(partial.matches("<image ").count(), 3);
+        let originals_args = BookExportArgs {
+            incomplete_policy: IncompletePolicy::Originals,
+            destination: temp.0.join("with-originals.fb2.zip").to_string_lossy().into_owned(),
+            ..args.clone()
+        };
+        export_book(&manager, &originals_args).unwrap();
+        let originals = read_fb2_zip(Path::new(&originals_args.destination), "with-originals.fb2");
+        assert!(originals.contains("КОНЕЦ ПОЛНОГО ПЕРЕВОДА"));
+        assert!(originals.contains("Последняя глава."));
+        assert!(originals.contains("Later original text"));
         let empty_args = BookExportArgs {
             selection: EntitySelection::ExplicitIds {
                 ids: vec!["later".into()],
