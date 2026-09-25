@@ -73,9 +73,48 @@ pub fn segment_page(
     expand_mask(&output, margin)
 }
 
+/// Explicit user-edited rectangles replace learned masks only inside their bounds.
+pub fn fill_rectangles(mask: &mut GrayImage, rectangles: &[Crop]) -> Result<()> {
+    for rect in rectangles {
+        rect.validate(mask.width(), mask.height())?;
+    }
+    for rect in rectangles {
+        for y in rect.y..rect.y + rect.height {
+            for x in rect.x..rect.x + rect.width {
+                mask.put_pixel(x, y, image::Luma([255]));
+            }
+        }
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn manual_rectangles_erase_exactly_the_edited_area() {
+        let mut mask = GrayImage::new(30, 30);
+        fill_rectangles(
+            &mut mask,
+            &[Crop {
+                x: 7,
+                y: 9,
+                width: 8,
+                height: 10,
+            }],
+        )
+        .unwrap();
+        for (x, y, pixel) in mask.enumerate_pixels() {
+            assert_eq!(
+                pixel[0],
+                if (7..15).contains(&x) && (9..19).contains(&y) {
+                    255
+                } else {
+                    0
+                }
+            );
+        }
+    }
     #[test]
     fn glyph_margin_is_clipped_and_never_fills_empty_regions() {
         let mut mask = GrayImage::new(5, 5);

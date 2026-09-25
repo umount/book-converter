@@ -346,6 +346,7 @@ pub enum RegionPatch {
     SourceText { text: String },
     TranslatedText { text: String },
     Bounds { bounds: PixelBounds },
+    Direction { vertical: bool },
 }
 
 impl Revision {
@@ -556,6 +557,7 @@ pub struct PageSummaryPage {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct MangaRegionView {
+    pub vertical: bool,
     pub id: RegionId,
     pub page_id: PageId,
     pub reading_order: u32,

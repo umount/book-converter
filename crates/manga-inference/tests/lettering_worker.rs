@@ -33,7 +33,7 @@ async fn renders_without_loading_models_and_preserves_source() {
         },
         output: root.join("rendered.png"),
         operation: Operation::Lettering {
-            regions: vec![TextRegion {
+            regions: vec![TextRegion { vertical: false,
                 id: "dialogue".into(),
                 bounds: Crop {
                     x: 40,

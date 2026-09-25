@@ -76,7 +76,12 @@ pub async fn execute(executable: &Path, request: &Request, deadline: Duration) -
             return Err(Error::Output);
         }
         if !child.wait().await?.success() {
-            return Err(Error::Worker);
+            let failure: serde_json::Value = serde_json::from_slice(&response).unwrap_or_default();
+            return Err(match failure.get("error").and_then(|v| v.as_str()) {
+                Some("text_overflow") => Error::TextOverflow,
+                Some("font_coverage") => Error::FontCoverage,
+                _ => Error::Worker,
+            });
         }
         let response: Response = serde_json::from_slice(&response).map_err(|_| Error::Output)?;
         if response.version != 1 {
@@ -130,6 +135,7 @@ mod tests {
                 },
                 output: self.root.join("output"),
                 operation: Operation::Masks {
+                    rectangles:vec![],
                     regions: vec![],
                     margin: 2,
                 },

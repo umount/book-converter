@@ -44,6 +44,10 @@ export function createProjectApi(transport: Transport) {
       call<C.JobRef>("manga_start_stage", args),
     startMangaAutomatic: (args: C.StartMangaRunArgs) =>
       call<C.JobRef>("manga_start_automatic", args),
+    updateMangaRegion: (args: C.UpdateMangaRegionArgs) =>
+      call<C.MangaPageView>("manga_update_region", args),
+    rebuildMangaPage: (args: C.GetMangaPageArgs) =>
+      call<C.JobRef>("manga_rebuild_page", args),
     mangaPreflight: (args: C.ProjectArgs) =>
       call<C.MangaPreflight>("manga_preflight", args),
     mangaPage: (args: C.GetMangaPageArgs) =>

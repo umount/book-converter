@@ -231,6 +231,17 @@ pub(super) fn dispatch(
         .manager
         .lease(&project)?
         .with_connection(|db, _| Ok(crate::storage::runs::get_run(db, &job)?.kind))?;
+    if kind == "manga_rebuild" {
+        use crate::application::manga::{local,rebuild::RebuildPipeline};
+        use crate::app::contracts::MangaStage;
+        let files=native_files(&app)?;
+        let pipeline=RebuildPipeline{
+            masks:local::pipeline(&context.models,files.clone(),MangaStage::Masks)?,
+            cleanup:local::pipeline(&context.models,files.clone(),MangaStage::Inpainting)?,
+            lettering:local::pipeline(&context.models,files,MangaStage::Lettering)?,
+        };
+        return launch(context,app,project,job,pipeline);
+    }
     if kind == "manga_automatic" {
         use crate::{application::manga::{automatic,local,pipeline,translation_pipeline,runtime},app::contracts::{MangaStage,JobState},storage::runs};
         let run=context.manager.lease(&project)?.with_connection(|db,_|runs::get_run(db,&job))?;
@@ -374,6 +385,31 @@ pub async fn manga_start_automatic(context:tauri::State<'_,AppContext>,app:tauri
             automatic::create(db,&id,&args.selection,args.options.max_pages,args.options.force,MangaPlan{recognition,translation,mask_hash:masks.model_hash,cleanup_hash:cleanup.model_hash,lettering_hash:lettering.model_hash})
         })?;
         Ok(crate::app::contracts::JobRef{project_id:args.project_id,job_id:id})
+    }).await.map_err(|_|AppError::invalid("task"))??;
+    super::book_v1::dispatch_created(&context,app,job)
+}
+
+#[tauri::command]
+pub async fn manga_update_region(context: tauri::State<'_, AppContext>, args: crate::app::requests::UpdateMangaRegionArgs) -> Result<crate::app::requests::MangaPageView,AppError> {
+    let manager=context.manager.clone();
+    tauri::async_runtime::spawn_blocking(move || manager.lease(&args.project_id)?.with_connection(|db,_| {
+        ProjectRepository::new(db,ProjectKind::Manga)?;
+        let page:String=db.query_row("SELECT page_id FROM manga_regions WHERE id=?1",[&args.region_id.0],|r|r.get(0)).map_err(storage_error)?;
+        crate::storage::edits::update_region(db,&args.region_id.0,&args.expected_revision,&args.patch)?;
+        crate::application::manga::view::page(db,&page)
+    })).await.map_err(|_|AppError::invalid("task"))?
+}
+
+#[tauri::command]
+pub async fn manga_rebuild_page(context:tauri::State<'_,AppContext>,app:tauri::AppHandle,args:crate::app::requests::GetMangaPageArgs)->Result<crate::app::contracts::JobRef,AppError>{
+    use crate::{application::manga::local,app::{contracts::{MangaStage,EntitySelection,JobRef},requests::{StartMangaStageArgs,MangaStageOptions}}};
+    let pipeline=local::pipeline(&context.models,native_files(&app)?,MangaStage::Masks)?;
+    let manager=context.manager.clone();
+    let job=tauri::async_runtime::spawn_blocking(move||{
+        let id=uuid::Uuid::new_v4().to_string();
+        let stage=StartMangaStageArgs{project_id:args.project_id.clone(),stage:MangaStage::Masks,selection:EntitySelection::ExplicitIds{ids:vec![args.page_id.0]},options:MangaStageOptions{max_pages:1,force:true}};
+        manager.lease(&args.project_id)?.with_connection(|db,_|local::create_run_mode(db,&id,&stage,&pipeline.model_hash,true))?;
+        Ok(JobRef{project_id:args.project_id,job_id:id})
     }).await.map_err(|_|AppError::invalid("task"))??;
     super::book_v1::dispatch_created(&context,app,job)
 }

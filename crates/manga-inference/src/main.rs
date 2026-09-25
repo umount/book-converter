@@ -76,6 +76,12 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
 }
 fn main() {
     if let Err(error) = run() {
+        let code = match error.downcast_ref::<manga_inference::Error>() {
+            Some(manga_inference::Error::TextOverflow) => "text_overflow",
+            Some(manga_inference::Error::FontCoverage) => "font_coverage",
+            _ => "worker_failed",
+        };
+        println!("{}", serde_json::json!({"error":code}));
         eprintln!("{error}");
         std::process::exit(1);
     }
@@ -112,15 +118,18 @@ fn worker() -> Result<(), Box<dyn std::error::Error>> {
             layouts = rendered.layouts;
             image::DynamicImage::ImageRgb8(rendered.image)
         }
-        Operation::Masks { regions, margin } => {
+        Operation::Masks {
+            regions,
+            margin,
+            rectangles,
+        } => {
             let mut model = onnx::TextMask::load(&request.model)?;
             loaded = started.elapsed();
-            image::DynamicImage::ImageLuma8(page::segment_page(
-                &original,
-                &regions,
-                margin,
-                |page, crop| model.segment(page, crop),
-            )?)
+            let mut mask = page::segment_page(&original, &regions, margin, |page, crop| {
+                model.segment(page, crop)
+            })?;
+            page::fill_rectangles(&mut mask, &rectangles)?;
+            image::DynamicImage::ImageLuma8(mask)
         }
         Operation::Inpainting { mask } => {
             let mask = mask.read()?;

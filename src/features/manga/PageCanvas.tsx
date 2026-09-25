@@ -1,10 +1,15 @@
 import { useEffect, useRef, useState } from "react";
 import type {
   MangaRegionView,
+  PixelBounds,
   PageSummary,
 } from "../../shared/contracts/generated";
 import { assetUrl } from "../../shared/api/assets";
-import { fittedWidth, pageKeyDelta } from "../../shared/state/mangaCanvas";
+import {
+  fittedWidth,
+  pageKeyDelta,
+  dragRegion,
+} from "../../shared/state/mangaCanvas";
 import type { T } from "../../app/strings";
 
 export function PageCanvas({
@@ -18,6 +23,7 @@ export function PageCanvas({
   regions = [],
   selectedRegion,
   onSelectRegion,
+  onChangeBounds,
   t,
 }: {
   projectId: string;
@@ -30,8 +36,16 @@ export function PageCanvas({
   regions?: MangaRegionView[];
   selectedRegion?: string | null;
   onSelectRegion?: (id: string) => void;
+  onChangeBounds?: (id: string, bounds: PixelBounds) => void;
   t: T;
 }) {
+  const regionDrag = useRef<{
+    id: string;
+    x: number;
+    y: number;
+    bounds: PixelBounds;
+    resize: boolean;
+  } | null>(null);
   const viewport = useRef<HTMLDivElement>(null);
   const drag = useRef<{
     x: number;
@@ -51,6 +65,7 @@ export function PageCanvas({
   }, []);
   useEffect(() => {
     drag.current = null;
+    regionDrag.current = null;
     viewport.current?.scrollTo(0, 0);
   }, [page?.id, zoom]);
   const width = page
@@ -115,7 +130,43 @@ export function PageCanvas({
               className="bc-region-overlay"
               aria-label={`${t("region")} ${region.readingOrder + 1}: ${region.sourceText}`}
               aria-pressed={region.id === selectedRegion}
-              onPointerDown={(e) => e.stopPropagation()}
+              onPointerDown={(e) => {
+                e.stopPropagation();
+                if (e.button !== 0 || !onChangeBounds || !width) return;
+                onSelectRegion?.(region.id);
+                regionDrag.current = {
+                  id: region.id,
+                  x: e.clientX,
+                  y: e.clientY,
+                  bounds: { ...region.bounds },
+                  resize: (e.target as HTMLElement).dataset.resize === "true",
+                };
+                e.currentTarget.setPointerCapture(e.pointerId);
+              }}
+              onPointerMove={(e) => {
+                const d = regionDrag.current;
+                if (!d || d.id !== region.id || !onChangeBounds || !width)
+                  return;
+                const b = dragRegion(
+                  d.bounds,
+                  e.clientX - d.x,
+                  e.clientY - d.y,
+                  d.resize,
+                  page.width,
+                  page.height,
+                  width,
+                );
+                onChangeBounds(region.id, b);
+              }}
+              onPointerUp={() => {
+                regionDrag.current = null;
+              }}
+              onPointerCancel={() => {
+                regionDrag.current = null;
+              }}
+              onLostPointerCapture={() => {
+                regionDrag.current = null;
+              }}
               onClick={() => onSelectRegion?.(region.id)}
               style={{
                 left: `${(region.bounds.x / page.width) * 100}%`,
@@ -125,6 +176,15 @@ export function PageCanvas({
               }}
             >
               <span>{region.readingOrder + 1}</span>
+              {onChangeBounds && (
+                <span
+                  data-resize="true"
+                  className="bc-region-resize"
+                  aria-hidden="true"
+                >
+                  ↘
+                </span>
+              )}
             </button>
           ))}
         </div>

@@ -133,8 +133,27 @@ const en = {
   providerProfiles: "Model profiles",
   projectProviders: "Project models",
   defaultProvider: "Default provider",
-  noProviderProfiles: "No profiles yet. Enter a name, API model, endpoint and key, then save the profile. It will appear in the selectors below.",
-  mangaProfileSetupHint: "By default, recognition uses DeepSeek Flash with your shared API key; translation uses your shared model settings. No separate profile is required. Recognition requires an API model that accepts images. Translation uses a text model. You can select the same profile for both if it supports both tasks. Apply the selected profiles below.",
+  regionEditHint:
+    "Drag regions to move them; drag the corner to resize. Apply rebuilds cleanup and text from the original, using the current translations. Edited rectangles are erased in full.",
+  mangaPageBusy:
+    "Wait for the current job to finish or cancel it before applying edits.",
+  manga_rebuild: "Rebuild page",
+  applyRegions: "Apply",
+  textDirection: "Text direction",
+  horizontalText: "Horizontal",
+  verticalText: "Vertical (90°)",
+  mangaTextOverflow:
+    "Text does not fit in a region. Enlarge the region or change its text direction, then apply.",
+  mangaFontCoverage:
+    "The rendering font does not support some translated characters.",
+  mangaWorkerTimeout: "Page processing timed out.",
+  mangaLocalProcessing:
+    "Local image processing failed. Try rebuilding the page; check the manga runtime if it fails again.",
+
+  noProviderProfiles:
+    "No profiles yet. Enter a name, API model, endpoint and key, then save the profile. It will appear in the selectors below.",
+  mangaProfileSetupHint:
+    "By default, recognition uses DeepSeek Flash with your shared API key; translation uses your shared model settings. No separate profile is required. Recognition requires an API model that accepts images. Translation uses a text model. You can select the same profile for both if it supports both tasks. Apply the selected profiles below.",
   missingProfile: "Profile unavailable",
   newProfile: "New profile",
   profileName: "Profile name",
@@ -474,8 +493,26 @@ const ru: Record<Key, string> = {
   providerProfiles: "Профили моделей",
   projectProviders: "Модели проекта",
   defaultProvider: "Провайдер по умолчанию",
-  noProviderProfiles: "Профилей пока нет. Укажите название, модель API, адрес и ключ, затем сохраните профиль. Он появится в списках ниже.",
-  mangaProfileSetupHint: "По умолчанию распознавание использует DeepSeek Flash с общим API-ключом, перевод — модель из общих настроек. Отдельный профиль создавать не нужно. Для распознавания нужна модель API с поддержкой изображений, для перевода — текстовая. Можно выбрать один профиль для обеих задач, если модель поддерживает их. Примените выбранные профили ниже.",
+  regionEditHint:
+    "Перемещайте рамки и тяните за угол. «Применить» очистит исправленные области целиком и заново наложит перевод.",
+  mangaPageBusy:
+    "Дождитесь завершения текущего задания или отмените его перед применением правок.",
+  manga_rebuild: "Пересборка страницы",
+  applyRegions: "Применить",
+  textDirection: "Направление текста",
+  horizontalText: "Горизонтально",
+  verticalText: "Вертикально (90°)",
+  mangaTextOverflow:
+    "Текст не помещается в регион. Увеличьте рамку или измените направление текста и нажмите «Применить».",
+  mangaFontCoverage: "Шрифт не поддерживает некоторые символы перевода.",
+  mangaWorkerTimeout: "Превышено время обработки страницы.",
+  mangaLocalProcessing:
+    "Ошибка локальной обработки изображения. Попробуйте пересобрать страницу; при повторной ошибке проверьте компонент обработки манги.",
+
+  noProviderProfiles:
+    "Профилей пока нет. Укажите название, модель API, адрес и ключ, затем сохраните профиль. Он появится в списках ниже.",
+  mangaProfileSetupHint:
+    "По умолчанию распознавание использует DeepSeek Flash с общим API-ключом, перевод — модель из общих настроек. Отдельный профиль создавать не нужно. Для распознавания нужна модель API с поддержкой изображений, для перевода — текстовая. Можно выбрать один профиль для обеих задач, если модель поддерживает их. Примените выбранные профили ниже.",
   missingProfile: "Профиль недоступен",
   newProfile: "Новый профиль",
   profileName: "Название профиля",
@@ -805,8 +842,24 @@ const zh: Record<Key, string> = {
   providerProfiles: "模型配置",
   projectProviders: "项目模型",
   defaultProvider: "默认提供商",
-  noProviderProfiles: "尚无配置。填写名称、API 模型、地址和密钥并保存，然后在下方选择。",
-  mangaProfileSetupHint: "默认使用通用 API 设置，无需创建单独配置。识别需要支持图像的 API 模型，翻译使用文本模型。如果模型支持两项任务，可以使用同一配置。请在下方应用所选配置。",
+  regionEditHint:
+    "拖动区域移动，拖动角落调整大小。应用后从原图重建清理和文字，保留当前译文。修改后的矩形将全部清除。",
+  mangaPageBusy: "请等待当前任务完成或取消后再应用更改。",
+  manga_rebuild: "重建页面",
+  applyRegions: "应用",
+  textDirection: "文字方向",
+  horizontalText: "横向",
+  verticalText: "纵向（90°）",
+  mangaTextOverflow: "文字超出区域。请扩大区域或更改文字方向后应用。",
+  mangaFontCoverage: "字体不支持部分译文字符。",
+  mangaWorkerTimeout: "页面处理超时。",
+  mangaLocalProcessing:
+    "本地图像处理失败。请重建页面，如再次失败请检查漫画处理组件。",
+
+  noProviderProfiles:
+    "尚无配置。填写名称、API 模型、地址和密钥并保存，然后在下方选择。",
+  mangaProfileSetupHint:
+    "默认使用通用 API 设置，无需创建单独配置。识别需要支持图像的 API 模型，翻译使用文本模型。如果模型支持两项任务，可以使用同一配置。请在下方应用所选配置。",
   missingProfile: "配置不可用",
   newProfile: "新建配置",
   profileName: "配置名称",
@@ -1014,6 +1067,15 @@ export function errorText(error: unknown, t: T): string {
   if (e?.params?.field === "noEligibleChapters") return t("noEligibleChapters");
   if (e?.params?.field === "destinationExists") return t("exists");
   if (e?.params?.field === "incompleteTranslation") return t("incomplete");
+  if (
+    [
+      "mangaTextOverflow",
+      "mangaFontCoverage",
+      "mangaWorkerTimeout",
+      "mangaLocalProcessing",
+    ].includes(e?.params?.field ?? "")
+  )
+    return t(e!.params!.field as Parameters<T>[0]);
   return error instanceof Error
     ? error.message
     : typeof error === "string"

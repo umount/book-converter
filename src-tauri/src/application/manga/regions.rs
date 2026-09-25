@@ -20,9 +20,11 @@ pub struct Region {
     pub source_manual: bool,
     pub translation_manual: bool,
     pub revision: i64,
+    pub vertical: bool,
+    pub manual_bounds: bool,
 }
 pub fn read(db: &rusqlite::Connection, page: &str) -> Result<Vec<Region>, AppError> {
-    let mut query = db.prepare("SELECT id,reading_order,category,geometry_json,source_text,translated_text,source_manual,translation_manual,revision FROM manga_regions WHERE page_id=?1 ORDER BY reading_order").map_err(storage_error)?;
+    let mut query = db.prepare("SELECT id,reading_order,category,geometry_json,source_text,translated_text,source_manual,translation_manual,revision,COALESCE(json_extract(style_json,'$.vertical'),0),COALESCE(json_extract(style_json,'$.manualBounds'),0) FROM manga_regions WHERE page_id=?1 ORDER BY reading_order").map_err(storage_error)?;
     let rows = query
         .query_map([page], |r| {
             Ok((
@@ -35,6 +37,8 @@ pub fn read(db: &rusqlite::Connection, page: &str) -> Result<Vec<Region>, AppErr
                 r.get::<_, bool>(6)?,
                 r.get::<_, bool>(7)?,
                 r.get::<_, i64>(8)?,
+                r.get::<_, bool>(9)?,
+                r.get::<_, bool>(10)?,
             ))
         })
         .map_err(storage_error)?
@@ -52,6 +56,8 @@ pub fn read(db: &rusqlite::Connection, page: &str) -> Result<Vec<Region>, AppErr
                 source_manual,
                 translation_manual,
                 revision,
+                vertical,
+                manual_bounds,
             )| {
                 Ok(Region {
                     id,
@@ -65,6 +71,8 @@ pub fn read(db: &rusqlite::Connection, page: &str) -> Result<Vec<Region>, AppErr
                     source_manual,
                     translation_manual,
                     revision,
+                    vertical,
+                    manual_bounds,
                 })
             },
         )

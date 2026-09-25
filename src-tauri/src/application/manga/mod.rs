@@ -17,3 +17,5 @@ pub mod local;
 pub mod image_pipeline;
 
 pub mod automatic;
+
+pub mod rebuild;

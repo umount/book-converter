@@ -61,7 +61,8 @@ export function JobPanel({
                   job.kind === "manga_masks" ||
                   job.kind === "manga_inpainting" ||
                   job.kind === "manga_lettering" ||
-                  job.kind === "manga_automatic"
+                  job.kind === "manga_automatic" ||
+                  job.kind === "manga_rebuild"
                   ? job.kind
                   : "processing",
               )}

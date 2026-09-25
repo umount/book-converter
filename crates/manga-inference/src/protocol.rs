@@ -56,6 +56,8 @@ impl Asset {
 pub enum Operation {
     Masks {
         regions: Vec<Crop>,
+        #[serde(default)]
+        rectangles: Vec<Crop>,
         margin: u32,
     },
     Inpainting {
@@ -89,9 +91,11 @@ impl Request {
             return Err(Error::Request);
         }
         match &self.operation {
-            Operation::Masks { regions, margin }
-                if regions.len() > crate::page::MAX_REGIONS || *margin > 8 =>
-            {
+            Operation::Masks {
+                regions,
+                margin,
+                rectangles,
+            } if regions.len() + rectangles.len() > crate::page::MAX_REGIONS || *margin > 8 => {
                 Err(Error::Request)
             }
             Operation::Lettering { regions } if regions.len() > crate::page::MAX_REGIONS => {
@@ -175,6 +179,7 @@ mod tests {
             output: "/original".into(),
             operation: Operation::Masks {
                 regions: vec![],
+                rectangles: vec![],
                 margin: 2,
             },
         };

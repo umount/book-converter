@@ -39,6 +39,7 @@ async fn native_mask_cleanup_preserve_artwork_and_original_file() {
         input: asset(root.join("original.png")),
         output: root.join("mask.png"),
         operation: Operation::Masks {
+            rectangles:vec![],
             regions: vec![Crop {
                 x: 0,
                 y: 0,

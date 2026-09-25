@@ -5,12 +5,22 @@ export function RegionInspector({
   selected,
   onSelect,
   onClose,
+  onChangeDirection,
+  onApply,
+  onDiscard,
+  busy,
+  changed,
   t,
 }: {
   view: MangaPageView | null;
   selected: string | null;
   onSelect: (id: string) => void;
   onClose: () => void;
+  onChangeDirection: (id: string, vertical: boolean) => void;
+  onApply: () => void;
+  onDiscard: () => void;
+  busy: boolean;
+  changed: boolean;
   t: T;
 }) {
   const region = view?.regions.find((r) => r.id === selected);
@@ -38,6 +48,16 @@ export function RegionInspector({
           ) : view.regions.length === 0 ? (
             <p className="bc-hint">{t("noRecognizedText")}</p>
           ) : null}
+          <p className="bc-hint">{t("regionEditHint")}</p>
+          <button disabled={busy || !view.regions.length} onClick={onApply}>
+            {t(busy ? "processing" : "applyRegions")}
+            {changed ? " *" : ""}
+          </button>
+          {changed && (
+            <button disabled={busy} onClick={onDiscard}>
+              {t("cancel")}
+            </button>
+          )}
           <div className="bc-region-list">
             {view.regions.map((r) => (
               <button
@@ -52,6 +72,19 @@ export function RegionInspector({
           </div>
           {region && (
             <div className="bc-region-text">
+              <label>
+                {t("textDirection")}
+                <select
+                  disabled={busy}
+                  value={region.vertical ? "vertical" : "horizontal"}
+                  onChange={(e) =>
+                    onChangeDirection(region.id, e.target.value === "vertical")
+                  }
+                >
+                  <option value="horizontal">{t("horizontalText")}</option>
+                  <option value="vertical">{t("verticalText")}</option>
+                </select>
+              </label>
               <p lang="und">{region.sourceText}</p>
               <p className={region.translatedText ? undefined : "bc-hint"}>
                 {region.translatedText ?? t("translationNotReady")}

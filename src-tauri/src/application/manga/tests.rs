@@ -845,8 +845,8 @@ impl super::local::ImageWorker for ImageFake {
                     }
                     input.clone()
                 }
-                manga_inference::protocol::Operation::Masks { regions, .. } => {
-                    assert!(!regions.is_empty());
+                manga_inference::protocol::Operation::Masks { regions, rectangles, .. } => {
+                    assert!(!regions.is_empty() || !rectangles.is_empty());
                     let mut mask = image::GrayImage::new(input.width(), input.height());
                     mask.put_pixel(1, 1, image::Luma([255]));
                     image::DynamicImage::ImageLuma8(mask)
@@ -1439,4 +1439,35 @@ async fn automatic_pipeline_with_real_native_models_publishes_rendered_page() {
             Ok(())
         })
         .unwrap();
+}
+
+#[tokio::test]
+async fn edited_regions_rebuild_without_api_and_keep_geometry_and_direction() {
+    use crate::app::{contracts::MangaStage,requests::{StartMangaStageArgs,MangaStageOptions}};
+    let f=recognized_fixture(1).await;
+    let page=f.run().snapshot.selected_ids[0].clone();
+    create_dialogue(&f,"dialogue",1);
+    durable::execute(&f.manager,&f.id,"dialogue",&super::translation_pipeline::TranslationPipeline{provider:Arc::new(DialogueFake::new(0))},Arc::new(AtomicBool::new(false)),|_|{}).await.unwrap();
+    f.manager.lease(&f.id).unwrap().with_connection(|db,_|{
+        let r=regions::read(db,&page)?.remove(0);
+        let mut bounds=r.bounds.clone(); bounds.x+=1.0;
+        let rev=edits::update_region(db,&r.id,&Revision(r.revision.to_string()),&RegionPatch::Bounds{bounds:bounds.clone()})?;
+        edits::update_region(db,&r.id,&rev,&RegionPatch::Direction{vertical:true})?;
+        assert_eq!(regions::read(db,&page)?[0].bounds,bounds);
+        super::local::create_run_mode(db,"rebuild",&StartMangaStageArgs{project_id:f.id.clone(),stage:MangaStage::Masks,selection:EntitySelection::ExplicitIds{ids:vec![page.clone()]},options:MangaStageOptions{max_pages:1,force:true}},"test-hash",true)
+    }).unwrap();
+    let pipeline=super::rebuild::RebuildPipeline{
+        masks:image_pipeline(MangaStage::Masks,ImageFake{hook:None}),
+        cleanup:image_pipeline(MangaStage::Inpainting,ImageFake{hook:None}),
+        lettering:image_pipeline(MangaStage::Lettering,ImageFake{hook:None}),
+    };
+    durable::execute(&f.manager,&f.id,"rebuild",&pipeline,Arc::new(AtomicBool::new(false)),|_|{}).await.unwrap();
+    f.manager.lease(&f.id).unwrap().with_connection(|db,_|{
+        let r=regions::read(db,&page)?.remove(0);
+        assert!(r.vertical && r.manual_bounds);
+        assert_eq!(r.translated_text.as_deref(),Some("Перевод"));
+        assert!(super::view::page(db,&page)?.rendered_asset_id.is_some());
+        assert_eq!(runs::get_run(db,"rebuild")?.state,JobState::Succeeded);
+        Ok(())
+    }).unwrap();
 }

@@ -38,7 +38,8 @@ with no mandatory GPU. Actual model choice depends on tooling/quality/resource g
 There is no manual/model-free processing fallback. Import/viewing work without a ready
 processing stack, but processing preflight blocks until all capabilities are available.
 
-Masks must identify text pixels without erasing whole rectangular bubbles or panel art.
+Automatic masks identify text pixels without erasing whole rectangular bubbles or panel art.
+Explicitly moved/resized regions use the user-selected rectangle as a full cleanup mask.
 Coordinates use EXIF-normalized canonical pixels with inverse crop/resize mappings.
 Lettering records font, size, alignment, line spacing and stroke. Overflow requires
 review; never silently clip it. Complex SFX/handwriting matching is not promised initially.
@@ -122,3 +123,16 @@ render and its immutable original. Job details show volume, page, stage and page
 
 Live API quality, native GUI interactions, representative manga typography, target
 resource budgets, review/export and non-Linux packaged builds still need acceptance.
+
+## Editing recognized regions
+
+Open **Regions**, drag a frame to move it, and drag its lower-right corner to resize.
+Coordinates stay in original image pixels at every zoom. Select horizontal lettering
+or vertical lettering rotated 90 degrees in the inspector. **Apply** saves pending edits
+and runs a local masks → inpainting → lettering job from the immutable original page,
+using existing translated text; it does not call recognition/translation APIs again.
+**Cancel** discards pending edits. Enlarging a narrow region can resolve text overflow.
+Manual rectangle cleanup and text direction survive subsequent local rebuilds.
+
+Worker overflow, unsupported glyphs and timeout errors are reported separately in Jobs.
+Old failures recorded as `mangaLocalProcessing` cannot recover details retrospectively.

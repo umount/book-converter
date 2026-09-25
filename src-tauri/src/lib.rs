@@ -116,6 +116,8 @@ pub fn run() {
             commands::manga_start_stage,
             commands::manga_start_automatic,
             commands::manga_get_page,
+            commands::manga_update_region,
+            commands::manga_rebuild_page,
             commands::manga_preflight,
             commands::project_list,
             commands::project_inspect_source,

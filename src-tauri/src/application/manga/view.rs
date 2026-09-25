@@ -16,6 +16,7 @@ pub fn page(db: &mut Connection, id: &str) -> Result<MangaPageView, AppError> {
     let regions = regions::read(&tx, id)?
         .into_iter()
         .map(|r| MangaRegionView {
+            vertical: r.vertical,
             id: RegionId(r.id),
             page_id: PageId(id.into()),
             reading_order: r.reading_order,

@@ -90,7 +90,7 @@ impl ImagePipeline {
                 return Err(AppError::invalid("mangaTranslationRequired"));
             }
 
-            serde_json::json!({"cleaned":current_asset(db, page, "inpainting")?, "regions": regions::read(db,page)?.iter().map(|r| (&r.id,&r.bounds,&r.translated_text)).collect::<Vec<_>>()})
+            serde_json::json!({"cleaned":current_asset(db, page, "inpainting")?, "regions": regions::read(db,page)?.iter().map(|r| (&r.id,&r.bounds,&r.translated_text,r.vertical)).collect::<Vec<_>>()})
         } else {
             serde_json::json!(mask_asset(db, page)?)
         };
@@ -176,16 +176,18 @@ impl StepExecutor for ImagePipeline {
                         r.bounds.validate(width,height)?;
                         let x=r.bounds.x.floor() as u32;let y=r.bounds.y.floor() as u32;
                         let text=r.translated_text.as_ref().filter(|t|!t.trim().is_empty()).ok_or_else(||AppError::invalid("mangaTranslationRequired"))?;
-                        Ok(manga_inference::text::TextRegion{id:r.id.clone(),text:text.clone(),bounds:Crop{x,y,width:((r.bounds.x+r.bounds.width).ceil() as u32).min(width)-x,height:((r.bounds.y+r.bounds.height).ceil() as u32).min(height)-y}})
+                        Ok(manga_inference::text::TextRegion{ vertical: r.vertical,id:r.id.clone(),text:text.clone(),bounds:Crop{x,y,width:((r.bounds.x+r.bounds.width).ceil() as u32).min(width)-x,height:((r.bounds.y+r.bounds.height).ceil() as u32).min(height)-y}})
                     }).collect::<Result<Vec<_>,AppError>>()?;
                     Operation::Lettering{regions:texts}
                 }else if self.stage==MangaStage::Masks {
-                    let crops=regions::read(db,entity)?.iter().map(|r|{
+                    let all=regions::read(db,entity)?;
+                    let crops=all.iter().map(|r|{
                         r.bounds.validate(width,height)?;
                         let x=r.bounds.x.floor() as u32;let y=r.bounds.y.floor() as u32;
                         Ok(Crop{x,y,width:((r.bounds.x+r.bounds.width).ceil() as u32).min(width)-x,height:((r.bounds.y+r.bounds.height).ceil() as u32).min(height)-y})
                     }).collect::<Result<Vec<_>,AppError>>()?;
-                    Operation::Masks{regions:crops,margin:2}
+                    let (rectangles,regions): (Vec<_>,Vec<_>)=crops.into_iter().zip(all.iter()).partition(|(_,r)|r.manual_bounds);
+                    Operation::Masks{regions:regions.into_iter().map(|(c,_)|c).collect(),rectangles:rectangles.into_iter().map(|(c,_)|c).collect(),margin:2}
                 }else{Operation::Inpainting{mask:asset(db,root,&mask_asset(db,entity)?)?}};
                 let previous:Option<i64>=db.query_row("SELECT MAX(revision) FROM manga_results WHERE page_id=?1 AND stage=?2",params![entity,stage],|r|r.get(0)).map_err(storage_error)?;
                 Ok((Request{version:1,runtime:self.runtime.clone(),model:self.model.clone(),input:asset(db,root,&input_id)?,output:workspace.root.join("result.png"),operation},ImageOutput{result:MangaResult{id:uuid::Uuid::new_v4().to_string(),page_id:entity.into(),stage:self.stage.clone(),inputs:InputVersions{source:Revision(revision.to_string()),settings:run.snapshot.settings_revision.clone(),glossary:run.snapshot.glossary_revision.clone()},expected_result:previous.map(|v|Revision(v.to_string())),fingerprint:self.hash(db,run,entity)?,provider_version:format!("{}:{}",local::VERSION,self.model_hash),output:MangaOutput::Image(String::new())},root:root.to_path_buf(),bytes:vec![],layouts:vec![]},(width,height)))
@@ -241,7 +243,7 @@ impl StepExecutor for ImagePipeline {
         for layout in &output.layouts {
             let style = serde_json::to_string(layout)
                 .map_err(|_| AppError::invalid("mangaLetteringLayout"))?;
-            tx.execute("UPDATE manga_regions SET style_json=?1,style_revision=style_revision+1 WHERE id=?2 AND page_id=?3",params![style,layout.id,output.result.page_id]).map_err(storage_error)?;
+            tx.execute("UPDATE manga_regions SET style_json=json_patch(style_json,?1),style_revision=style_revision+1 WHERE id=?2 AND page_id=?3",params![style,layout.id,output.result.page_id]).map_err(storage_error)?;
         }
         if self.stage == MangaStage::Masks {
             tx.execute(

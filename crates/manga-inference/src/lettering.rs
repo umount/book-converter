@@ -147,8 +147,13 @@ pub fn render(original: &RgbImage, regions: &[TextRegion]) -> Result<RenderedPag
     let mut prepared = Vec::new();
     for region in regions {
         // Reserve two pixels on every edge for antialiasing and the white stroke.
-        let width = region.bounds.width.saturating_sub(4) as f32;
-        let height = region.bounds.height.saturating_sub(4) as f32;
+        let (w, h) = if region.vertical {
+            (region.bounds.height, region.bounds.width)
+        } else {
+            (region.bounds.width, region.bounds.height)
+        };
+        let width = w.saturating_sub(4) as f32;
+        let height = h.saturating_sub(4) as f32;
         let maximum = 96.0f32.min(height).max(8.0);
         let result = largest_fitting_font_size(
             8.0,
@@ -162,11 +167,15 @@ pub fn render(original: &RgbImage, regions: &[TextRegion]) -> Result<RenderedPag
     let mut image = original.clone();
     let mut layouts = Vec::new();
     for (region, layout) in regions.iter().zip(prepared) {
-        let mut alpha = GrayImage::new(region.bounds.width, region.bounds.height);
-        let top =
-            (region.bounds.height as f32 - layout.line_height * layout.lines.len() as f32) / 2.0;
+        let (w, h) = if region.vertical {
+            (region.bounds.height, region.bounds.width)
+        } else {
+            (region.bounds.width, region.bounds.height)
+        };
+        let mut alpha = GrayImage::new(w, h);
+        let top = (h as f32 - layout.line_height * layout.lines.len() as f32) / 2.0;
         for (index, line) in layout.lines.iter().enumerate() {
-            let left = (region.bounds.width as f32 - line.width) / 2.0;
+            let left = (w as f32 - line.width) / 2.0;
             for glyph in &line.glyphs {
                 let (metrics, coverage) = font.rasterize_indexed(glyph.id, layout.size);
                 let x = (left + glyph.x).round() as i32;
@@ -193,6 +202,11 @@ pub fn render(original: &RgbImage, regions: &[TextRegion]) -> Result<RenderedPag
                 }
             }
         }
+        let alpha = if region.vertical {
+            image::imageops::rotate90(&alpha)
+        } else {
+            alpha
+        };
         // A one-pixel light stroke keeps black text legible on patterned backgrounds.
         for (x, y, pixel) in alpha.enumerate_pixels() {
             let mut stroke = 0;
@@ -233,9 +247,36 @@ mod tests {
     use crate::Crop;
     use image::Rgb;
     #[test]
+    fn vertical_text_is_rotated_and_stays_inside_region() {
+        let original = RgbImage::from_pixel(100, 320, Rgb([220, 230, 240]));
+        let region = TextRegion {
+            id: "vertical".into(),
+            text: "Перевод строки".into(),
+            vertical: true,
+            bounds: Crop {
+                x: 20,
+                y: 20,
+                width: 50,
+                height: 280,
+            },
+        };
+        let rendered = render(&original, &[region]).unwrap();
+        assert!(rendered
+            .image
+            .pixels()
+            .zip(original.pixels())
+            .any(|(a, b)| a != b));
+        for (x, y, pixel) in rendered.image.enumerate_pixels() {
+            if !(20..70).contains(&x) || !(20..300).contains(&y) {
+                assert_eq!(pixel, original.get_pixel(x, y));
+            }
+        }
+    }
+    #[test]
     fn russian_text_fits_without_touching_pixels_outside_the_region() {
         let original = RgbImage::from_pixel(400, 300, Rgb([210, 220, 230]));
         let region = TextRegion {
+            vertical: false,
             id: "dialogue".into(),
             bounds: Crop {
                 x: 40,
@@ -263,6 +304,7 @@ mod tests {
     fn small_cyrillic_descenders_fit_with_actual_ink_metrics() {
         let original = RgbImage::new(72, 72);
         let region = TextRegion {
+            vertical: false,
             id: "small".into(),
             bounds: Crop {
                 x: 0,
@@ -280,6 +322,7 @@ mod tests {
     fn missing_glyphs_and_overflow_never_produce_partial_pages() {
         let original = RgbImage::new(100, 100);
         let mut region = TextRegion {
+            vertical: false,
             id: "a".into(),
             bounds: Crop {
                 x: 1,

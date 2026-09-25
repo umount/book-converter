@@ -8,6 +8,7 @@ import { projectApi } from "../../shared/api/projects";
 import type {
   MangaVolumeSummary,
   PageSummary,
+  MangaRegionView,
 } from "../../shared/contracts/generated";
 import { assetUrl } from "../../shared/api/assets";
 import { errorText, type T } from "../../app/strings";
@@ -99,7 +100,68 @@ function MangaProjectWorkspace({
     };
   }, [projectId, volumeId]);
   const page = pages[selected];
-  const { view, error: pageError } = usePageView(projectId, page?.id);
+  const { view, error: pageError, refresh } = usePageView(projectId, page?.id);
+  const [edits, setEdits] = useState<
+    Record<string, Partial<Pick<MangaRegionView, "bounds" | "vertical">>>
+  >({});
+  const [applying, setApplying] = useState(false);
+  useEffect(() => {
+    setEdits({});
+  }, [page?.id]);
+  const editedView = view
+    ? { ...view, regions: view.regions.map((r) => ({ ...r, ...edits[r.id] })) }
+    : null;
+  const changeRegion = (
+    id: string,
+    patch: Partial<Pick<MangaRegionView, "bounds" | "vertical">>,
+  ) => setEdits((old) => ({ ...old, [id]: { ...old[id], ...patch } }));
+  async function applyRegions() {
+    if (!view || applying) return;
+    setApplying(true);
+    setError(null);
+    try {
+      const jobs = await projectApi.jobs({
+        projectId,
+        cursor: null,
+        limit: 30,
+      });
+      if (
+        jobs.some((job) =>
+          ["queued", "running", "cancelling"].includes(job.state),
+        )
+      )
+        throw new Error(t("mangaPageBusy"));
+      let current = view;
+      for (const [id, patch] of Object.entries(edits)) {
+        for (const change of [
+          patch.bounds
+            ? { kind: "bounds" as const, bounds: patch.bounds }
+            : null,
+          patch.vertical !== undefined
+            ? { kind: "direction" as const, vertical: patch.vertical }
+            : null,
+        ]) {
+          if (!change) continue;
+          const region = current.regions.find((r) => r.id === id);
+          if (!region) throw new Error(t("conflict"));
+          current = await projectApi.updateMangaRegion({
+            projectId,
+            regionId: id,
+            patch: change,
+            expectedRevision: region.revision,
+          });
+        }
+      }
+      setEdits({});
+      await projectApi.rebuildMangaPage({ projectId, pageId: view.page.id });
+      setShowTranslation(true);
+    } catch (e) {
+      setError(e);
+    } finally {
+      refresh();
+      setApplying(false);
+    }
+  }
   const [showRegions, setShowRegions] = useState(false);
   const [selectedRegion, setSelectedRegion] = useState<string | null>(null);
   const activeRegion = view?.regions.some((r) => r.id === selectedRegion)
@@ -109,6 +171,7 @@ function MangaProjectWorkspace({
     <div className="bc-manga">
       <aside>
         <select
+          disabled={applying || Object.keys(edits).length > 0}
           aria-label={t("volumes")}
           value={volumeId}
           onChange={(e) => setVolumeId(e.target.value)}
@@ -131,6 +194,7 @@ function MangaProjectWorkspace({
               style={{ height: 156, margin: 0 }}
               key={p.id}
               aria-current={i === selected ? "page" : undefined}
+              disabled={applying || Object.keys(edits).length > 0}
               onClick={() => setSelected(i)}
             >
               <img
@@ -168,7 +232,12 @@ function MangaProjectWorkspace({
         )}
         <div className="bc-toolbar">
           <button
-            disabled={selected === 0 || !page}
+            disabled={
+              applying ||
+              Object.keys(edits).length > 0 ||
+              selected === 0 ||
+              !page
+            }
             onClick={() => setSelected((i) => Math.max(0, i - 1))}
             aria-label={t("previousPage")}
           >
@@ -179,6 +248,7 @@ function MangaProjectWorkspace({
             <input
               type="number"
               min={1}
+              disabled={applying || Object.keys(edits).length > 0}
               max={pages.length}
               value={pages.length ? selected + 1 : 0}
               style={{ width: 80 }}
@@ -191,7 +261,11 @@ function MangaProjectWorkspace({
             / {pages.length}
           </label>
           <button
-            disabled={selected >= pages.length - 1}
+            disabled={
+              applying ||
+              Object.keys(edits).length > 0 ||
+              selected >= pages.length - 1
+            }
             onClick={() =>
               setSelected((i) => Math.min(pages.length - 1, i + 1))
             }
@@ -231,7 +305,10 @@ function MangaProjectWorkspace({
           page={page}
           renderedAssetId={showTranslation ? view?.renderedAssetId : null}
           zoom={zoom}
-          regions={showRegions ? view?.regions : undefined}
+          regions={showRegions ? editedView?.regions : undefined}
+          onChangeBounds={
+            applying ? undefined : (id, bounds) => changeRegion(id, { bounds })
+          }
           selectedRegion={activeRegion}
           onSelectRegion={setSelectedRegion}
           loading={loading}
@@ -240,6 +317,8 @@ function MangaProjectWorkspace({
             "rtl"
           }
           onNavigate={(delta) =>
+            !applying &&
+            !Object.keys(edits).length &&
             setSelected((i) =>
               Math.max(0, Math.min(pages.length - 1, i + delta)),
             )
@@ -249,7 +328,12 @@ function MangaProjectWorkspace({
       </div>
       {showRegions && (
         <RegionInspector
-          view={view}
+          view={editedView}
+          busy={applying}
+          changed={Object.keys(edits).length > 0}
+          onDiscard={() => setEdits({})}
+          onChangeDirection={(id, vertical) => changeRegion(id, { vertical })}
+          onApply={() => void applyRegions()}
           selected={activeRegion}
           onSelect={setSelectedRegion}
           onClose={() => setShowRegions(false)}

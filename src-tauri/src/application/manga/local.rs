@@ -31,7 +31,7 @@ impl ImageWorker for NativeWorker {
         Box::pin(async move {
             manga_inference::worker::execute(&self.executable, request, Duration::from_secs(300))
                 .await
-                .map_err(|_| AppError::invalid("mangaLocalProcessing"))
+                .map_err(|error| AppError::invalid(match error {manga_inference::Error::TextOverflow=>"mangaTextOverflow",manga_inference::Error::FontCoverage=>"mangaFontCoverage",manga_inference::Error::Timeout=>"mangaWorkerTimeout",_=>"mangaLocalProcessing"}))
         })
     }
 }
@@ -135,6 +135,9 @@ pub fn create_run(
     args: &crate::app::requests::StartMangaStageArgs,
     model_hash: &str,
 ) -> Result<(), AppError> {
+    create_run_mode(db,id,args,model_hash,false)
+}
+pub fn create_run_mode(db:&mut rusqlite::Connection,id:&str,args:&crate::app::requests::StartMangaStageArgs,model_hash:&str,rebuild:bool)->Result<(),AppError>{
     use crate::{
         app::contracts::{MangaStage, ProjectKind},
         storage::{
@@ -196,7 +199,7 @@ pub fn create_run(
     runs::create_run(
         db,
         id,
-        &format!("manga_{stage}"),
+        &if rebuild {"manga_rebuild".into()} else {format!("manga_{stage}")},
         &runs::RunSnapshot {
             manga: None,
             retarget: None,
@@ -205,7 +208,7 @@ pub fn create_run(
             glossary_revision: glossary,
             selected_ids: selected,
             prompt_version: format!("{VERSION}:{model_hash}"),
-            stages: vec![stage.into()],
+            stages: if rebuild {vec!["masks".into(),"inpainting".into(),"lettering".into()]} else {vec![stage.into()]},
             provider: None,
             instructions: None,
         },

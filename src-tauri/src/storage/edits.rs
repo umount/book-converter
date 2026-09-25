@@ -105,6 +105,9 @@ pub fn update_region(
         RegionPatch::TranslatedText { text } => {
             tx.execute("UPDATE manga_regions SET translated_text=?1,translation_manual=1,text_revision=text_revision+1,revision=?2 WHERE id=?3",params![text,revision,id]).map_err(storage_error)?;
         }
+        RegionPatch::Direction { vertical } => {
+            tx.execute("UPDATE manga_regions SET style_json=json_set(style_json,'$.vertical',?1),style_revision=style_revision+1,revision=?2 WHERE id=?3",params![vertical,revision,id]).map_err(storage_error)?;
+        }
         RegionPatch::Bounds { bounds } => {
             let (width, height) = tx
                 .query_row(
@@ -114,12 +117,19 @@ pub fn update_region(
                 )
                 .map_err(storage_error)?;
             bounds.validate(width, height)?;
-            tx.execute("UPDATE manga_regions SET geometry_json=?1,geometry_revision=geometry_revision+1,revision=?2 WHERE id=?3",params![serde_json::to_string(bounds).map_err(|_|AppError::invalid("bounds"))?,revision,id]).map_err(storage_error)?;
+            tx.execute("UPDATE manga_regions SET geometry_json=?1,style_json=json_set(style_json,'$.manualBounds',1),geometry_revision=geometry_revision+1,revision=?2 WHERE id=?3",params![serde_json::to_string(bounds).map_err(|_|AppError::invalid("bounds"))?,revision,id]).map_err(storage_error)?;
             tx.execute("DELETE FROM manga_masks WHERE page_id=?1", [&page])
                 .map_err(storage_error)?;
         }
     }
+    let translation: Option<String> = if matches!(patch,RegionPatch::Bounds{..}|RegionPatch::Direction{..}) {
+        tx.query_row("SELECT id FROM manga_results WHERE page_id=?1 AND stage='translation' AND validity='current' AND page_revision=(SELECT revision FROM manga_pages WHERE id=?1) ORDER BY revision DESC LIMIT 1",[&page],|r|r.get(0)).optional().map_err(storage_error)?
+    }else{None};
     invalidate_page(&tx, &page)?;
+    if let Some(id)=translation {
+        tx.execute("UPDATE manga_results SET validity='current',page_revision=(SELECT revision FROM manga_pages WHERE id=?1) WHERE id=?2",params![page,id]).map_err(storage_error)?;
+    }
+
     tx.commit().map_err(storage_error)?;
     Ok(Revision(revision.to_string()))
 }

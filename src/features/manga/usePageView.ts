@@ -3,6 +3,7 @@ import { projectApi } from "../../shared/api/projects";
 import type { MangaPageView } from "../../shared/contracts/generated";
 
 export function usePageView(projectId: string, pageId: string | undefined) {
+  const [version, setVersion] = useState(0);
   const [view, setView] = useState<MangaPageView | null>(null);
   const [error, setError] = useState<unknown>(null);
   useEffect(() => {
@@ -38,6 +39,10 @@ export function usePageView(projectId: string, pageId: string | undefined) {
       alive = false;
       subscription.dispose();
     };
-  }, [projectId, pageId]);
-  return { view: view?.page.id === pageId ? view : null, error };
+  }, [projectId, pageId, version]);
+  return {
+    refresh: () => setVersion((v) => v + 1),
+    view: view?.page.id === pageId ? view : null,
+    error,
+  };
 }
