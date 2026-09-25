@@ -54,6 +54,7 @@ const en = {
   emptyProjects: "No projects yet",
   open: "Open",
   loading: "Loading…",
+  exporting: "Exporting…",
   error: "The operation could not be completed.",
   noKey: "Add an API key in Settings to start processing.",
   conflict:
@@ -270,9 +271,12 @@ const en = {
   unmapped: "Not mapped",
   saveMappings: "Save chapter mapping",
   format: "Format",
-  unfinished: "Unfinished chapters",
+  unfinished: "Export content",
+  translatedOnly: "Translated chapters",
+  translatedOnlyHint: "Chapters without a ready translation are skipped. Image-only chapters and the cover are preserved.",
+  noTranslatedChapters: "No ready translations or image-only chapters in this selection.",
   reject: "Require complete translations",
-  originals: "Include original text",
+  originals: "Whole book with untranslated originals",
   exportArchive: "Export project archive",
   chooseDestination: "Choose destination",
   exported: "Export complete",
@@ -425,6 +429,7 @@ const ru: Record<Key, string> = {
   emptyProjects: "Пока нет проектов",
   open: "Открыть",
   loading: "Загрузка…",
+  exporting: "Выгрузка…",
   error: "Не удалось выполнить операцию.",
   noKey: "Добавьте API-ключ в настройках, чтобы начать обработку.",
   conflict:
@@ -643,9 +648,12 @@ const ru: Record<Key, string> = {
   unmapped: "Не сопоставлено",
   saveMappings: "Сохранить сопоставление",
   format: "Формат",
-  unfinished: "Незавершённые главы",
+  unfinished: "Содержимое экспорта",
+  translatedOnly: "Переведённые главы",
+  translatedOnlyHint: "Главы без готового перевода пропускаются. Главы только с картинками и обложка сохраняются.",
+  noTranslatedChapters: "В выбранных главах нет готового перевода или глав только с картинками.",
   reject: "Только полный перевод",
-  originals: "Включить оригинальный текст",
+  originals: "Вся книга с оригиналами",
   exportArchive: "Экспорт архива проекта",
   chooseDestination: "Выбрать файл",
   exported: "Экспорт завершён",
@@ -792,6 +800,7 @@ const zh: Record<Key, string> = {
   emptyProjects: "暂无项目",
   open: "打开",
   loading: "加载中…",
+  exporting: "正在导出…",
   error: "操作未能完成。",
   noKey: "请在设置中添加 API 密钥以开始处理。",
   conflict:
@@ -998,9 +1007,12 @@ const zh: Record<Key, string> = {
   unmapped: "未对应",
   saveMappings: "保存对应关系",
   format: "格式",
-  unfinished: "未完成章节",
+  unfinished: "导出内容",
+  translatedOnly: "已翻译章节和插图",
+  translatedOnlyHint: "跳过没有完整译文的章节，保留仅含图片的章节和封面。",
+  noTranslatedChapters: "所选章节中没有可用的译文或纯图片章节。",
   reject: "仅允许完整译文",
-  originals: "包含原文",
+  originals: "全书（未翻译章节使用原文）",
   exportArchive: "导出项目归档",
   chooseDestination: "选择目标文件",
   exported: "导出完成",
@@ -1120,6 +1132,7 @@ export function errorText(error: unknown, t: T): string {
   if (e?.messageKey === "errors.apiKeyRequired") return t("noKey");
   if (e?.params?.field === "noEligibleChapters") return t("noEligibleChapters");
   if (e?.params?.field === "destinationExists") return t("exists");
+  if (e?.params?.field === "noTranslatedChapters") return t("noTranslatedChapters");
   if (e?.params?.field === "incompleteTranslation") return t("incomplete");
   if (
     [

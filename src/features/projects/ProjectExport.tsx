@@ -88,14 +88,12 @@ export function ProjectExport({
   t: T;
 }) {
   const [scope, setScope] = useState("all");
-  const [policy, setPolicy] = useState<IncompletePolicy>("reject");
+  const [policy, setPolicy] = useState<IncompletePolicy>("translated_only");
   const [busy, setBusy] = useState(false),
-    [error, setError] = useState<unknown>(null),
-    [done, setDone] = useState(false);
+    [error, setError] = useState<unknown>(null);
   async function run() {
     setBusy(true);
     setError(null);
-    setDone(false);
     try {
       await beforeExport();
       const destination = await save({
@@ -122,7 +120,7 @@ export function ProjectExport({
               : { kind: "all" },
         });
       else throw new Error(t("mangaExportUnavailable"));
-      setDone(true);
+      close();
     } catch (e) {
       setError(e);
     } finally {
@@ -137,7 +135,7 @@ export function ProjectExport({
       busy={busy}
       footer={
         <button className="primary" disabled={busy} onClick={() => void run()}>
-          {t("chooseDestination")}
+          {busy ? t("exporting") : t("chooseDestination")}
         </button>
       }
     >
@@ -163,13 +161,19 @@ export function ProjectExport({
               value={policy}
               onChange={(e) => setPolicy(e.target.value as IncompletePolicy)}
             >
-              <option value="reject">{t("reject")}</option>
+              <option value="translated_only">{t("translatedOnly")}</option>
               <option value="originals">{t("originals")}</option>
             </select>
           </label>
+          {policy === "translated_only" && <p>{t("translatedOnlyHint")}</p>}
         </div>
       )}
-      {done && <p role="status">{t("exported")}</p>}
+      {busy && (
+        <div className="bc-export-progress" role="status">
+          <span className="bc-loading-spinner" aria-hidden="true" />
+          <span>{t("exporting")}</span>
+        </div>
+      )}
       {error != null && (
         <p role="alert" className="bc-error">
           {errorText(error, t)}

@@ -1843,3 +1843,5 @@ button + button {
 @media (prefers-reduced-motion:reduce) { .bc-loading-spinner { animation:none; } }
 
 .bc-manga-batch {padding:12px 16px; overflow:auto;}
+
+.bc-export-progress { display: flex; align-items: center; gap: 12px; padding-block: 12px; }

@@ -176,10 +176,26 @@ fn snapshot(
                     r.get::<_, Option<String>>(3)?,
                 ))
             })
+            .map_err(storage_error)?
+            .collect::<Result<Vec<_>, _>>()
             .map_err(storage_error)?;
+        if args.incomplete_policy == IncompletePolicy::TranslatedOnly {
+            let has_text = rows.iter().any(|(_, kind, text, _)| {
+                kind != "image" && text.as_ref().is_some_and(|text| !text.trim().is_empty())
+            });
+            let has_images = rows.iter().any(|(_, kind, _, _)| kind == "image");
+            let complete = translation.is_some()
+                && rows.iter().all(|(block, kind, text, _)| {
+                    kind == "image"
+                        || text.as_ref().is_some_and(|text| text.trim().is_empty())
+                        || translated.contains_key(block)
+                });
+            if (has_text && !complete) || (!has_text && !has_images && translation.is_none()) {
+                continue;
+            }
+        }
         let mut blocks = Vec::new();
-        for row in rows {
-            let (block, kind, text, asset) = row.map_err(storage_error)?;
+        for (block, kind, text, asset) in rows {
             if kind == "image" {
                 let asset = asset.ok_or_else(|| AppError::invalid("asset"))?;
                 if !images.contains_key(&asset) {
@@ -240,7 +256,13 @@ fn snapshot(
         });
     }
     if chapters.is_empty() {
-        return Err(AppError::invalid("selection"));
+        return Err(AppError::invalid(
+            if args.incomplete_policy == IncompletePolicy::TranslatedOnly {
+                "noTranslatedChapters"
+            } else {
+                "selection"
+            },
+        ));
     }
     let metadata = super::book_metadata::read(&tx)?.filter(|m| m.current);
     let presentation = super::book_presentation::read(&tx)?;
@@ -282,12 +304,22 @@ fn snapshot(
         OutputMeta {
             title: presentation
                 .title
-                .or_else(|| metadata.as_ref().map(|m| m.title.clone()).filter(|s| !s.trim().is_empty()))
+                .or_else(|| {
+                    metadata
+                        .as_ref()
+                        .map(|m| m.title.clone())
+                        .filter(|s| !s.trim().is_empty())
+                })
                 .or(presentation.source_title)
                 .unwrap_or_default(),
             author: presentation
                 .author
-                .or_else(|| metadata.as_ref().map(|m| m.author.clone()).filter(|s| !s.trim().is_empty()))
+                .or_else(|| {
+                    metadata
+                        .as_ref()
+                        .map(|m| m.author.clone())
+                        .filter(|s| !s.trim().is_empty())
+                })
                 .or(presentation.source_author)
                 .unwrap_or_default(),
             annotation: presentation
@@ -451,7 +483,10 @@ mod tests {
         args.destination = temp.0.join("covered.fb2").to_string_lossy().into_owned();
         export_book(&manager, &args).unwrap();
         assert!(!Path::new(&args.destination).exists());
-        let covered = read_fb2_zip(Path::new(&format!("{}.zip", args.destination)), "covered.fb2");
+        let covered = read_fb2_zip(
+            Path::new(&format!("{}.zip", args.destination)),
+            "covered.fb2",
+        );
         assert!(covered.contains("Manual export title"));
         assert!(covered.contains("Manual annotation"));
         assert!(crate::book::load::load_book_text(&covered, "UTF-8")
@@ -531,7 +566,7 @@ mod tests {
         export_book(
             &manager,
             &BookExportArgs {
-                project_id: project.id,
+                project_id: project.id.clone(),
                 selection: EntitySelection::All,
                 destination: destination.to_string_lossy().into_owned(),
                 format: BookExportFormat::Txt,
@@ -543,6 +578,39 @@ mod tests {
         assert!(output.contains(&full));
         assert!(output.contains("Последняя глава."));
         assert!(!output.contains("Original text."));
+        manager.lease(&project.id).unwrap().with_connection(|db, _| {
+            db.execute("UPDATE book_translations SET status='needs_review' WHERE chapter_id IN (SELECT id FROM book_chapters WHERE position=0)", []).unwrap();
+            db.execute("INSERT INTO book_chapters(id,position,source_title) VALUES ('empty-volume',3,'第一卷 夜游神'),('later',4,'Untranslated later')", []).unwrap();
+            db.execute("INSERT INTO book_source_blocks(id,chapter_id,position,kind,text) VALUES ('later-text','later',0,'text','Later original text')", []).unwrap();
+            Ok(())
+        }).unwrap();
+        let args = BookExportArgs {
+            project_id: project.id.clone(),
+            selection: EntitySelection::All,
+            destination: temp
+                .0
+                .join("partial.fb2.zip")
+                .to_string_lossy()
+                .into_owned(),
+            format: BookExportFormat::Fb2,
+            incomplete_policy: IncompletePolicy::TranslatedOnly,
+        };
+        export_book(&manager, &args).unwrap();
+        let partial = read_fb2_zip(Path::new(&args.destination), "partial.fb2");
+        assert!(partial.contains("Последняя глава."));
+        assert!(!partial.contains("КОНЕЦ ПОЛНОГО ПЕРЕВОДА"));
+        assert!(!partial.contains("Later original text"));
+        assert!(!partial.contains("第一卷 夜游神"));
+        assert_eq!(partial.matches("<image ").count(), 3);
+        let empty_args = BookExportArgs {
+            selection: EntitySelection::ExplicitIds {
+                ids: vec!["later".into()],
+            },
+            destination: temp.0.join("empty.fb2.zip").to_string_lossy().into_owned(),
+            ..args
+        };
+        assert!(export_book(&manager, &empty_args).is_err());
+        assert!(!Path::new(&empty_args.destination).exists());
     }
 
     #[test]

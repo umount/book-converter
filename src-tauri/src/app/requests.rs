@@ -327,6 +327,7 @@ pub enum MangaExportFormat {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
 #[serde(rename_all = "snake_case")]
 pub enum IncompletePolicy {
+    TranslatedOnly,
     Reject,
     Originals,
 }
