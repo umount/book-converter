@@ -255,7 +255,8 @@ const en = {
   interfaceLanguage: "Interface language",
   pages: "Pages",
   mangaPreflight: "Manga processing setup",
-  mangaPreflightHint: "Local configuration check only. No page uploads or model downloads. Provider access and recognition quality still require verification.",
+  mangaPreflightHint:
+    "Local configuration check only. No page uploads or model downloads. Provider access and recognition quality still require verification.",
   mangaConfigured: "Configured locally",
   mangaCapabilityUnavailable: "This processing stage is not available yet.",
   mangaDetection: "Text regions",
@@ -264,14 +265,22 @@ const en = {
   mangaMasks: "Text masks",
   mangaInpainting: "Image cleanup",
   mangaLettering: "Lettering",
-  mangaRecognitionProfileRequired: "Select a manga recognition profile in Settings → Model profiles.",
-  mangaTranslationProfileRequired: "Select a manga translation profile in Settings → Model profiles.",
-  mangaProfileKeyRequired: "Add the API key for this profile in Settings → Model profiles.",
-  mangaProfileInvalid: "Check the selected profile and provider address in Settings → Model profiles.",
-  mangaTranslationUnavailable: "The region translation stage is not implemented yet.",
-  mangaMasksUnavailable: "Automatic text-pixel segmentation is not implemented yet.",
-  mangaInpaintingUnavailable: "The cleanup runtime is not connected yet. Downloading LaMa alone does not enable this stage.",
-  mangaLetteringUnavailable: "Text layout and overflow checking are not implemented yet.",
+  mangaRecognitionProfileRequired:
+    "Select a manga recognition profile in Settings → Model profiles.",
+  mangaTranslationProfileRequired:
+    "Select a manga translation profile in Settings → Model profiles.",
+  mangaProfileKeyRequired:
+    "Add the API key for this profile in Settings → Model profiles.",
+  mangaProfileInvalid:
+    "Check the selected profile and provider address in Settings → Model profiles.",
+  mangaTranslationUnavailable:
+    "The region translation stage is not implemented yet.",
+  mangaMasksUnavailable:
+    "Automatic text-pixel segmentation is not implemented yet.",
+  mangaInpaintingUnavailable:
+    "The cleanup runtime is not connected yet. Downloading LaMa alone does not enable this stage.",
+  mangaLetteringUnavailable:
+    "Text layout and overflow checking are not implemented yet.",
 
   page: "Page",
   noPages: "No pages",
@@ -309,6 +318,12 @@ const en = {
   manga_masks: "Text masks",
   manga_inpainting: "Manga cleanup",
   manga_lettering: "Manga lettering",
+  manga_automatic: "Manga translation",
+  mangaBatchHint: "From the current page; completed pages are skipped.",
+  mangaRuntimeMissing:
+    "Manga runtime is missing or damaged. Reinstall the application.",
+  mangaMaskModelRequired: "Download the text-mask model in Settings → Models.",
+  mangaCleanupModelRequired: "Download the cleanup model in Settings → Models.",
   book_glossary: "Term extraction",
 };
 type Key = keyof typeof en;
@@ -571,7 +586,8 @@ const ru: Record<Key, string> = {
   interfaceLanguage: "Язык интерфейса",
   pages: "Страницы",
   mangaPreflight: "Готовность обработки манги",
-  mangaPreflightHint: "Проверяются только локальные настройки, без отправки страниц и скачивания моделей. Доступ к провайдеру и качество распознавания ещё требуют проверки.",
+  mangaPreflightHint:
+    "Проверяются только локальные настройки, без отправки страниц и скачивания моделей. Доступ к провайдеру и качество распознавания ещё требуют проверки.",
   mangaConfigured: "Настроено локально",
   mangaCapabilityUnavailable: "Этот этап обработки пока недоступен.",
   mangaDetection: "Области текста",
@@ -580,14 +596,21 @@ const ru: Record<Key, string> = {
   mangaMasks: "Маски текста",
   mangaInpainting: "Очистка изображения",
   mangaLettering: "Размещение перевода",
-  mangaRecognitionProfileRequired: "Выберите профиль распознавания манги: Настройки → Профили моделей.",
-  mangaTranslationProfileRequired: "Выберите профиль перевода манги: Настройки → Профили моделей.",
-  mangaProfileKeyRequired: "Добавьте API-ключ профиля: Настройки → Профили моделей.",
-  mangaProfileInvalid: "Проверьте выбранный профиль и адрес провайдера: Настройки → Профили моделей.",
+  mangaRecognitionProfileRequired:
+    "Выберите профиль распознавания манги: Настройки → Профили моделей.",
+  mangaTranslationProfileRequired:
+    "Выберите профиль перевода манги: Настройки → Профили моделей.",
+  mangaProfileKeyRequired:
+    "Добавьте API-ключ профиля: Настройки → Профили моделей.",
+  mangaProfileInvalid:
+    "Проверьте выбранный профиль и адрес провайдера: Настройки → Профили моделей.",
   mangaTranslationUnavailable: "Перевод реплик по областям пока не реализован.",
-  mangaMasksUnavailable: "Автоматическое выделение пикселей текста пока не реализовано.",
-  mangaInpaintingUnavailable: "Обработчик очистки ещё не подключён. Одного скачивания LaMa недостаточно.",
-  mangaLetteringUnavailable: "Размещение текста и проверка переполнения пока не реализованы.",
+  mangaMasksUnavailable:
+    "Автоматическое выделение пикселей текста пока не реализовано.",
+  mangaInpaintingUnavailable:
+    "Обработчик очистки ещё не подключён. Одного скачивания LaMa недостаточно.",
+  mangaLetteringUnavailable:
+    "Размещение текста и проверка переполнения пока не реализованы.",
 
   page: "Страница",
   noPages: "Нет страниц",
@@ -625,6 +648,12 @@ const ru: Record<Key, string> = {
   manga_masks: "Маски текста",
   manga_inpainting: "Очистка манги",
   manga_lettering: "Нанесение перевода манги",
+  manga_automatic: "Перевод манги",
+  mangaBatchHint: "С текущей страницы; готовые страницы пропускаются.",
+  mangaRuntimeMissing:
+    "Компонент обработки манги отсутствует или повреждён. Переустановите приложение.",
+  mangaMaskModelRequired: "Скачайте модель маски текста в Настройки → Модели.",
+  mangaCleanupModelRequired: "Скачайте модель очистки в Настройки → Модели.",
   book_glossary: "Извлечение терминов",
 };
 const zh: Record<Key, string> = {
@@ -869,7 +898,8 @@ const zh: Record<Key, string> = {
   interfaceLanguage: "界面语言",
   pages: "页面",
   mangaPreflight: "漫画处理准备情况",
-  mangaPreflightHint: "仅检查本地配置，不上传页面或下载模型。提供商访问和识别质量仍需验证。",
+  mangaPreflightHint:
+    "仅检查本地配置，不上传页面或下载模型。提供商访问和识别质量仍需验证。",
   mangaConfigured: "已在本地配置",
   mangaCapabilityUnavailable: "此处理阶段尚不可用。",
   mangaDetection: "文字区域",
@@ -884,7 +914,8 @@ const zh: Record<Key, string> = {
   mangaProfileInvalid: "请在设置 → 模型配置中检查所选配置和提供商地址。",
   mangaTranslationUnavailable: "区域对白翻译尚未实现。",
   mangaMasksUnavailable: "自动文字像素分割尚未实现。",
-  mangaInpaintingUnavailable: "修复运行时尚未接入。仅下载 LaMa 无法启用此阶段。",
+  mangaInpaintingUnavailable:
+    "修复运行时尚未接入。仅下载 LaMa 无法启用此阶段。",
   mangaLetteringUnavailable: "文本排版和溢出检查尚未实现。",
 
   page: "页",
@@ -923,6 +954,11 @@ const zh: Record<Key, string> = {
   manga_masks: "文字蒙版",
   manga_inpainting: "漫画清理",
   manga_lettering: "漫画嵌字",
+  manga_automatic: "漫画翻译",
+  mangaBatchHint: "从当前页开始，跳过已完成的页面。",
+  mangaRuntimeMissing: "漫画运行组件缺失或损坏，请重新安装应用。",
+  mangaMaskModelRequired: "请在设置 → 模型中下载文字蒙版模型。",
+  mangaCleanupModelRequired: "请在设置 → 模型中下载清理模型。",
   book_glossary: "提取术语",
 };
 export type T = (key: Key) => string;

@@ -8,7 +8,7 @@ use crate::{
 use rusqlite::Connection;
 
 /// Shared by preflight and recognition admission; never falls back to the book profile.
-pub(super) fn recognition_provider(
+pub(crate) fn recognition_provider(
     settings: &shared::ProcessingSettings,
 ) -> Result<(ProviderProfile, String), AppError> {
     let id = settings
@@ -17,7 +17,7 @@ pub(super) fn recognition_provider(
         .ok_or_else(|| AppError::invalid("mangaRecognitionProfile"))?;
     checked_provider(id)
 }
-pub(super) fn translation_provider(
+pub(crate) fn translation_provider(
     settings: &shared::ProcessingSettings,
 ) -> Result<(ProviderProfile, String), AppError> {
     checked_provider(
@@ -33,8 +33,13 @@ fn checked_provider(id: &str) -> Result<(ProviderProfile, String), AppError> {
     Ok((profile, key))
 }
 
-pub fn inspect(db: &mut Connection) -> Result<MangaPreflight, AppError> {
-    inspect_with(db, |id| checked_provider(id).map(|_| ()))
+pub fn inspect(db: &mut Connection, local: [Option<&str>; 3]) -> Result<MangaPreflight, AppError> {
+    let mut result = inspect_with(db, |id| checked_provider(id).map(|_| ()))?;
+    for (requirement, reason) in result.requirements[3..].iter_mut().zip(local) {
+        requirement.available = reason.is_none();
+        requirement.reason_key = reason.map(str::to_owned);
+    }
+    Ok(result)
 }
 
 fn inspect_with(

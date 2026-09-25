@@ -65,6 +65,7 @@ impl NativeFiles {
                 return Err(AppError::invalid("mangaRuntimeMissing"));
             }
         }
+        verify_pack(&root, &executable, &runtime)?;
         Ok(Self {
             executable,
             runtime,
@@ -197,6 +198,7 @@ pub fn create_run(
         id,
         &format!("manga_{stage}"),
         &runs::RunSnapshot {
+            manga: None,
             retarget: None,
             settings: settings.choices,
             settings_revision: settings.revision,
@@ -213,4 +215,136 @@ pub fn create_run(
             .as_millis()
             .to_string(),
     )
+}
+
+fn verify_pack(root: &Path, executable: &Path, runtime: &Path) -> Result<(), AppError> {
+    use sha2::{Digest, Sha256};
+    use std::io::Read;
+    let invalid = || AppError::invalid("mangaRuntimeMissing");
+    let bytes = std::fs::read(root.join("manifest.json")).map_err(|_| invalid())?;
+    if bytes.len() > 16 * 1024 {
+        return Err(invalid());
+    }
+    let manifest: serde_json::Value = serde_json::from_slice(&bytes).map_err(|_| invalid())?;
+    let target = if cfg!(target_os = "windows") {
+        "x86_64-pc-windows-msvc"
+    } else if cfg!(target_os = "macos") {
+        if cfg!(target_arch = "aarch64") {
+            "aarch64-apple-darwin"
+        } else {
+            "x86_64-apple-darwin"
+        }
+    } else {
+        "x86_64-unknown-linux-gnu"
+    };
+    if manifest["version"] != 1
+        || manifest["onnxVersion"] != "1.22.0"
+        || manifest["target"] != target
+    {
+        return Err(invalid());
+    }
+    let mut required = vec![
+        executable
+            .file_name()
+            .and_then(|n| n.to_str())
+            .ok_or_else(invalid)?,
+        runtime
+            .file_name()
+            .and_then(|n| n.to_str())
+            .ok_or_else(invalid)?,
+    ];
+    if cfg!(windows) {
+        required.push("onnxruntime_providers_shared.dll");
+    } else if cfg!(target_os = "linux") {
+        required.push("libonnxruntime_providers_shared.so");
+    }
+    for name in required {
+        let path = root.join(name);
+        let info = std::fs::symlink_metadata(&path).map_err(|_| invalid())?;
+        if !info.is_file()
+            || info.len() > 128 * 1024 * 1024
+            || manifest["files"][name]["bytes"].as_u64() != Some(info.len())
+        {
+            return Err(invalid());
+        }
+        let mut bytes = Vec::new();
+        std::fs::File::open(path)
+            .map_err(|_| invalid())?
+            .take(128 * 1024 * 1024 + 1)
+            .read_to_end(&mut bytes)
+            .map_err(|_| invalid())?;
+        if bytes.len() as u64 != info.len()
+            || manifest["files"][name]["sha256"] != format!("{:x}", Sha256::digest(&bytes))
+        {
+            return Err(invalid());
+        }
+    }
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use sha2::{Digest, Sha256};
+    #[test]
+    fn damaged_or_wrong_target_runtime_pack_is_rejected() {
+        let workspace = Workspace::new().unwrap();
+        let root = workspace.root.join("manga-runtime");
+        std::fs::create_dir(&root).unwrap();
+        let executable = if cfg!(windows) {
+            "manga-inference.exe"
+        } else {
+            "manga-inference"
+        };
+        let library = if cfg!(windows) {
+            "onnxruntime.dll"
+        } else if cfg!(target_os = "macos") {
+            "libonnxruntime.1.22.0.dylib"
+        } else {
+            "libonnxruntime.so.1.22.0"
+        };
+        let target = if cfg!(windows) {
+            "x86_64-pc-windows-msvc"
+        } else if cfg!(target_os = "macos") {
+            if cfg!(target_arch = "aarch64") {
+                "aarch64-apple-darwin"
+            } else {
+                "x86_64-apple-darwin"
+            }
+        } else {
+            "x86_64-unknown-linux-gnu"
+        };
+        let mut names = vec![executable, library];
+        if cfg!(windows) {
+            names.push("onnxruntime_providers_shared.dll");
+        } else if cfg!(target_os = "linux") {
+            names.push("libonnxruntime_providers_shared.so");
+        }
+        let mut files = serde_json::Map::new();
+        for name in names {
+            std::fs::write(root.join(name), b"fixture").unwrap();
+            files.insert(
+                name.into(),
+                serde_json::json!({"bytes":7,"sha256":format!("{:x}",Sha256::digest(b"fixture"))}),
+            );
+        }
+        let mut manifest =
+            serde_json::json!({"version":1,"onnxVersion":"1.22.0","target":target,"files":files});
+        let save = |value: &serde_json::Value| {
+            std::fs::write(
+                root.join("manifest.json"),
+                serde_json::to_vec(value).unwrap(),
+            )
+            .unwrap()
+        };
+        save(&manifest);
+        assert!(NativeFiles::discover(&workspace.root).is_ok());
+        manifest["target"] = serde_json::json!("wrong-target");
+        save(&manifest);
+        assert!(NativeFiles::discover(&workspace.root).is_err());
+        manifest["target"] = serde_json::json!(target);
+        save(&manifest);
+        std::fs::write(root.join(library), b"changed").unwrap();
+        assert!(NativeFiles::discover(&workspace.root).is_err());
+    }
 }

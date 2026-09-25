@@ -121,7 +121,8 @@ async fn imported_book_survives_batch_edit_reopen_search_and_export() {
                 "workflow-job",
                 "book_translation",
                 &runs::RunSnapshot {
-                    retarget: None,
+                    manga: None,
+            retarget: None,
                     settings: settings.choices,
                     settings_revision: settings.revision,
                     glossary_revision: shared::glossary_revision(db)?,

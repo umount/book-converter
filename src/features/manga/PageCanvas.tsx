@@ -9,6 +9,7 @@ import type { T } from "../../app/strings";
 
 export function PageCanvas({
   projectId,
+  renderedAssetId,
   page,
   zoom,
   rtl,
@@ -20,6 +21,7 @@ export function PageCanvas({
   t,
 }: {
   projectId: string;
+  renderedAssetId?: string | null;
   page?: PageSummary;
   zoom: string;
   rtl: boolean;
@@ -103,7 +105,7 @@ export function PageCanvas({
         >
           <img
             draggable={false}
-            src={assetUrl(projectId, page.originalAssetId)}
+            src={assetUrl(projectId, renderedAssetId ?? page.originalAssetId)}
             alt={`${t("page")} ${page.position + 1}`}
             style={{ display: "block", width: "100%", height: "auto" }}
           />

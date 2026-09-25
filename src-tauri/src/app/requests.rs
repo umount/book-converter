@@ -267,6 +267,14 @@ pub struct StartMangaStageArgs {
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct StartMangaRunArgs {
+    pub project_id: ProjectId,
+    pub selection: EntitySelection,
+    pub options: MangaStageOptions,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ReviewMangaPageArgs {
     pub project_id: ProjectId,
     pub page_id: PageId,
@@ -570,6 +578,7 @@ pub struct MangaRecognitionSummary {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct MangaPageView {
+    pub rendered_asset_id: Option<AssetId>,
     pub page: PageSummary,
     pub regions: Vec<MangaRegionView>,
     pub recognition: Option<MangaRecognitionSummary>,
@@ -625,6 +634,10 @@ pub struct JobView {
     pub revision: Revision,
     pub total_steps: u32,
     pub completed_steps: u32,
+    pub total_pages: Option<u32>,
+    pub completed_pages: Option<u32>,
+    pub current_page_number: Option<u32>,
+    pub current_volume_title: Option<String>,
     pub total_chapters: Option<u32>,
     pub completed_chapters: Option<u32>,
     pub current_chapter_number: Option<u32>,
@@ -738,6 +751,7 @@ pub fn typescript() -> String {
         UpdateMangaOrderArgs::decl(&config),
         MangaStageOptions::decl(&config),
         StartMangaStageArgs::decl(&config),
+        StartMangaRunArgs::decl(&config),
         ReviewMangaPageArgs::decl(&config),
         MangaExportArgs::decl(&config),
         JobArgs::decl(&config),

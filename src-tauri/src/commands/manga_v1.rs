@@ -231,6 +231,17 @@ pub(super) fn dispatch(
         .manager
         .lease(&project)?
         .with_connection(|db, _| Ok(crate::storage::runs::get_run(db, &job)?.kind))?;
+    if kind == "manga_automatic" {
+        use crate::{application::manga::{automatic,local,pipeline,translation_pipeline,runtime},app::contracts::{MangaStage,JobState},storage::runs};
+        let run=context.manager.lease(&project)?.with_connection(|db,_|runs::get_run(db,&job))?;
+        if !matches!(run.state,JobState::Queued|JobState::Interrupted|JobState::Failed|JobState::Cancelled){return Err(AppError::invalid("jobState"));}
+        let plan=run.snapshot.manga.ok_or_else(||AppError::invalid("mangaPlan"))?;
+        let recognition=runtime::saved_client(plan.recognition,run.snapshot.settings.manga_recognition_profile.as_deref().ok_or_else(||AppError::invalid("mangaRecognitionProfile"))?)?;
+        let translation=runtime::saved_client(plan.translation,run.snapshot.settings.manga_translation_profile.as_deref().ok_or_else(||AppError::invalid("mangaTranslationProfile"))?)?;
+        let files=native_files(&app)?;
+        let executor=automatic::AutomaticPipeline{recognition:pipeline::RecognitionPipeline{provider:recognition},translation:translation_pipeline::TranslationPipeline{provider:translation},masks:local::pipeline(&context.models,files.clone(),MangaStage::Masks)?,cleanup:local::pipeline(&context.models,files.clone(),MangaStage::Inpainting)?,lettering:local::pipeline(&context.models,files,MangaStage::Lettering)?};
+        return launch(context,app,project,job,executor);
+    }
     if matches!(kind.as_str(), "manga_masks" | "manga_inpainting" | "manga_lettering") {
         let stage = if kind == "manga_masks" {
             crate::app::contracts::MangaStage::Masks
@@ -308,13 +319,20 @@ pub async fn manga_get_page(
 #[tauri::command]
 pub async fn manga_preflight(
     context: tauri::State<'_, AppContext>,
+    app: tauri::AppHandle,
     args: ProjectArgs,
 ) -> Result<crate::app::contracts::MangaPreflight, AppError> {
+    use crate::application::manga::local;
+    context.models.list().await.map_err(|_|AppError::invalid("mangaModelMissing"))?;
+    let runtime=native_files(&app).is_ok();
+    let reasons=if !runtime {[Some("mangaRuntimeMissing");3]}else{[
+        context.models.downloaded_artifact(local::MASK_MODEL).is_none().then_some("mangaMaskModelRequired"),
+        context.models.downloaded_artifact(local::CLEAN_MODEL).is_none().then_some("mangaCleanupModelRequired"),None]};
     let manager = context.manager.clone();
     tauri::async_runtime::spawn_blocking(move || {
         manager
             .lease(&args.project_id)?
-            .with_connection(|db, _| crate::application::manga::preflight::inspect(db))
+            .with_connection(|db, _| crate::application::manga::preflight::inspect(db,reasons))
     })
     .await
     .map_err(|_| AppError::invalid("task"))?
@@ -336,4 +354,26 @@ fn native_files(
         ));
     }
     result
+}
+
+#[tauri::command]
+pub async fn manga_start_automatic(context:tauri::State<'_,AppContext>,app:tauri::AppHandle,args:crate::app::requests::StartMangaRunArgs)->Result<crate::app::contracts::JobRef,AppError>{
+    use crate::{application::manga::{automatic,local,preflight},app::contracts::MangaStage,storage::{shared,runs::MangaPlan}};
+    context.models.list().await.map_err(|_|AppError::invalid("mangaModelMissing"))?;
+    let files=native_files(&app)?;
+    let masks=local::pipeline(&context.models,files.clone(),MangaStage::Masks)?;
+    let cleanup=local::pipeline(&context.models,files.clone(),MangaStage::Inpainting)?;
+    let lettering=local::pipeline(&context.models,files,MangaStage::Lettering)?;
+    let manager=context.manager.clone();
+    let job=tauri::async_runtime::spawn_blocking(move || {
+        let id=uuid::Uuid::new_v4().to_string();
+        manager.lease(&args.project_id)?.with_connection(|db,_| {
+            let settings=shared::settings(db)?;
+            let (recognition,_)=preflight::recognition_provider(&settings.choices)?;
+            let (translation,_)=preflight::translation_provider(&settings.choices)?;
+            automatic::create(db,&id,&args.selection,args.options.max_pages,args.options.force,MangaPlan{recognition,translation,mask_hash:masks.model_hash,cleanup_hash:cleanup.model_hash,lettering_hash:lettering.model_hash})
+        })?;
+        Ok(crate::app::contracts::JobRef{project_id:args.project_id,job_id:id})
+    }).await.map_err(|_|AppError::invalid("task"))??;
+    super::book_v1::dispatch_created(&context,app,job)
 }

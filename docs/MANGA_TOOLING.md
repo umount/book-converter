@@ -366,3 +366,24 @@ geometry, rejects late edits, and publishes the derived image and chosen styles 
 one checkpoint transaction. Recognition/translation test providers remain synthetic;
 these checks do not make paid API calls. Native runtime packaging, full-pipeline
 admission and automatic-processing UI remain separate unfinished work.
+
+## Native resource packaging (2026-09-25)
+
+`npm run manga:prepare` builds the Rust worker and prepares `src-tauri/manga-runtime/`.
+Tauri release builds run it before the frontend build and include this directory as
+resources. For development, run preparation once before `npm run tauri dev` and again
+when changing native worker sources. Model weights are never included by this script.
+
+The CPU archives are pinned to [ONNX Runtime 1.22.0](https://github.com/microsoft/onnxruntime/releases/tag/v1.22.0)
+in `scripts/manga-runtime.json`, with independently recorded SHA-256 for Linux x64,
+Windows x64 and macOS x64/arm64. The script checks the archive before extraction,
+builds for `TAURI_ENV_TARGET_TRIPLE` (or the Rust host), copies only runtime libraries,
+and includes upstream LICENSE/ThirdPartyNotices plus font/Koharu/project notices.
+`MANGA_RUNTIME_CACHE` optionally selects a build cache; it is not a user setting.
+
+The generated manifest records target and file hashes. The desktop preflight rejects
+missing, modified or wrong-target packs without loading native code into the app.
+Native preparation verifies library loading when building for the host. Linux x64
+preparation was executed successfully; the resource directory is approximately 25 MiB.
+Other target archives were inspected but not compiled or executed on their platforms.
+This does not establish release signing, minimum-OS or cross-platform acceptance.

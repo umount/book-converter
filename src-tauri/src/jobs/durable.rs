@@ -55,6 +55,17 @@ pub trait StepExecutor: Send + Sync {
     ) -> Result<(), AppError> {
         Ok(())
     }
+    /// Domain results may have been invalidated while a failed job was paused.
+    fn checkpoint_current(
+        &self,
+        _lease: &ProjectLease,
+        _run: &runs::RunRecord,
+        _entity: &str,
+        _stage: &str,
+        _fingerprint: &str,
+    ) -> Result<bool, AppError> {
+        Ok(true)
+    }
     fn entity_kind(&self) -> &'static str;
 }
 
@@ -181,6 +192,7 @@ async fn execute_steps<E: StepExecutor>(
         if prior
             .as_ref()
             .is_some_and(|(_, state, hash)| state == "succeeded" && hash == &fingerprint)
+            && executor.checkpoint_current(lease, &run, entity, stage, &fingerprint)?
         {
             continue;
         }

@@ -1,6 +1,7 @@
 # Manga workflow requirements
 
-Updated 2026-09-24. This is the target workflow; automatic processing is not implemented.
+Updated 2026-09-25. Automatic processing through lettering is implemented and tested
+with synthetic API replies plus real native image stages; product acceptance remains open.
 Book scope is frozen and superseded backend cleanup is complete. Manga work is active. See [execution status](REFACTORING_STATUS.md)
 and [model/platform assessment](MANGA_TOOLING.md).
 
@@ -79,8 +80,8 @@ with cancellation and checkpointed resume. It requires the manga recognition pro
 and rejects unsupported stages; it does not run the complete translation pipeline.
 Reruns retain matched manual text and preserve unmatched edited regions for review.
 Original assets remain immutable. No automatic mask or inpainting result is generated
-from a text rectangle. Full-processing UI remains unavailable pending the remaining
-capabilities and real model quality verification.
+from a text rectangle. The automatic job composes this stage with translation,
+masks, cleanup and lettering.
 
 The page workspace can inspect saved recognition results with selectable overlays
 and a collapsible right panel. It distinguishes unrecognized, empty and stale OCR
@@ -99,10 +100,25 @@ The explicit translation stage uses the project's manga translation API profile,
 fixed languages, ordered OCR regions and locally matched glossary terms. It preserves
 manual translations, publishes a complete versioned result atomically and resumes
 without translating already completed pages again. Malformed or stale replies cannot
-replace region text. Full automatic processing is still gated on local image stages
-and lettering. Qwen/local LLM deployment is explicitly outside this implementation.
+replace region text. Qwen/local LLM deployment is explicitly outside this implementation.
 
 Local mask and cleanup stages now use the isolated native worker through the durable
 job runner. The backend resolves installed catalog models and packaged native files;
-results are revision-checked immutable assets. Full automatic translation remains
-unavailable until lettering, complete pipeline admission and packaging are connected.
+results are revision-checked immutable assets. Lettering uses the cleaned result and
+current translated regions, validates font coverage/overflow and saves its chosen style.
+
+## Automatic batch controls
+
+A compact control starts a requested number of unfinished pages from the current page
+within the selected volume (or all volumes). One durable run freezes both API profiles,
+settings and native versions. Processing finishes each page before moving on, and
+resume reuses successful current results without repeating API calls. Stale results
+are recomputed, preserving attempt history. Nothing starts when a page is opened.
+
+Preflight requires valid profiles, downloaded mask/cleanup models and an intact native
+resource pack. `npm run manga:prepare` prepares development resources; release builds
+run it automatically. The manga viewer can switch between the current translated
+render and its immutable original. Job details show volume, page, stage and page count.
+
+Live API quality, native GUI interactions, representative manga typography, target
+resource budgets, review/export and non-Linux packaged builds still need acceptance.

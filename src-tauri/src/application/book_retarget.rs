@@ -132,6 +132,7 @@ pub fn prepare_run(
             super::runtime::provider_profile(settings.choices.book_translation_profile.as_deref())?;
         ChatCompletions::new(profile.clone(), key)?;
         let snapshot = runs::RunSnapshot {
+                        manga: None,
             selected_ids: plan
                 .translations
                 .iter()
@@ -504,6 +505,7 @@ mod tests {
                     "job",
                     "book_retarget",
                     &runs::RunSnapshot {
+                        manga: None,
                         selected_ids: plan
                             .translations
                             .iter()

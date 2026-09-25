@@ -27,7 +27,9 @@ pub fn page(db: &mut Connection, id: &str) -> Result<MangaPageView, AppError> {
             revision: Revision(r.revision.to_string()),
         })
         .collect();
+    let rendered_asset_id=tx.query_row("SELECT r.output_asset_id FROM manga_results r JOIN manga_pages p ON p.id=r.page_id JOIN project_settings s ON s.singleton=1 JOIN glossary_state g ON g.singleton=1 WHERE r.page_id=?1 AND r.stage='lettering' AND r.validity='current' AND r.page_revision=p.revision AND r.settings_revision=s.revision AND r.glossary_revision=g.revision ORDER BY r.revision DESC LIMIT 1",[id],|r|r.get::<_,String>(0)).optional().map_err(storage_error)?.map(AssetId);
     Ok(MangaPageView {
+        rendered_asset_id,
         page,
         regions,
         recognition,

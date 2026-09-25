@@ -1184,3 +1184,259 @@ async fn lettering_rejects_missing_translation_and_late_text_changes() {
         })
         .unwrap();
 }
+
+struct FailCleanupOnce {
+    failed: AtomicBool,
+    calls: Mutex<Vec<&'static str>>,
+}
+impl super::local::ImageWorker for FailCleanupOnce {
+    fn run<'a>(
+        &'a self,
+        request: &'a manga_inference::protocol::Request,
+    ) -> Pin<
+        Box<dyn Future<Output = Result<manga_inference::protocol::Response, AppError>> + Send + 'a>,
+    > {
+        Box::pin(async move {
+            use manga_inference::protocol::Operation;
+            let stage = match request.operation {
+                Operation::Masks { .. } => "masks",
+                Operation::Inpainting { .. } => "inpainting",
+                Operation::Lettering { .. } => "lettering",
+            };
+            self.calls.lock().unwrap().push(stage);
+            if stage == "inpainting" && !self.failed.swap(true, Ordering::SeqCst) {
+                return Err(AppError::invalid("injectedFailure"));
+            }
+            ImageFake { hook: None }.run(request).await
+        })
+    }
+}
+#[tokio::test]
+async fn automatic_pipeline_resumes_without_repeating_api_calls_and_limits_pages() {
+    use super::{automatic, translation_pipeline::TranslationPipeline};
+    use crate::app::contracts::MangaStage;
+    for invalidate in [false, true] {
+        let f = Fixture::new(2);
+        let vision = Arc::new(Fake::new(0));
+        let mut dialogue = DialogueFake::new(0);
+        dialogue.profile.id = "dialogue-profile".into();
+        dialogue.profile.model = "dialogue-model".into();
+        let dialogue = Arc::new(dialogue);
+        let plan = runs::MangaPlan {
+            recognition: vision.profile.clone(),
+            translation: dialogue.profile.clone(),
+            mask_hash: "test-hash".into(),
+            cleanup_hash: "test-hash".into(),
+            lettering_hash: "test-hash".into(),
+        };
+        f.manager
+            .lease(&f.id)
+            .unwrap()
+            .with_connection(|db, _| {
+                let old = runs::get_run(db, "run")?;
+                runs::transition(db, "run", &old.revision, JobState::Cancelled, None, "1")?;
+                automatic::create(
+                    db,
+                    "automatic",
+                    &EntitySelection::All,
+                    1,
+                    false,
+                    plan.clone(),
+                )
+            })
+            .unwrap();
+        let worker = Arc::new(FailCleanupOnce {
+            failed: AtomicBool::new(false),
+            calls: Mutex::new(vec![]),
+        });
+        let mut masks = image_pipeline(MangaStage::Masks, ImageFake { hook: None });
+        masks.worker = worker.clone();
+        let mut cleanup = image_pipeline(MangaStage::Inpainting, ImageFake { hook: None });
+        cleanup.worker = worker.clone();
+        let mut lettering = image_pipeline(MangaStage::Lettering, ImageFake { hook: None });
+        lettering.worker = worker.clone();
+        let pipeline = automatic::AutomaticPipeline {
+            recognition: RecognitionPipeline {
+                provider: vision.clone(),
+            },
+            translation: TranslationPipeline {
+                provider: dialogue.clone(),
+            },
+            masks,
+            cleanup,
+            lettering,
+        };
+        assert!(durable::execute(
+            &f.manager,
+            &f.id,
+            "automatic",
+            &pipeline,
+            Arc::new(AtomicBool::new(false)),
+            |_| {}
+        )
+        .await
+        .is_err());
+        assert_eq!(vision.calls.load(Ordering::SeqCst), 1);
+        assert_eq!(dialogue.calls.load(Ordering::SeqCst), 1);
+        if invalidate {
+            f.manager
+                .lease(&f.id)
+                .unwrap()
+                .with_connection(|db, _| {
+                    db.execute(
+                        "UPDATE manga_results SET validity='stale' WHERE stage='translation'",
+                        [],
+                    )
+                    .unwrap();
+                    Ok(())
+                })
+                .unwrap();
+        }
+        durable::execute(
+            &f.manager,
+            &f.id,
+            "automatic",
+            &pipeline,
+            Arc::new(AtomicBool::new(false)),
+            |_| {},
+        )
+        .await
+        .unwrap();
+        assert_eq!(vision.calls.load(Ordering::SeqCst), 1);
+        assert_eq!(
+            dialogue.calls.load(Ordering::SeqCst),
+            if invalidate { 2 } else { 1 }
+        );
+        assert_eq!(
+            *worker.calls.lock().unwrap(),
+            ["masks", "inpainting", "inpainting", "lettering"]
+        );
+        f.manager
+        .lease(&f.id)
+        .unwrap()
+        .with_connection(|db, _| {
+            let run = runs::get_run(db, "automatic")?;
+            assert_eq!(run.state, JobState::Succeeded);
+            assert_eq!(run.snapshot.selected_ids.len(), 1);
+            assert_eq!(
+                run.snapshot.manga.unwrap().translation.id,
+                "dialogue-profile"
+            );
+            assert_eq!(
+                db.query_row(
+                    "SELECT COUNT(DISTINCT stage) FROM job_steps WHERE run_id='automatic' AND state='succeeded'",
+                    [],
+                    |r| r.get::<_, i64>(0)
+                )
+                .unwrap(),
+                5
+            );
+            automatic::create(db, "next", &EntitySelection::All, 1, false, plan)?;
+            assert_ne!(
+                runs::get_run(db, "next")?.snapshot.selected_ids,
+                run.snapshot.selected_ids
+            );
+            Ok(())
+        })
+        .unwrap();
+    }
+}
+
+#[tokio::test]
+#[ignore = "requires prepared MANGA_WORKER, MANGA_RUNTIME, MANGA_MASK_MODEL and MANGA_LAMA_MODEL"]
+async fn automatic_pipeline_with_real_native_models_publishes_rendered_page() {
+    use super::{automatic, local, translation_pipeline::TranslationPipeline};
+    use crate::app::contracts::MangaStage;
+    use sha2::{Digest, Sha256};
+    let f = Fixture::with_source(
+        1,
+        &std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../crates/manga-inference/tests/fixtures"),
+    );
+    let vision = Arc::new(Fake::new(0));
+    *vision.text.lock().unwrap()=serde_json::json!({"regions":[{"id":"source","readingOrder":0,"category":"dialogue","bounds":{"x":0,"y":0,"width":384,"height":384},"sourceText":"Synthetic text"}]}).to_string();
+    let dialogue = Arc::new(DialogueFake::new(0));
+    let worker = Arc::new(local::NativeWorker {
+        executable: std::env::var_os("MANGA_WORKER").unwrap().into(),
+    });
+    let runtime = std::path::PathBuf::from(std::env::var_os("MANGA_RUNTIME").unwrap());
+    let make = |stage, variable: &str| {
+        let model = std::path::PathBuf::from(std::env::var_os(variable).unwrap());
+        let model_hash = format!("{:x}", Sha256::digest(std::fs::read(&model).unwrap()));
+        super::image_pipeline::ImagePipeline {
+            worker: worker.clone(),
+            runtime: runtime.clone(),
+            model,
+            stage,
+            model_hash,
+        }
+    };
+    let masks = make(MangaStage::Masks, "MANGA_MASK_MODEL");
+    let cleanup = make(MangaStage::Inpainting, "MANGA_LAMA_MODEL");
+    let lettering = super::image_pipeline::ImagePipeline {
+        worker: worker.clone(),
+        runtime: runtime.clone(),
+        model: runtime,
+        stage: MangaStage::Lettering,
+        model_hash: format!(
+            "{}:{}",
+            manga_inference::text::VERSION,
+            manga_inference::text::font_hash()
+        ),
+    };
+    let plan = runs::MangaPlan {
+        recognition: vision.profile.clone(),
+        translation: dialogue.profile.clone(),
+        mask_hash: masks.model_hash.clone(),
+        cleanup_hash: cleanup.model_hash.clone(),
+        lettering_hash: lettering.model_hash.clone(),
+    };
+    f.manager
+        .lease(&f.id)
+        .unwrap()
+        .with_connection(|db, _| {
+            let old = runs::get_run(db, "run")?;
+            runs::transition(db, "run", &old.revision, JobState::Cancelled, None, "1")?;
+            automatic::create(db, "automatic", &EntitySelection::All, 1, false, plan)
+        })
+        .unwrap();
+    let pipeline = automatic::AutomaticPipeline {
+        recognition: RecognitionPipeline { provider: vision },
+        translation: TranslationPipeline { provider: dialogue },
+        masks,
+        cleanup,
+        lettering,
+    };
+    durable::execute(
+        &f.manager,
+        &f.id,
+        "automatic",
+        &pipeline,
+        Arc::new(AtomicBool::new(false)),
+        |_| {},
+    )
+    .await
+    .unwrap();
+    f.manager
+        .lease(&f.id)
+        .unwrap()
+        .with_connection(|db, root| {
+            let run = runs::get_run(db, "automatic")?;
+            assert_eq!(run.state, JobState::Succeeded);
+            let view = super::view::page(db, &run.snapshot.selected_ids[0])?;
+            let rendered = view.rendered_asset_id.unwrap();
+            assert_ne!(rendered, view.page.original_asset_id);
+            assert!(root.join(format!("assets/{}.png", rendered.0)).is_file());
+            assert_eq!(
+                db.query_row(
+                    "SELECT COUNT(DISTINCT stage) FROM job_steps WHERE run_id='automatic' AND state='succeeded'",
+                    [],
+                    |r| r.get::<_, i64>(0)
+                )
+                .unwrap(),
+                5
+            );
+            Ok(())
+        })
+        .unwrap();
+}

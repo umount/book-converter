@@ -22,6 +22,7 @@ function MangaProjectWorkspace({ projectId, t }: { projectId: string; t: T }) {
   const [pages, setPages] = useState<PageSummary[]>([]),
     [selected, setSelected] = useState(0),
     [error, setError] = useState<unknown>(null);
+  const [showTranslation, setShowTranslation] = useState(true);
   const [zoom, setZoom] = useState("fit");
   useEffect(() => {
     let alive = true;
@@ -125,7 +126,11 @@ function MangaProjectWorkspace({ projectId, t }: { projectId: string; t: T }) {
         />
       </aside>
       <div className="bc-manga-page">
-        <ProcessingStatus projectId={projectId} t={t} />
+        <ProcessingStatus
+          projectId={projectId}
+          pageIds={loading ? [] : pages.slice(selected).map((p) => p.id)}
+          t={t}
+        />
         {(error != null || pageError != null) && (
           <p role="alert" className="bc-error">
             {errorText(error ?? pageError, t)}
@@ -176,6 +181,14 @@ function MangaProjectWorkspace({ projectId, t }: { projectId: string; t: T }) {
               ))}
             </select>
           </label>
+          {view?.renderedAssetId && (
+            <button
+              aria-pressed={showTranslation}
+              onClick={() => setShowTranslation((value) => !value)}
+            >
+              {t(showTranslation ? "translation" : "original")}
+            </button>
+          )}
           <button
             aria-pressed={showRegions}
             onClick={() => setShowRegions((value) => !value)}
@@ -186,6 +199,7 @@ function MangaProjectWorkspace({ projectId, t }: { projectId: string; t: T }) {
         <PageCanvas
           projectId={projectId}
           page={page}
+          renderedAssetId={showTranslation ? view?.renderedAssetId : null}
           zoom={zoom}
           regions={showRegions ? view?.regions : undefined}
           selectedRegion={activeRegion}

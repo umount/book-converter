@@ -224,6 +224,7 @@ export async function invokePreview<T>(
       const processed = page.position % 3 !== 2;
       result = {
         page,
+        renderedAssetId: null,
         recognition: processed
           ? { revision: "0", current: true, needsReview: false }
           : null,
@@ -578,6 +579,7 @@ export async function invokePreview<T>(
         completedSteps: steps,
         totalChapters: selected.length,
         completedChapters: selected.length,
+        totalPages: null, completedPages: null, currentPageNumber: null, currentVolumeTitle: null,
         currentChapterNumber: last ? last.chapter.position + 1 : null,
         currentChapterTitle: last?.chapter.title ?? null,
         currentStage:

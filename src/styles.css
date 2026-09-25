@@ -1790,3 +1790,7 @@ button + button {
 .bc-manga-preflight ul { list-style: none; padding: 0; }
 .bc-manga-preflight li { display: grid; grid-template-columns: 150px minmax(0, 1fr); gap: 12px; padding: 5px 0; }
 .bc-manga-preflight li span { color: var(--muted); }
+
+.bc-manga-processing { text-align: left; }
+.bc-manga-processing .bc-toolbar { gap: 8px; padding: 0 0 4px; }
+.bc-manga-processing .bc-manga-preflight { margin-bottom: 6px; }

@@ -11,7 +11,7 @@ P05: in_progress. Translation, context, editing, reference, export and metadata 
 P06: in_progress. New shell, wizard, structural editor and supporting screens wired; native acceptance remains.
 P07: in_progress. Book assistant, guarded proposals and persisted history implemented.
 P08: partial. Import/read-only page workspace available; model processing not implemented.
-P09: in_progress. Durable API recognition/translation and native mask/cleanup/lettering stages connected; full-pipeline admission/UI, packaging and quality acceptance remain.
+P09: in_progress. Automatic pipeline, batch UI and native resource preparation implemented; live-provider, typography, resource-budget and cross-platform acceptance remain.
 P10–P13: pending.
 
 ## Baseline (2026-09-23)
@@ -1180,3 +1180,35 @@ are recorded in MANGA_TOOLING.md; full automatic translation is still not enable
 
 Next: native resource packaging, then compose the stages into a single resumable
 job with both API profiles frozen and expose processed pages in the manga workspace.
+
+## Automatic manga pipeline checkpoint (2026-09-25)
+
+- `301c64d`: reproducible native CPU pack preparation for the four planned targets;
+  Linux pack built and runtime-loaded successfully. Weights remain on-demand.
+- Added one page-by-page, bounded automatic job with frozen recognition/translation
+  profiles and local model/font versions. It delegates to the existing durable
+  stages and checks result validity before reusing checkpoints on resume.
+- Full-run admission skips completed pages, respects the requested count, and checks
+  both providers, downloaded models and the generated runtime manifest. Credentials
+  are resolved only at execution time and are never stored in the run snapshot.
+- Manga workspace has a compact batch control, current-page onward selection, setup
+  details, and original/translated image switching. Job progress identifies the page
+  and volume and counts completed pages; stage and ETA remain available.
+- A real native end-to-end test succeeded on the synthetic page with the prepared
+  CPU pack: masks, cleanup, lettering and immutable SQLite/asset publication. API
+  responses were fixtures, not live/paid requests. The test took 37.67 seconds on
+  this development host; it is not a p95 measurement or the <=30-second acceptance.
+- This test exposed and led to fixes for unnecessary upscaling of small recognition
+  images and false lettering overflow from rasterized descenders at small sizes.
+  Both have regression tests.
+- 202 application tests passed (2 opt-in tests skipped), plus the opt-in automatic
+  native test, 18 native unit tests and the native lettering-worker integration.
+  Frontend tests/build and strict Clippy passed. Follow-up invalidation-resume tests
+  additionally cover stale translated results after a paused failed job.
+- Browser visual QA was attempted but the Codex in-app webview could not attach.
+  Do not claim a screenshot/interactive UI acceptance for the new batch controls.
+
+Remaining: live-provider/native GUI acceptance, representative manga lettering quality,
+font coverage and mixed-direction typography, large-page p95/resource measurements,
+review/export acceptance, and builds/signing on Windows and macOS. The automatic path
+is implemented and locally integrated; cross-platform/product acceptance is incomplete.

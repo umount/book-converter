@@ -17,7 +17,18 @@ pub struct RetargetPlan {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MangaPlan {
+    pub recognition: crate::ai::ProviderProfile,
+    pub translation: crate::ai::ProviderProfile,
+    pub mask_hash: String,
+    pub cleanup_hash: String,
+    pub lettering_hash: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RunSnapshot {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub manga: Option<MangaPlan>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub retarget: Option<RetargetPlan>,
     pub settings: ProcessingSettings,
@@ -200,12 +211,18 @@ pub fn begin_step(db: &mut Connection, step: &StepAttempt) -> Result<(), AppErro
     {
         return Err(super::repository::not_found());
     }
-    let (attempt, blocked): (i64,i64) = tx.query_row("SELECT COALESCE(MAX(attempt),0),COALESCE(SUM(state IN ('running','queued','cancelling') OR (state='succeeded' AND input_fingerprint=?5)),0) FROM job_steps WHERE run_id=?1 AND entity_kind=?2 AND entity_id=?3 AND stage=?4",params![step.run_id,step.entity_kind,step.entity_id,step.stage,step.input_fingerprint],|r|Ok((r.get(0)?,r.get(1)?))).map_err(storage_error)?;
+    // A stale manga result may be recomputed with identical inputs; keep the old
+    // successful attempt for history while retaining duplicate protection elsewhere.
+    let (attempt, blocked): (i64,i64) = tx.query_row("SELECT COALESCE(MAX(attempt),0),COALESCE(SUM(state IN ('running','queued','cancelling') OR (state='succeeded' AND input_fingerprint=?5 AND NOT EXISTS(SELECT 1 FROM manga_results r WHERE job_steps.entity_kind='page' AND r.id=job_steps.output_reference AND r.page_id=job_steps.entity_id AND r.stage=job_steps.stage AND r.validity='stale'))),0) FROM job_steps WHERE run_id=?1 AND entity_kind=?2 AND entity_id=?3 AND stage=?4",params![step.run_id,step.entity_kind,step.entity_id,step.stage,step.input_fingerprint],|r|Ok((r.get(0)?,r.get(1)?))).map_err(storage_error)?;
     if i64::from(step.attempt) != attempt + 1 || blocked > 0 {
         return Err(conflict());
     }
     tx.execute("INSERT INTO job_steps(id,run_id,entity_kind,entity_id,stage,attempt,input_fingerprint,state) VALUES(?1,?2,?3,?4,?5,?6,?7,'running')",params![step.id,step.run_id,step.entity_kind,step.entity_id,step.stage,step.attempt,step.input_fingerprint]).map_err(storage_error)?;
-    tx.execute("UPDATE job_runs SET revision=revision+1 WHERE id=?1", [&step.run_id]).map_err(storage_error)?;
+    tx.execute(
+        "UPDATE job_runs SET revision=revision+1 WHERE id=?1",
+        [&step.run_id],
+    )
+    .map_err(storage_error)?;
     tx.commit().map_err(storage_error)
 }
 

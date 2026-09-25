@@ -60,11 +60,17 @@ export function JobPanel({
                   job.kind === "manga_translation" ||
                   job.kind === "manga_masks" ||
                   job.kind === "manga_inpainting" ||
-                  job.kind === "manga_lettering"
+                  job.kind === "manga_lettering" ||
+                  job.kind === "manga_automatic"
                   ? job.kind
                   : "processing",
               )}
             </strong>
+            {job.currentPageNumber != null && (
+              <span className="bc-job-chapter">
+                {job.currentVolumeTitle} · {t("page")} {job.currentPageNumber}
+              </span>
+            )}
             {job.currentChapterNumber != null && (
               <span className="bc-job-chapter">
                 {t("jobChapter")} {job.currentChapterNumber}:{" "}
@@ -78,19 +84,21 @@ export function JobPanel({
                     ? "mangaRecognition"
                     : job.currentStage === "masks"
                       ? "mangaMasks"
-                      : job.currentStage === "inpainting"
-                        ? "mangaInpainting"
-                        : job.currentStage === "context"
-                    ? "jobContext"
-                    : job.currentStage === "glossary"
-                      ? "book_glossary"
-                      : job.currentStage === "title"
-                        ? "book_title"
-                        : job.currentStage === "metadata"
-                          ? "book_metadata"
-                          : job.currentStage === "retarget"
-                            ? "book_retarget"
-                            : "translation",
+                      : job.currentStage === "lettering"
+                        ? "mangaLettering"
+                        : job.currentStage === "inpainting"
+                          ? "mangaInpainting"
+                          : job.currentStage === "context"
+                            ? "jobContext"
+                            : job.currentStage === "glossary"
+                              ? "book_glossary"
+                              : job.currentStage === "title"
+                                ? "book_title"
+                                : job.currentStage === "metadata"
+                                  ? "book_metadata"
+                                  : job.currentStage === "retarget"
+                                    ? "book_retarget"
+                                    : "translation",
                 )}
               </span>
             )}
@@ -108,20 +116,34 @@ export function JobPanel({
           <div className="bc-job-progress">
             <progress
               aria-label={t("processing")}
-              value={job.completedChapters ?? job.completedSteps}
-              max={Math.max(1, job.totalChapters ?? job.totalSteps)}
+              value={
+                job.completedPages ??
+                job.completedChapters ??
+                job.completedSteps
+              }
+              max={Math.max(
+                1,
+                job.totalPages ?? job.totalChapters ?? job.totalSteps,
+              )}
             />
             <span>
               {t(job.state)} ·{" "}
               {Math.round(
-                ((job.completedChapters ?? job.completedSteps) /
-                  Math.max(1, job.totalChapters ?? job.totalSteps)) *
+                ((job.completedPages ??
+                  job.completedChapters ??
+                  job.completedSteps) /
+                  Math.max(
+                    1,
+                    job.totalPages ?? job.totalChapters ?? job.totalSteps,
+                  )) *
                   100,
               )}
               % ·{" "}
-              {job.totalChapters != null
-                ? `${t("chapters")}: ${job.completedChapters}/${job.totalChapters}`
-                : `${t("jobStages")}: ${job.completedSteps}/${job.totalSteps}`}
+              {job.totalPages != null
+                ? `${t("pages")}: ${job.completedPages}/${job.totalPages}`
+                : job.totalChapters != null
+                  ? `${t("chapters")}: ${job.completedChapters}/${job.totalChapters}`
+                  : `${t("jobStages")}: ${job.completedSteps}/${job.totalSteps}`}
             </span>
             {["running", "queued"].includes(job.state) && (
               <span className="bc-hint">

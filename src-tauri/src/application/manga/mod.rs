@@ -15,3 +15,5 @@ pub mod translation_pipeline;
 
 pub mod local;
 pub mod image_pipeline;
+
+pub mod automatic;

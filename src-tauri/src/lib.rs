@@ -114,6 +114,7 @@ pub fn run() {
             commands::manga_list_pages,
             commands::manga_list_volumes,
             commands::manga_start_stage,
+            commands::manga_start_automatic,
             commands::manga_get_page,
             commands::manga_preflight,
             commands::project_list,

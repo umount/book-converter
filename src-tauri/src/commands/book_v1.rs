@@ -51,7 +51,7 @@ fn dispatch(
     job: String,
 ) -> Result<(), AppError> {
     let kind = context.manager.lease(&project)?.with_connection(|db, _| Ok(runs::get_run(db, &job)?.kind))?;
-    if matches!(kind.as_str(), "manga_recognition" | "manga_translation" | "manga_masks" | "manga_inpainting" | "manga_lettering") { return super::manga_v1::dispatch(context, app, project, job); }
+    if matches!(kind.as_str(), "manga_recognition" | "manga_translation" | "manga_masks" | "manga_inpainting" | "manga_lettering" | "manga_automatic") { return super::manga_v1::dispatch(context, app, project, job); }
     let pipeline = crate::application::runtime::resume_provider(&context.manager, &project, &job)?;
     let cancel = context.book_jobs.reserve(&project, &job)?;
     let manager = context.manager.clone();
@@ -125,7 +125,7 @@ pub async fn job_resume(
     args: JobArgs,
 ) -> Result<JobRef, AppError> {
     let kind=context.manager.lease(&args.project_id)?.with_connection(|db,_|Ok(runs::get_run(db,&args.job_id.0)?.kind))?;
-    if matches!(kind.as_str(),"manga_masks"|"manga_inpainting"|"manga_lettering") {
+    if matches!(kind.as_str(),"manga_masks"|"manga_inpainting"|"manga_lettering" | "manga_automatic") {
         context.models.list().await.map_err(|_|AppError::invalid("mangaModelMissing"))?;
     }
     dispatch(
@@ -195,7 +195,18 @@ fn job_view(db: &rusqlite::Connection, project: &ProjectId, id: &str) -> Result<
         (Some(completed_chapters), current)
     } else { (None, None) };
 
+    let is_manga=run.kind.starts_with("manga_");
+    let (completed_pages,page)=if is_manga {
+        use rusqlite::OptionalExtension;
+        let count=db.query_row("SELECT COUNT(*) FROM (SELECT entity_id FROM job_steps s WHERE run_id=?1 AND entity_kind='page' AND state='succeeded' AND NOT EXISTS(SELECT 1 FROM job_steps n WHERE n.run_id=s.run_id AND n.entity_kind=s.entity_kind AND n.entity_id=s.entity_id AND n.stage=s.stage AND n.attempt>s.attempt) GROUP BY entity_id HAVING COUNT(*)=?2)",rusqlite::params![id,run.snapshot.stages.len()],|r|r.get::<_,u32>(0)).map_err(storage_error)?;
+        let page=db.query_row("SELECT p.position+1,v.title,s.stage FROM job_steps s JOIN manga_pages p ON p.id=s.entity_id JOIN manga_volumes v ON v.id=p.volume_id WHERE s.run_id=?1 AND s.entity_kind='page' ORDER BY s.rowid DESC LIMIT 1",[id],|r|Ok((r.get::<_,u32>(0)?,r.get::<_,String>(1)?,r.get::<_,String>(2)?))).optional().map_err(storage_error)?;
+        (Some(count),page)
+    }else{(None,None)};
     Ok(JobView {
+        total_pages:is_manga.then_some(run.snapshot.selected_ids.len() as u32),
+        completed_pages,
+        current_page_number:page.as_ref().map(|p|p.0),
+        current_volume_title:page.as_ref().map(|p|p.1.clone()),
         job: JobRef {
             project_id: project.clone(),
             job_id: run.id,
@@ -210,7 +221,7 @@ fn job_view(db: &rusqlite::Connection, project: &ProjectId, id: &str) -> Result<
         completed_chapters,
         current_chapter_number: current.as_ref().map(|c| c.0),
         current_chapter_title: current.as_ref().map(|c| c.1.clone()),
-        current_stage: current.map(|c| c.2),
+        current_stage: current.map(|c| c.2).or_else(||page.map(|p|p.2)),
         remaining_seconds,
         error: run.terminal_error,
     })
