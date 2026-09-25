@@ -83,7 +83,7 @@ be reconstructed retrospectively.
 
 ## Export
 
-**File → Export** supports TXT, FB2 packaged as `.fb2.zip`, EPUB and PDF. The default exports saved translated chapters and image-only chapters, skipping unfinished text chapters and untranslated empty headings. The cover is preserved. Export uses the latest saved translation in the target language even if glossary or settings changes have marked it for review. You can optionally include original text for unfinished chapters; translating the entire book is never required. Export reads a consistent snapshot, preserves
+**File → Export** supports TXT, FB2 packaged as `.fb2.zip`, EPUB and PDF. The default exports saved translated chapters and image-only chapters up to the last saved translation, skipping unfinished text chapters and untranslated empty headings. The cover is preserved. Export uses the latest saved translation in the target language even if glossary or settings changes have marked it for review. You can optionally include original text for unfinished chapters; translating the entire book is never required. Export reads a consistent snapshot, preserves
 structural images in formats that support them, and refuses an existing destination.
 TXT is a text-only format.
 

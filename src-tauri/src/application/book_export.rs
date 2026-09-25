@@ -146,6 +146,13 @@ fn snapshot(
             .map_err(storage_error)?;
         rows.collect::<Result<Vec<_>, _>>().map_err(storage_error)?
     };
+    // Preserve illustrations within the translated portion, not standalone image
+    // chapters from much later in the book.
+    let last_translated_position: Option<usize> = tx.query_row(
+        "SELECT MAX(c.position) FROM book_chapters c WHERE EXISTS (SELECT 1 FROM book_translations t WHERE t.chapter_id=c.id AND t.target_language=?1)",
+        [&settings.choices.target_language],
+        |row| row.get(0),
+    ).map_err(storage_error)?;
     let mut chapters = Vec::new();
     let mut images = HashMap::new();
     for id in args.selection.resolve(&ids)? {
@@ -196,7 +203,12 @@ fn snapshot(
                         || text.as_ref().is_some_and(|text| text.trim().is_empty())
                         || translated.contains_key(block)
                 });
-            if (has_text && !complete) || (!has_text && !has_images && translation.is_none()) {
+            let beyond_translated_part = !has_text && translation.is_none()
+                && last_translated_position.is_some_and(|last| position > last);
+            if (has_text && !complete)
+                || (!has_text && !has_images && translation.is_none())
+                || beyond_translated_part
+            {
                 continue;
             }
         }
@@ -588,7 +600,12 @@ mod tests {
             db.execute("UPDATE book_translations SET status='needs_review' WHERE chapter_id IN (SELECT id FROM book_chapters WHERE position=0)", []).unwrap();
             db.execute("UPDATE book_translations SET provenance='model',glossary_revision=0,settings_revision=0", []).unwrap();
             db.execute("INSERT INTO book_chapters(id,position,source_title) VALUES ('empty-volume',3,'第一卷 夜游神'),('later',4,'Untranslated later')", []).unwrap();
-            db.execute("INSERT INTO book_source_blocks(id,chapter_id,position,kind,text) VALUES ('later-text','later',0,'text','Later original text')", []).unwrap();
+            // An untranslated chapter with an opening illustration must be skipped
+            // entirely; only chapters with no source text qualify as image-only.
+            db.execute("INSERT INTO book_source_blocks(id,chapter_id,position,kind,asset_id) SELECT 'later-image','later',0,'image',asset_id FROM book_source_blocks WHERE kind='image' LIMIT 1", []).unwrap();
+            db.execute("INSERT INTO book_source_blocks(id,chapter_id,position,kind,text) VALUES ('later-text','later',1,'text','Later original text')", []).unwrap();
+            db.execute("INSERT INTO book_chapters(id,position,source_title) VALUES ('later-illustration',5,'Future illustration')", []).unwrap();
+            db.execute("INSERT INTO book_source_blocks(id,chapter_id,position,kind,asset_id) SELECT 'future-image','later-illustration',0,'image',asset_id FROM book_source_blocks WHERE kind='image' LIMIT 1", []).unwrap();
             Ok(())
         }).unwrap();
         let args = BookExportArgs {
@@ -607,6 +624,8 @@ mod tests {
         assert!(partial.contains("Последняя глава."));
         assert!(partial.contains("КОНЕЦ ПОЛНОГО ПЕРЕВОДА"));
         assert!(!partial.contains("Later original text"));
+        assert!(!partial.contains("Untranslated later"));
+        assert!(!partial.contains("Future illustration"));
         assert!(!partial.contains("第一卷 夜游神"));
         assert_eq!(partial.matches("<image ").count(), 3);
         let originals_args = BookExportArgs {
@@ -619,6 +638,7 @@ mod tests {
         assert!(originals.contains("КОНЕЦ ПОЛНОГО ПЕРЕВОДА"));
         assert!(originals.contains("Последняя глава."));
         assert!(originals.contains("Later original text"));
+        assert!(originals.contains("Future illustration"));
         let empty_args = BookExportArgs {
             selection: EntitySelection::ExplicitIds {
                 ids: vec!["later".into()],
