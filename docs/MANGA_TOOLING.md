@@ -339,3 +339,30 @@ Torch, llama, diffusion and runtime dependencies. Prefer extracting/adapting the
 needed components with attribution and the existing worker boundary. Next compare
 Koharu's manga-specific cleanup checkpoint/runtime and crop orchestration before
 freezing the default model; reuse its lettering work when implementing that stage.
+
+## Lettering implementation checkpoint (2026-09-25)
+
+The isolated native worker now supports deterministic horizontal lettering with
+rustybuzz shaping, fontdue rasterization and Unicode line-break opportunities.
+The font-size fitting helper is adapted from Koharu at the pinned revision already
+recorded above; its MIT notice remains included. Embedded DejaVu Sans is accompanied
+by `third-party/DejaVu-LICENSE`. No ONNX runtime or downloaded weights are loaded for
+this operation, and no local LLM is involved.
+
+Each region receives centered black text with a one-pixel white outline. Layout
+fits within the supplied rectangle, saves the exact font hash/size/line height, and
+fails on missing glyphs or overflow rather than clipping text. Region count, text,
+image, request and response sizes are bounded. The renderer preserves every pixel
+outside the supplied regions and never modifies its input asset.
+
+Russian/Latin synthetic rendering and the real worker protocol are verified. This
+is not yet a general typography acceptance: CJK font fallback, mixed bidirectional
+text, vertical layout, bubble-aware shape fitting and representative page quality
+remain unverified/unsupported. The current rectangular layout is a baseline.
+
+The application can execute durable `manga_lettering` jobs after current translation
+and cleanup results exist. It fingerprints both the cleaned asset and region text/
+geometry, rejects late edits, and publishes the derived image and chosen styles in
+one checkpoint transaction. Recognition/translation test providers remain synthetic;
+these checks do not make paid API calls. Native runtime packaging, full-pipeline
+admission and automatic-processing UI remain separate unfinished work.

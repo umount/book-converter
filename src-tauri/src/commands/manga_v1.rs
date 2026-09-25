@@ -192,7 +192,7 @@ pub async fn manga_start_stage(
         application::manga::local,
     };
     let manager = context.manager.clone();
-    let local_hash = if matches!(args.stage, MangaStage::Masks | MangaStage::Inpainting) {
+    let local_hash = if matches!(args.stage, MangaStage::Masks | MangaStage::Inpainting | MangaStage::Lettering) {
         context
             .models
             .list()
@@ -231,9 +231,11 @@ pub(super) fn dispatch(
         .manager
         .lease(&project)?
         .with_connection(|db, _| Ok(crate::storage::runs::get_run(db, &job)?.kind))?;
-    if matches!(kind.as_str(), "manga_masks" | "manga_inpainting") {
+    if matches!(kind.as_str(), "manga_masks" | "manga_inpainting" | "manga_lettering") {
         let stage = if kind == "manga_masks" {
             crate::app::contracts::MangaStage::Masks
+        } else if kind == "manga_lettering" {
+            crate::app::contracts::MangaStage::Lettering
         } else {
             crate::app::contracts::MangaStage::Inpainting
         };

@@ -11,7 +11,7 @@ P05: in_progress. Translation, context, editing, reference, export and metadata 
 P06: in_progress. New shell, wizard, structural editor and supporting screens wired; native acceptance remains.
 P07: in_progress. Book assistant, guarded proposals and persisted history implemented.
 P08: partial. Import/read-only page workspace available; model processing not implemented.
-P09: in_progress. Durable API recognition/translation and native mask/cleanup stages connected; lettering, full-pipeline admission/UI, packaging and quality acceptance remain.
+P09: in_progress. Durable API recognition/translation and native mask/cleanup/lettering stages connected; full-pipeline admission/UI, packaging and quality acceptance remain.
 P10–P13: pending.
 
 ## Baseline (2026-09-23)
@@ -1157,3 +1157,26 @@ It needs MANGA_RUNTIME, MANGA_WORKER, MANGA_MASK_MODEL, MANGA_LAMA_MODEL; never 
 fixtures at actual user projects. Developer probe weights/runtime remain under
 `/tmp/book-converter-model-probe` and `/tmp/book-converter-onnx-probe` if retained by
 this machine; reproducible model pins and limitations are in MANGA_TOOLING.md.
+
+## Resumed 2026-09-25: lettering connected
+
+The previous stop instruction above is historical; the user resumed work.
+Implemented the first pending item: bounded horizontal lettering in the isolated
+worker, with Koharu's attributed font-size fitting helper, rustybuzz/fontdue and
+embedded DejaVu Sans. Font coverage/overflow fail explicitly. Verified a synthetic
+Russian page visually and tested the actual worker without ONNX files.
+
+Connected `manga_lettering` admission, dispatch/resume and job labels. It requires
+current translation and cleanup, renders onto the cleaned immutable asset, saves
+chosen styles and publishes an independent result in the checkpoint transaction.
+Tests cover missing translation, late text changes, existing original preservation
+and successful saved output. No actual projects or live AI providers were used.
+
+Verification: native 17 unit tests plus a real lettering-worker integration test;
+20 existing manga tests plus the new missing/late-translation test; strict Clippy
+for both crates and the frontend production build passed. Real-model smoke remains
+opt-in and was not rerun for this renderer-only addition. Typography limitations
+are recorded in MANGA_TOOLING.md; full automatic translation is still not enabled.
+
+Next: native resource packaging, then compose the stages into a single resumable
+job with both API profiles frozen and expose processed pages in the manga workspace.

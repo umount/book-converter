@@ -827,7 +827,24 @@ impl super::local::ImageWorker for ImageFake {
     > {
         Box::pin(async move {
             let input = request.input.read().unwrap();
+            let mut layouts = Vec::new();
             let image = match &request.operation {
+                manga_inference::protocol::Operation::Lettering { regions } => {
+                    assert_eq!(input.to_rgb8().get_pixel(1, 1)[0], 240);
+                    for region in regions {
+                        assert_eq!(region.text, "Перевод");
+                        layouts.push(manga_inference::text::TextLayout {
+                            id: region.id.clone(),
+                            font: "DejaVu Sans".into(),
+                            font_sha256: manga_inference::text::font_hash(),
+                            font_size: 12.0,
+                            line_height: 14.0,
+                            alignment: "center".into(),
+                            stroke: 1,
+                        });
+                    }
+                    input.clone()
+                }
                 manga_inference::protocol::Operation::Masks { regions, .. } => {
                     assert!(!regions.is_empty());
                     let mut mask = image::GrayImage::new(input.width(), input.height());
@@ -847,6 +864,7 @@ impl super::local::ImageWorker for ImageFake {
                 hook();
             }
             Ok(manga_inference::protocol::Response {
+                layouts,
                 version: 1,
                 width: input.width(),
                 height: input.height(),
@@ -891,7 +909,7 @@ fn image_pipeline(
     }
 }
 #[tokio::test]
-async fn local_masks_and_cleanup_publish_immutable_assets_with_checkpoints() {
+async fn local_images_and_lettering_publish_immutable_assets_with_checkpoints() {
     use crate::app::contracts::MangaStage;
     let f = recognized_fixture(1).await;
     let page = f.run().snapshot.selected_ids[0].clone();
@@ -899,9 +917,23 @@ async fn local_masks_and_cleanup_publish_immutable_assets_with_checkpoints() {
         let relative:String=db.query_row("SELECT a.relative_path FROM manga_pages p JOIN assets a ON a.id=p.original_asset_id WHERE p.id=?1",[&page],|r|r.get(0)).unwrap();
         Ok((root.join(relative.clone()),std::fs::read(root.join(relative)).unwrap()))
     }).unwrap();
+    create_dialogue(&f, "dialogue", 1);
+    durable::execute(
+        &f.manager,
+        &f.id,
+        "dialogue",
+        &super::translation_pipeline::TranslationPipeline {
+            provider: Arc::new(DialogueFake::new(0)),
+        },
+        Arc::new(AtomicBool::new(false)),
+        |_| {},
+    )
+    .await
+    .unwrap();
     for (id, stage) in [
         ("masks", MangaStage::Masks),
         ("cleanup", MangaStage::Inpainting),
+        ("lettering", MangaStage::Lettering),
     ] {
         create_image(&f, id, stage.clone());
         durable::execute(
@@ -919,6 +951,9 @@ async fn local_masks_and_cleanup_publish_immutable_assets_with_checkpoints() {
         assert_eq!(db.query_row("SELECT COUNT(*) FROM manga_masks WHERE page_id=?1",[&page],|r|r.get::<_,i64>(0)).unwrap(),1);
         assert_eq!(db.query_row("SELECT COUNT(*) FROM manga_results WHERE page_id=?1 AND stage IN ('masks','inpainting') AND validity='current' AND output_asset_id IS NOT NULL",[&page],|r|r.get::<_,i64>(0)).unwrap(),2);
         assert_eq!(runs::get_run(db,"cleanup")?.state,JobState::Succeeded);
+        assert_eq!(runs::get_run(db,"lettering")?.state,JobState::Succeeded);
+        let style:String=db.query_row("SELECT style_json FROM manga_regions WHERE page_id=?1 LIMIT 1",[&page],|r|r.get(0)).unwrap();
+        assert_eq!(serde_json::from_str::<serde_json::Value>(&style).unwrap()["fontSize"],12.0);
         assert!(super::local::create_run(db,"again",&crate::app::requests::StartMangaStageArgs{project_id:f.id.clone(),selection:EntitySelection::All,stage:MangaStage::Masks,options:crate::app::requests::MangaStageOptions{max_pages:1,force:false}},"test-hash").is_err());
         Ok(())
     }).unwrap();
@@ -1040,6 +1075,112 @@ async fn native_image_stages_publish_real_masks_and_cleanup() {
         let original=image::load_from_memory(include_bytes!("../../../../crates/manga-inference/tests/fixtures/synthetic-dialogue.png")).unwrap().to_rgb8();
         assert!(mask.as_raw().contains(&255));
         for (x,y,pixel) in original.enumerate_pixels(){if mask.get_pixel(x,y)[0]==0{assert_eq!(pixel,clean.get_pixel(x,y));}}
-        assert_eq!(runs::get_run(db,"cleanup")?.state,JobState::Succeeded);Ok(())
+        assert_eq!(runs::get_run(db,"cleanup")?.state,JobState::Succeeded);
+        assert_eq!(runs::get_run(db,"lettering")?.state,JobState::Succeeded);
+        let style:String=db.query_row("SELECT style_json FROM manga_regions WHERE page_id=?1 LIMIT 1",[&page],|r|r.get(0)).unwrap();
+        assert_eq!(serde_json::from_str::<serde_json::Value>(&style).unwrap()["fontSize"],12.0);Ok(())
     }).unwrap();
+}
+
+#[tokio::test]
+async fn lettering_rejects_missing_translation_and_late_text_changes() {
+    use crate::app::contracts::MangaStage;
+    let f = recognized_fixture(1).await;
+    for (id, stage) in [
+        ("mask", MangaStage::Masks),
+        ("clean", MangaStage::Inpainting),
+    ] {
+        create_image(&f, id, stage.clone());
+        durable::execute(
+            &f.manager,
+            &f.id,
+            id,
+            &image_pipeline(stage, ImageFake { hook: None }),
+            Arc::new(AtomicBool::new(false)),
+            |_| {},
+        )
+        .await
+        .unwrap();
+    }
+    f.manager
+        .lease(&f.id)
+        .unwrap()
+        .with_connection(|db, _| {
+            assert!(super::local::create_run(
+                db,
+                "too-early",
+                &crate::app::requests::StartMangaStageArgs {
+                    project_id: f.id.clone(),
+                    selection: EntitySelection::All,
+                    stage: MangaStage::Lettering,
+                    options: crate::app::requests::MangaStageOptions {
+                        max_pages: 1,
+                        force: false
+                    }
+                },
+                "test-hash"
+            )
+            .is_err());
+            Ok(())
+        })
+        .unwrap();
+    create_dialogue(&f, "dialogue", 1);
+    durable::execute(
+        &f.manager,
+        &f.id,
+        "dialogue",
+        &super::translation_pipeline::TranslationPipeline {
+            provider: Arc::new(DialogueFake::new(0)),
+        },
+        Arc::new(AtomicBool::new(false)),
+        |_| {},
+    )
+    .await
+    .unwrap();
+    create_image(&f, "lettering", MangaStage::Lettering);
+    let manager = f.manager.clone();
+    let id = f.id.clone();
+    let worker = ImageFake {
+        hook: Some(Box::new(move || {
+            manager
+                .lease(&id)
+                .unwrap()
+                .with_connection(|db, _| {
+                    db.execute(
+                        "UPDATE manga_regions SET translated_text='Изменённый перевод'",
+                        [],
+                    )
+                    .unwrap();
+                    Ok(())
+                })
+                .unwrap();
+        })),
+    };
+    let error = durable::execute(
+        &f.manager,
+        &f.id,
+        "lettering",
+        &image_pipeline(MangaStage::Lettering, worker),
+        Arc::new(AtomicBool::new(false)),
+        |_| {},
+    )
+    .await
+    .unwrap_err();
+    assert_eq!(error.code, ErrorCode::RevisionConflict);
+    f.manager
+        .lease(&f.id)
+        .unwrap()
+        .with_connection(|db, _| {
+            assert_eq!(
+                db.query_row(
+                    "SELECT COUNT(*) FROM manga_results WHERE stage='lettering'",
+                    [],
+                    |r| r.get::<_, i64>(0)
+                )
+                .unwrap(),
+                0
+            );
+            Ok(())
+        })
+        .unwrap();
 }

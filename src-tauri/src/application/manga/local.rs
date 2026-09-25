@@ -94,6 +94,21 @@ pub fn pipeline(
     stage: crate::app::contracts::MangaStage,
 ) -> Result<super::image_pipeline::ImagePipeline, AppError> {
     use crate::app::contracts::MangaStage;
+    if stage == MangaStage::Lettering {
+        return Ok(super::image_pipeline::ImagePipeline {
+            worker: Arc::new(NativeWorker {
+                executable: files.executable.clone(),
+            }),
+            runtime: files.runtime,
+            model: files.executable,
+            stage,
+            model_hash: format!(
+                "{}:{}",
+                manga_inference::text::VERSION,
+                manga_inference::text::font_hash()
+            ),
+        });
+    }
     let id = match stage {
         MangaStage::Masks => MASK_MODEL,
         MangaStage::Inpainting => CLEAN_MODEL,
@@ -133,12 +148,13 @@ pub fn create_run(
     let (stage, prerequisite) = match args.stage {
         MangaStage::Masks => ("masks", "recognition"),
         MangaStage::Inpainting => ("inpainting", "masks"),
+        MangaStage::Lettering => ("lettering", "inpainting"),
         _ => return Err(AppError::invalid("mangaStage")),
     };
     let settings = shared::settings(db)?;
     let glossary = shared::glossary_revision(db)?;
     let rows = {
-        let mut query=db.prepare("SELECT p.id,EXISTS(SELECT 1 FROM manga_results r WHERE r.page_id=p.id AND r.stage=?1 AND r.validity='current' AND r.page_revision=p.revision AND r.settings_revision=?3 AND r.glossary_revision=?4),EXISTS(SELECT 1 FROM manga_results r WHERE r.page_id=p.id AND r.stage=?2 AND (?2='recognition' OR (r.validity='current' AND r.page_revision=p.revision AND r.settings_revision=?3 AND r.glossary_revision=?4))) FROM manga_pages p JOIN manga_volumes v ON v.id=p.volume_id ORDER BY v.position,p.position").map_err(storage_error)?;
+        let mut query=db.prepare("SELECT p.id,EXISTS(SELECT 1 FROM manga_results r WHERE r.page_id=p.id AND r.stage=?1 AND r.validity='current' AND r.page_revision=p.revision AND r.settings_revision=?3 AND r.glossary_revision=?4),EXISTS(SELECT 1 FROM manga_results r WHERE r.page_id=p.id AND r.stage=?2 AND (?2='recognition' OR (r.validity='current' AND r.page_revision=p.revision AND r.settings_revision=?3 AND r.glossary_revision=?4))) FROM manga_pages p JOIN manga_volumes v ON v.id=p.volume_id WHERE (?1!='lettering' OR EXISTS(SELECT 1 FROM manga_results t WHERE t.page_id=p.id AND t.stage='translation' AND t.validity='current' AND t.page_revision=p.revision AND t.settings_revision=?3 AND t.glossary_revision=?4)) ORDER BY v.position,p.position").map_err(storage_error)?;
         let rows = query
             .query_map(
                 rusqlite::params![
