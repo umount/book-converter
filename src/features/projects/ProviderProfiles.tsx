@@ -37,7 +37,7 @@ export function ProviderProfiles({
         if (alive) {
           setProfiles(p);
           setSettings(s);
-          if (!p.length) setDraft({
+          if (!p.length && project?.kind !== "manga") setDraft({
             id: crypto.randomUUID(), name: "",
             baseUrl: defaults?.base_url ?? "", model: defaults?.model ?? "",
             temperature: 0.3, maxOutputTokens: 4096, timeoutSeconds: 120,
@@ -86,7 +86,7 @@ export function ProviderProfiles({
       {notice && <p role="status">{notice}</p>}
       <fieldset disabled={busy}>
         <h3>{t("providerProfiles")}</h3>
-        {profiles.length === 0 && <p className="bc-hint">{t("noProviderProfiles")}</p>}
+        {profiles.length === 0 && project?.kind !== "manga" && <p className="bc-hint">{t("noProviderProfiles")}</p>}
         {project?.kind === "manga" && <p className="bc-hint">{t("mangaProfileSetupHint")}</p>}
         <label>
           {t("choose")}
@@ -240,7 +240,7 @@ export function ProviderProfiles({
                     })
                   }
                 >
-                  <option value="">{t(role === "mangaRecognitionProfile" || role === "mangaTranslationProfile" ? "choose" : "defaultProvider")}</option>
+                  <option value="">{t("defaultProvider")}</option>
                   {profiles.map((p) => (
                     <option key={p.id} value={p.id}>
                       {p.name} · {p.model}

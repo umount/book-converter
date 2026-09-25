@@ -236,8 +236,8 @@ pub(super) fn dispatch(
         let run=context.manager.lease(&project)?.with_connection(|db,_|runs::get_run(db,&job))?;
         if !matches!(run.state,JobState::Queued|JobState::Interrupted|JobState::Failed|JobState::Cancelled){return Err(AppError::invalid("jobState"));}
         let plan=run.snapshot.manga.ok_or_else(||AppError::invalid("mangaPlan"))?;
-        let recognition=runtime::saved_client(plan.recognition,run.snapshot.settings.manga_recognition_profile.as_deref().ok_or_else(||AppError::invalid("mangaRecognitionProfile"))?)?;
-        let translation=runtime::saved_client(plan.translation,run.snapshot.settings.manga_translation_profile.as_deref().ok_or_else(||AppError::invalid("mangaTranslationProfile"))?)?;
+        let recognition=runtime::saved_client(plan.recognition,run.snapshot.settings.manga_recognition_profile.as_deref())?;
+        let translation=runtime::saved_client(plan.translation,run.snapshot.settings.manga_translation_profile.as_deref())?;
         let files=native_files(&app)?;
         let executor=automatic::AutomaticPipeline{recognition:pipeline::RecognitionPipeline{provider:recognition},translation:translation_pipeline::TranslationPipeline{provider:translation},masks:local::pipeline(&context.models,files.clone(),MangaStage::Masks)?,cleanup:local::pipeline(&context.models,files.clone(),MangaStage::Inpainting)?,lettering:local::pipeline(&context.models,files,MangaStage::Lettering)?};
         return launch(context,app,project,job,executor);

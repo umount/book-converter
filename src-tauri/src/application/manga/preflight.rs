@@ -7,28 +7,25 @@ use crate::{
 };
 use rusqlite::Connection;
 
-/// Shared by preflight and recognition admission; never falls back to the book profile.
+/// Manga uses the shared API settings unless an explicit role profile is selected.
 pub(crate) fn recognition_provider(
     settings: &shared::ProcessingSettings,
 ) -> Result<(ProviderProfile, String), AppError> {
-    let id = settings
-        .manga_recognition_profile
-        .as_deref()
-        .ok_or_else(|| AppError::invalid("mangaRecognitionProfile"))?;
-    checked_provider(id)
+    let (mut profile, key) = checked_provider(settings.manga_recognition_profile.as_deref())?;
+    if settings.manga_recognition_profile.is_none()
+        && matches!(profile.base_url.trim_end_matches('/'), "https://api.deepseek.com" | "https://api.deepseek.com/v1")
+    {
+        profile.model = "deepseek-flash".into();
+    }
+    Ok((profile, key))
 }
 pub(crate) fn translation_provider(
     settings: &shared::ProcessingSettings,
 ) -> Result<(ProviderProfile, String), AppError> {
-    checked_provider(
-        settings
-            .manga_translation_profile
-            .as_deref()
-            .ok_or_else(|| AppError::invalid("mangaTranslationProfile"))?,
-    )
+    checked_provider(settings.manga_translation_profile.as_deref())
 }
-fn checked_provider(id: &str) -> Result<(ProviderProfile, String), AppError> {
-    let (profile, key) = provider_profile(Some(id))?;
+fn checked_provider(id: Option<&str>) -> Result<(ProviderProfile, String), AppError> {
+    let (profile, key) = provider_profile(id)?;
     ChatCompletions::new(profile.clone(), key.clone())?;
     Ok((profile, key))
 }
@@ -44,20 +41,12 @@ pub fn inspect(db: &mut Connection, local: [Option<&str>; 3]) -> Result<MangaPre
 
 fn inspect_with(
     db: &mut Connection,
-    mut validate: impl FnMut(&str) -> Result<(), AppError>,
+    mut validate: impl FnMut(Option<&str>) -> Result<(), AppError>,
 ) -> Result<MangaPreflight, AppError> {
     ProjectRepository::new(db, ProjectKind::Manga)?;
     let settings = shared::settings(db)?.choices;
-    let recognition = profile_issue(
-        settings.manga_recognition_profile.as_deref(),
-        "mangaRecognitionProfileRequired",
-        &mut validate,
-    );
-    let translation = profile_issue(
-        settings.manga_translation_profile.as_deref(),
-        "mangaTranslationProfileRequired",
-        &mut validate,
-    );
+    let recognition = profile_issue(settings.manga_recognition_profile.as_deref(), &mut validate);
+    let translation = profile_issue(settings.manga_translation_profile.as_deref(), &mut validate);
     let requirement = |stage, reason: Option<&str>| CapabilityRequirement {
         stage,
         available: reason.is_none(),
@@ -76,15 +65,11 @@ fn inspect_with(
         ],
     })
 }
-fn profile_issue<'a>(
+fn profile_issue(
     selected: Option<&str>,
-    missing: &'a str,
-    validate: &mut impl FnMut(&str) -> Result<(), AppError>,
-) -> Option<&'a str> {
-    let Some(id) = selected else {
-        return Some(missing);
-    };
-    match validate(id) {
+    validate: &mut impl FnMut(Option<&str>) -> Result<(), AppError>,
+) -> Option<&'static str> {
+    match validate(selected) {
         Ok(()) => None,
         Err(error) if error.message_key == "errors.apiKeyRequired" => {
             Some("mangaProfileKeyRequired")
@@ -100,7 +85,7 @@ mod tests {
     use crate::storage::tests::database;
 
     #[test]
-    fn missing_manga_profiles_never_use_book_defaults_or_change_the_project() {
+    fn missing_manga_profiles_use_shared_defaults_without_changing_project() {
         let mut db = database(ProjectKind::Manga);
         db.execute(
             "UPDATE project_settings SET profiles_json='{\"book_translation\":\"book\"}'",
@@ -108,20 +93,15 @@ mod tests {
         )
         .unwrap();
         let before = db.total_changes();
-        let result = inspect_with(&mut db, |_| {
-            panic!("must not resolve an unselected profile")
+        let result = inspect_with(&mut db, |id| {
+            assert_eq!(id, None);
+            Ok(())
         })
         .unwrap();
         assert!(!result.ready());
         assert_eq!(result.requirements.len(), 6);
-        assert_eq!(
-            result.requirements[0].reason_key.as_deref(),
-            Some("mangaRecognitionProfileRequired")
-        );
-        assert_eq!(
-            result.requirements[2].reason_key.as_deref(),
-            Some("mangaTranslationProfileRequired")
-        );
+        assert_eq!(result.requirements[0].reason_key.as_deref(), None);
+        assert_eq!(result.requirements[2].reason_key.as_deref(), None);
         assert_eq!(db.total_changes(), before);
         assert_eq!(
             db.query_row("SELECT COUNT(*) FROM job_runs", [], |r| r.get::<_, i64>(0))
@@ -136,11 +116,11 @@ mod tests {
         db.execute("UPDATE project_settings SET profiles_json='{\"manga_recognition\":\"vision\",\"manga_translation\":\"dialogue\"}'", []).unwrap();
         let mut checked = Vec::new();
         let result = inspect_with(&mut db, |id| {
-            checked.push(id.to_owned());
+            checked.push(id.map(str::to_owned));
             Ok(())
         })
         .unwrap();
-        assert_eq!(checked, ["vision", "dialogue"]);
+        assert_eq!(checked, [Some("vision".into()), Some("dialogue".into())]);
         assert!(result.requirements[0].available && result.requirements[1].available);
         assert!(result.requirements[2].available);
         assert!(result.requirements[3..].iter().all(|r| !r.available));

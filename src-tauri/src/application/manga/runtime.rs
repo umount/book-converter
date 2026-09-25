@@ -191,9 +191,8 @@ fn resume_client(
         run.snapshot.settings.manga_translation_profile.as_deref()
     } else {
         run.snapshot.settings.manga_recognition_profile.as_deref()
-    }
-    .ok_or_else(|| AppError::invalid("mangaProfile"))?;
-    let (configured, key) = provider_profile(Some(id))?;
+    };
+    let (configured, key) = provider_profile(id)?;
     validate_credential_destination(&saved, &configured)?;
     Ok(Arc::new(ChatCompletions::new(saved, key)?))
 }
@@ -201,9 +200,9 @@ fn resume_client(
 /// Credentials are resolved at execution time; snapshots never contain secrets.
 pub(crate) fn saved_client(
     saved: ProviderProfile,
-    id: &str,
+    id: Option<&str>,
 ) -> Result<Arc<dyn crate::ai::Provider>, AppError> {
-    let (configured, key) = provider_profile(Some(id))?;
+    let (configured, key) = provider_profile(id)?;
     validate_credential_destination(&saved, &configured)?;
     Ok(Arc::new(ChatCompletions::new(saved, key)?))
 }
