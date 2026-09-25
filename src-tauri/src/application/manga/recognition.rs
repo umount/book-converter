@@ -64,7 +64,7 @@ impl RecognitionInput {
         }
         let decoded =
             image::DynamicImage::from_decoder(decoder).map_err(|_| AppError::invalid("image"))?;
-        let resized = decoded.thumbnail(2048, 2048);
+        let resized = decoded.thumbnail(width.min(2048), height.min(2048));
         let mut encoded = Cursor::new(Vec::new());
         resized
             .write_to(&mut encoded, ImageFormat::Png)
@@ -196,6 +196,17 @@ mod tests {
     }
     fn region() -> serde_json::Value {
         serde_json::json!({"id":"r1","readingOrder":0,"category":"dialogue","bounds":{"x":10,"y":20,"width":100,"height":50},"sourceText":"Hello"})
+    }
+    #[test]
+    fn small_pages_are_not_upscaled_before_upload() {
+        let input = RecognitionInput::from_canonical(include_bytes!(
+            "../../../../crates/manga-inference/tests/fixtures/synthetic-dialogue.png"
+        ))
+        .unwrap();
+        assert_eq!(
+            (input.mapping.sent_width, input.mapping.sent_height),
+            (384, 384)
+        );
     }
     #[test]
     fn maps_resized_crop_to_canonical_pixels() {

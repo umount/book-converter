@@ -73,7 +73,7 @@ fn layout(
     let metrics = font
         .horizontal_line_metrics(size)
         .ok_or(Error::FontCoverage)?;
-    let line_height = metrics.new_line_size.max(size * 1.15);
+
     let mut lines = Vec::new();
     let mut fits = true;
     for paragraph in text.split('\n') {
@@ -95,27 +95,29 @@ fn layout(
             lines.push(shape(face, font, paragraph[begin..].trim_end(), size)?);
         }
     }
+    // Rasterized descenders/accents can exceed nominal font metrics at small sizes.
+    // Expand the line box to actual ink instead of falsely rejecting a fitting font.
+    let mut ascent = metrics.ascent;
+    let mut descent = 0.0f32;
+    for line in &lines {
+        for glyph in &line.glyphs {
+            let m = font.metrics_indexed(glyph.id, size);
+            ascent = ascent.max(-glyph.y);
+            descent = descent.max(glyph.y + m.height as f32);
+        }
+    }
+    let line_height = metrics.new_line_size.max(size * 1.15).max(ascent + descent);
     if lines.len() > 64
         || lines.iter().any(|l| l.width > width)
         || line_height * lines.len() as f32 > height
     {
         fits = false;
     }
-    // Ink can protrude beyond nominal font metrics (combining marks, accents).
-    for (index, line) in lines.iter().enumerate() {
-        for glyph in &line.glyphs {
-            let m = font.metrics_indexed(glyph.id, size);
-            let top = index as f32 * line_height + metrics.ascent + glyph.y;
-            if top < 0.0 || top + m.height as f32 > line_height * lines.len() as f32 {
-                fits = false;
-            }
-        }
-    }
     Ok(Layout {
         lines,
         size,
         line_height,
-        ascent: metrics.ascent,
+        ascent,
         fits,
     })
 }
@@ -256,6 +258,23 @@ mod tests {
         }
         assert_eq!(output.layouts.len(), 1);
         assert!(output.layouts[0].font_size >= 8.0);
+    }
+    #[test]
+    fn small_cyrillic_descenders_fit_with_actual_ink_metrics() {
+        let original = RgbImage::new(72, 72);
+        let region = TextRegion {
+            id: "small".into(),
+            bounds: Crop {
+                x: 0,
+                y: 0,
+                width: 72,
+                height: 72,
+            },
+            text: "Перевод".into(),
+        };
+        let rendered = render(&original, &[region]).unwrap();
+        assert!(rendered.layouts[0].font_size >= 8.0);
+        assert!(rendered.layouts[0].font_size < 20.0);
     }
     #[test]
     fn missing_glyphs_and_overflow_never_produce_partial_pages() {
