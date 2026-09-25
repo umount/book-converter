@@ -913,6 +913,8 @@ function Shell({
                   />
                 ) : project.kind === "manga" ? (
                   <MangaWorkspace
+                    jobs={jobList}
+                    onJob={(job) => jobs.refresh(job)}
                     onSettings={()=>setSettings(true)}
                     setupVersion={Number(settings)}
                     key={project.id}

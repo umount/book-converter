@@ -137,6 +137,7 @@ const en = {
     "Drag regions to move them; drag the corner to resize. Apply rebuilds cleanup and text from the original, using the current translations. Edited rectangles are erased in full.",
   mangaPageBusy:
     "Wait for the current job to finish or cancel it before applying edits.",
+  mangaRebuildingPage: "Applying region changes…",
   manga_rebuild: "Rebuild page",
   applyRegions: "Apply",
   textDirection: "Text direction",
@@ -497,6 +498,7 @@ const ru: Record<Key, string> = {
     "Перемещайте рамки и тяните за угол. «Применить» очистит исправленные области целиком и заново наложит перевод.",
   mangaPageBusy:
     "Дождитесь завершения текущего задания или отмените его перед применением правок.",
+  mangaRebuildingPage: "Применяем изменения областей…",
   manga_rebuild: "Пересборка страницы",
   applyRegions: "Применить",
   textDirection: "Направление текста",
@@ -845,6 +847,7 @@ const zh: Record<Key, string> = {
   regionEditHint:
     "拖动区域移动，拖动角落调整大小。应用后从原图重建清理和文字，保留当前译文。修改后的矩形将全部清除。",
   mangaPageBusy: "请等待当前任务完成或取消后再应用更改。",
+  mangaRebuildingPage: "正在应用区域更改…",
   manga_rebuild: "重建页面",
   applyRegions: "应用",
   textDirection: "文字方向",

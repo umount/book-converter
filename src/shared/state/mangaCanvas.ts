@@ -1,3 +1,4 @@
+import type { JobView } from "../contracts/generated";
 /** Canonical image pixels stay independent of viewport size and reading direction. */
 export function fittedWidth(
   width: number,
@@ -47,4 +48,9 @@ export function dragRegion(
     b.y = Math.max(0, Math.min(pageHeight - b.height, b.y + dy));
   }
   return b;
+}
+
+export function activePageRebuild(jobs: JobView[], pageId: string | undefined) {
+  if (!pageId) return undefined;
+  return jobs.find(job => job.kind === "manga_rebuild" && job.currentPageId === pageId && ["queued", "running", "cancelling"].includes(job.state));
 }

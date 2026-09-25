@@ -19,6 +19,7 @@ export function PageCanvas({
   zoom,
   rtl,
   loading,
+  blocked = false,
   onNavigate,
   regions = [],
   selectedRegion,
@@ -32,6 +33,7 @@ export function PageCanvas({
   zoom: string;
   rtl: boolean;
   loading: boolean;
+  blocked?: boolean;
   onNavigate: (delta: number) => void;
   regions?: MangaRegionView[];
   selectedRegion?: string | null;
@@ -75,9 +77,10 @@ export function PageCanvas({
     <div
       className="bc-page-viewport"
       ref={viewport}
-      tabIndex={0}
+      tabIndex={blocked ? -1 : 0}
       aria-label={t("pages")}
       onKeyDown={(e) => {
+        if (blocked) return;
         if (e.altKey || e.ctrlKey || e.metaKey || e.shiftKey) return;
         const delta = pageKeyDelta(e.key, rtl);
         if (delta) {
@@ -86,7 +89,7 @@ export function PageCanvas({
         }
       }}
       onPointerDown={(e) => {
-        if (e.button !== 0 || !viewport.current) return;
+        if (blocked || e.button !== 0 || !viewport.current) return;
         e.currentTarget.focus();
         drag.current = {
           x: e.clientX,
@@ -126,6 +129,7 @@ export function PageCanvas({
           />
           {regions.map((region) => (
             <button
+              disabled={blocked}
               key={region.id}
               className="bc-region-overlay"
               aria-label={`${t("region")} ${region.readingOrder + 1}: ${region.sourceText}`}

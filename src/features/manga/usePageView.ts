@@ -9,7 +9,7 @@ export function usePageView(projectId: string, pageId: string | undefined) {
   useEffect(() => {
     let alive = true;
     let generation = 0;
-    setView(null);
+    setView((previous) => (previous?.page.id === pageId ? previous : null));
     setError(null);
     if (!pageId) return;
     const refresh = async () => {

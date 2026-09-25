@@ -647,6 +647,7 @@ pub struct JobView {
     pub total_pages: Option<u32>,
     pub completed_pages: Option<u32>,
     pub current_page_number: Option<u32>,
+    pub current_page_id: Option<String>,
     pub current_volume_title: Option<String>,
     pub total_chapters: Option<u32>,
     pub completed_chapters: Option<u32>,

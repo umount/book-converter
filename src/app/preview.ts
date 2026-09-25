@@ -122,7 +122,11 @@ let glossary: GlossaryTermView[] = [
   },
 ];
 let settingsRevision = 1;
-const jobs: JobView[] = [];
+const jobs: JobView[] = new URLSearchParams(location.search).has("rebuild") ? [{
+  job:{projectId:manga.id,jobId:"preview-rebuild"},kind:"manga_rebuild",state:"running",revision:"1",totalSteps:3,completedSteps:1,
+  totalPages:1,completedPages:0,currentPageId:mangaPages[0].id,currentPageNumber:1,currentVolumeTitle:"Volume 1",currentStage:"inpainting",
+  totalChapters:null,completedChapters:null,currentChapterNumber:null,currentChapterTitle:null,remainingSeconds:null,error:null,
+}] : [];
 const previewModel: ModelView = {
   model: {
     id: "preview-lama",
@@ -579,7 +583,7 @@ export async function invokePreview<T>(
         completedSteps: steps,
         totalChapters: selected.length,
         completedChapters: selected.length,
-        totalPages: null, completedPages: null, currentPageNumber: null, currentVolumeTitle: null,
+        totalPages: null, completedPages: null, currentPageNumber: null, currentPageId: null, currentVolumeTitle: null,
         currentChapterNumber: last ? last.chapter.position + 1 : null,
         currentChapterTitle: last?.chapter.title ?? null,
         currentStage:

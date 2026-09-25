@@ -199,13 +199,14 @@ fn job_view(db: &rusqlite::Connection, project: &ProjectId, id: &str) -> Result<
     let (completed_pages,page)=if is_manga {
         use rusqlite::OptionalExtension;
         let count=db.query_row("SELECT COUNT(*) FROM (SELECT entity_id FROM job_steps s WHERE run_id=?1 AND entity_kind='page' AND state='succeeded' AND NOT EXISTS(SELECT 1 FROM job_steps n WHERE n.run_id=s.run_id AND n.entity_kind=s.entity_kind AND n.entity_id=s.entity_id AND n.stage=s.stage AND n.attempt>s.attempt) GROUP BY entity_id HAVING COUNT(*)=?2)",rusqlite::params![id,run.snapshot.stages.len()],|r|r.get::<_,u32>(0)).map_err(storage_error)?;
-        let page=db.query_row("SELECT p.position+1,v.title,s.stage FROM job_steps s JOIN manga_pages p ON p.id=s.entity_id JOIN manga_volumes v ON v.id=p.volume_id WHERE s.run_id=?1 AND s.entity_kind='page' ORDER BY s.rowid DESC LIMIT 1",[id],|r|Ok((r.get::<_,u32>(0)?,r.get::<_,String>(1)?,r.get::<_,String>(2)?))).optional().map_err(storage_error)?;
+        let page=db.query_row("SELECT p.position+1,v.title,s.stage,p.id FROM job_steps s JOIN manga_pages p ON p.id=s.entity_id JOIN manga_volumes v ON v.id=p.volume_id WHERE s.run_id=?1 AND s.entity_kind='page' ORDER BY s.rowid DESC LIMIT 1",[id],|r|Ok((r.get::<_,u32>(0)?,r.get::<_,String>(1)?,r.get::<_,String>(2)?,r.get::<_,String>(3)?))).optional().map_err(storage_error)?;
         (Some(count),page)
     }else{(None,None)};
     Ok(JobView {
         total_pages:is_manga.then_some(run.snapshot.selected_ids.len() as u32),
         completed_pages,
         current_page_number:page.as_ref().map(|p|p.0),
+        current_page_id:if is_manga {page.as_ref().map(|p|p.3.clone()).or_else(||run.snapshot.selected_ids.first().cloned())} else {None},
         current_volume_title:page.as_ref().map(|p|p.1.clone()),
         job: JobRef {
             project_id: project.clone(),

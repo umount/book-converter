@@ -1,3 +1,4 @@
+import { activePageRebuild } from "../../shared/state/mangaCanvas";
 import { ProcessingStatus } from "./ProcessingStatus";
 import { RegionInspector } from "./RegionInspector";
 import { usePageView } from "./usePageView";
@@ -9,6 +10,8 @@ import type {
   MangaVolumeSummary,
   PageSummary,
   MangaRegionView,
+  JobView,
+  JobRef,
 } from "../../shared/contracts/generated";
 import { assetUrl } from "../../shared/api/assets";
 import { errorText, type T } from "../../app/strings";
@@ -17,11 +20,15 @@ export function MangaWorkspace({
   t,
   onSettings,
   setupVersion,
+  jobs,
+  onJob,
 }: {
   projectId: string;
   t: T;
   onSettings: () => void;
   setupVersion: number;
+  jobs: JobView[];
+  onJob: (job: JobRef) => Promise<void>;
 }) {
   return (
     <MangaProjectWorkspace
@@ -30,6 +37,8 @@ export function MangaWorkspace({
       t={t}
       onSettings={onSettings}
       setupVersion={setupVersion}
+      jobs={jobs}
+      onJob={onJob}
     />
   );
 }
@@ -39,11 +48,15 @@ function MangaProjectWorkspace({
   t,
   onSettings,
   setupVersion,
+  jobs,
+  onJob,
 }: {
   projectId: string;
   t: T;
   onSettings: () => void;
   setupVersion: number;
+  jobs: JobView[];
+  onJob: (job: JobRef) => Promise<void>;
 }) {
   const [volumes, setVolumes] = useState<MangaVolumeSummary[]>([]);
   const [volumeId, setVolumeId] = useState("");
@@ -105,6 +118,12 @@ function MangaProjectWorkspace({
     Record<string, Partial<Pick<MangaRegionView, "bounds" | "vertical">>>
   >({});
   const [applying, setApplying] = useState(false);
+  const rebuilding = activePageRebuild(jobs, page?.id);
+  const pageBlocked = applying || !!rebuilding;
+  const [previousRender, setPreviousRender] = useState<{
+    pageId: string;
+    assetId: string | null;
+  } | null>(null);
   useEffect(() => {
     setEdits({});
   }, [page?.id]);
@@ -116,7 +135,8 @@ function MangaProjectWorkspace({
     patch: Partial<Pick<MangaRegionView, "bounds" | "vertical">>,
   ) => setEdits((old) => ({ ...old, [id]: { ...old[id], ...patch } }));
   async function applyRegions() {
-    if (!view || applying) return;
+    if (!view || pageBlocked) return;
+    setPreviousRender({ pageId: view.page.id, assetId: view.renderedAssetId });
     setApplying(true);
     setError(null);
     try {
@@ -153,7 +173,11 @@ function MangaProjectWorkspace({
         }
       }
       setEdits({});
-      await projectApi.rebuildMangaPage({ projectId, pageId: view.page.id });
+      const job = await projectApi.rebuildMangaPage({
+        projectId,
+        pageId: view.page.id,
+      });
+      await onJob(job);
       setShowTranslation(true);
     } catch (e) {
       setError(e);
@@ -275,7 +299,11 @@ function MangaProjectWorkspace({
           </button>
           <label>
             {t("zoom")}{" "}
-            <select value={zoom} onChange={(e) => setZoom(e.target.value)}>
+            <select
+              disabled={pageBlocked}
+              value={zoom}
+              onChange={(e) => setZoom(e.target.value)}
+            >
               <option value="fit">{t("fitPage")}</option>
               <option value="page">{t("wholePage")}</option>
               {[25, 50, 75, 100, 150, 200, 300].map((n) => (
@@ -287,6 +315,7 @@ function MangaProjectWorkspace({
           </label>
           {view?.renderedAssetId && (
             <button
+              disabled={pageBlocked}
               aria-pressed={showTranslation}
               onClick={() => setShowTranslation((value) => !value)}
             >
@@ -294,42 +323,87 @@ function MangaProjectWorkspace({
             </button>
           )}
           <button
+            disabled={pageBlocked}
             aria-pressed={showRegions}
             onClick={() => setShowRegions((value) => !value)}
           >
             {t("regions")}
           </button>
         </div>
-        <PageCanvas
-          projectId={projectId}
-          page={page}
-          renderedAssetId={showTranslation ? view?.renderedAssetId : null}
-          zoom={zoom}
-          regions={showRegions ? editedView?.regions : undefined}
-          onChangeBounds={
-            applying ? undefined : (id, bounds) => changeRegion(id, { bounds })
-          }
-          selectedRegion={activeRegion}
-          onSelectRegion={setSelectedRegion}
-          loading={loading}
-          rtl={
-            volumes.find((v) => v.id === page?.volumeId)?.readingDirection ===
-            "rtl"
-          }
-          onNavigate={(delta) =>
-            !applying &&
-            !Object.keys(edits).length &&
-            setSelected((i) =>
-              Math.max(0, Math.min(pages.length - 1, i + delta)),
-            )
-          }
-          t={t}
-        />
+        <div className="bc-manga-canvas-shell" aria-busy={pageBlocked}>
+          <PageCanvas
+            projectId={projectId}
+            page={page}
+            renderedAssetId={
+              showTranslation
+                ? (view?.renderedAssetId ??
+                  (pageBlocked && previousRender?.pageId === page?.id
+                    ? previousRender?.assetId
+                    : null))
+                : null
+            }
+            zoom={zoom}
+            regions={showRegions ? editedView?.regions : undefined}
+            onChangeBounds={
+              pageBlocked
+                ? undefined
+                : (id, bounds) => changeRegion(id, { bounds })
+            }
+            selectedRegion={activeRegion}
+            onSelectRegion={setSelectedRegion}
+            blocked={pageBlocked}
+            loading={loading}
+            rtl={
+              volumes.find((v) => v.id === page?.volumeId)?.readingDirection ===
+              "rtl"
+            }
+            onNavigate={(delta) =>
+              !applying &&
+              !Object.keys(edits).length &&
+              setSelected((i) =>
+                Math.max(0, Math.min(pages.length - 1, i + delta)),
+              )
+            }
+            t={t}
+          />
+          {pageBlocked && (
+            <div
+              className="bc-manga-page-loading"
+              role="status"
+              aria-live="polite"
+            >
+              <div>
+                <span className="bc-loading-spinner" aria-hidden="true" />
+                <strong>{t("mangaRebuildingPage")}</strong>
+                <span>
+                  {t(
+                    rebuilding?.currentStage === "masks"
+                      ? "mangaMasks"
+                      : rebuilding?.currentStage === "inpainting"
+                        ? "mangaInpainting"
+                        : rebuilding?.currentStage === "lettering"
+                          ? "mangaLettering"
+                          : "processing",
+                  )}
+                </span>
+                <progress
+                  aria-label={t("mangaRebuildingPage")}
+                  max={rebuilding?.totalSteps || undefined}
+                  value={
+                    rebuilding?.totalSteps
+                      ? rebuilding.completedSteps
+                      : undefined
+                  }
+                />
+              </div>
+            </div>
+          )}
+        </div>
       </div>
       {showRegions && (
         <RegionInspector
           view={editedView}
-          busy={applying}
+          busy={pageBlocked}
           changed={Object.keys(edits).length > 0}
           onDiscard={() => setEdits({})}
           onChangeDirection={(id, vertical) => changeRegion(id, { vertical })}
