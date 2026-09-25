@@ -1,51 +1,42 @@
-# book-converter
+# Book Converter
 
-Desktop workspace for translating long books in controlled batches, with a shared
-book prompt, glossary and reviewable AI assistant actions. Built with Rust, Tauri v2
-and React/TypeScript.
+Desktop application for translating books and manga with a shared glossary,
+editable results and resumable background jobs. Built with Rust, Tauri 2 and
+React/TypeScript. The interface supports English, Russian and Chinese.
 
-The application is undergoing a staged refactor. The implementation and acceptance
-record is in [REFACTORING_STATUS](docs/REFACTORING_STATUS.md); the remaining work is
-tracked in [REFACTORING](docs/REFACTORING.md).
+## Books
 
-## Current workflow
+Import TXT, FB2, EPUB, PDF, or supported books inside ZIP archives. The reader keeps
+text and illustrations as separate, ordered blocks. EPUB/FB2 illustrations and
+available covers are retained; PDF extraction depends on the source document.
 
-1. Create a book or manga project and choose its source and target languages.
-   The language pair stays fixed for the lifetime of the project.
-2. Configure an API provider profile in Settings and assign translation and assistant
-   roles. Profiles have independent endpoints, models and credentials.
-3. For books, set the title, author, summary, cover and shared translation prompt
-   in Overview. Imported EPUB/FB2 covers are retained; PDF JPEG covers are extracted
-   from the first page when available.
-4. Start a batch with an explicit chapter count. Optional glossary extraction runs
-   before translation; processing stops after the selected batch. Review the glossary
-   and results, adjust the prompt if needed, then start another batch.
-5. Read original and translated blocks side by side, edit translations, search across
-   either text and jump to a matching block. Existing results remain available when
-   settings change and can be marked for review.
-6. Use the assistant to discuss the current chapter and propose prompt changes,
-   glossary entries, text replacements or bounded translation batches. Proposals show
-   their changes before application; automatic application is an explicit opt-in.
-7. Use **File → Export** to save a portable `.bcproj` archive or export the book
-   as TXT, FB2 in a `.fb2.zip` archive, EPUB or PDF. Search and replace share the
-   sidebar (Ctrl/Cmd+F and Ctrl/Cmd+H); chapter instructions open from the reader
-   toolbar. **Help → About** shows the version, build identifier and build date.
+Translate a selected batch of chapters, optionally extracting terminology first.
+Book and chapter instructions, matching glossary terms and preceding story context
+are included in translation requests. Review and edit translations, search and
+replace text, import an aligned reference translation, or use the book assistant
+for proposed changes. Title, author, annotation and cover are managed in Overview.
 
-Book import supports TXT, FB2, EPUB, PDF and supported books inside ZIP archives.
-FB2 and EPUB illustrations are stored as structural image blocks, including repeated
-occurrences. FB2 sections without numbered headings are preserved.
+Export books as TXT, FB2 in a `.fb2.zip` archive, EPUB or PDF. Portable `.bcproj`
+archives contain project data and assets so work can be continued elsewhere.
 
-Manga currently supports CBZ and image-folder import, natural page ordering,
-orientation normalization, stored thumbnails, a virtualized page list, zoom and
-panning. Local model assets are downloaded on demand. **Automatic manga recognition,
-cleanup and lettering are not yet complete.** Extracted image folders can be used
-for archives that are not supported directly. See [MANGA_TOOLING](docs/MANGA_TOOLING.md)
-for model, licensing and native acceptance requirements.
+## Manga
 
-## Development
+Import CBZ/ZIP or an image folder. Browse volumes and naturally ordered pages with
+thumbnails, zoom and panning. The processing pipeline performs cloud recognition
+and translation, followed by local text masks, inpainting and lettering.
 
-Requirements: stable Rust/Cargo, Node.js/npm and the native Tauri prerequisites.
-On Linux:
+Processing requires configured API access, installed model weights and the native
+runtime. Regions can be moved/resized and locally rebuilt using existing translated
+text. Original images remain unchanged. Portable `.bcproj` export is available;
+rendered manga export to CBZ/EPUB is not currently implemented. RAR/CBR must be
+extracted to a folder before import.
+
+See [Books](docs/BOOKS.md) and [Manga](docs/MANGA.md) for the workflows and limitations.
+
+## Quick start for development
+
+Install Node.js/npm, stable Rust/Cargo and the native dependencies for Tauri.
+On Debian/Ubuntu:
 
 ```bash
 make deps-linux
@@ -53,40 +44,40 @@ make install
 make dev
 ```
 
-PDF support uses pdfium, fetched by `make dev` / `make binary` or `make fetch-pdfium`.
-Provider profiles are configured in the app. Legacy environment configuration is
-still present in the codebase; project language choices are not runtime settings.
-
-Useful commands:
+`make dev` downloads pdfium if needed and starts the desktop application with Vite.
+For local manga processing, also prepare the native resources:
 
 ```bash
-npm test
-npm run build
-cargo test --manifest-path src-tauri/Cargo.toml --lib
-cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings
-cargo run --manifest-path src-tauri/Cargo.toml --example export_contracts -- --check
-make binary
-make bundle
+npm run manga:prepare
 ```
 
-For isolated Rust tests, set `XDG_DATA_HOME` to a temporary directory. Downloader
-integration tests bind a local HTTP server. Browser fixtures exercise the interface
-without provider requests; they do not validate native dialogs, OCR quality or
-cross-platform packaging.
+Model weights are downloaded separately in **Settings → Manga models**. Configure
+provider access in Settings, create a project, choose its source and target languages,
+and start an explicit chapter/page batch. Opening a project does not start processing.
 
-The release version is declared in `src-tauri/Cargo.toml`, `src-tauri/tauri.conf.json`
-and `package.json`; `make version V=x.y.z` updates these together.
+```bash
+make binary   # Release application without an installer
+make bundle   # Platform-specific installers
+```
+
+Release builds prepare the manga runtime automatically. The runtime directory must
+remain available alongside an unbundled executable or in the application's resources.
+See [Development](docs/DEVELOPMENT.md) for checks, packaging and test commands, and
+[Settings](docs/SETTINGS.md) for providers and local data locations.
 
 ## Documentation
 
-- [Refactoring plan](docs/REFACTORING.md)
-- [Implementation and verification status](docs/REFACTORING_STATUS.md)
-- [Manga tooling requirements](docs/MANGA_TOOLING.md)
+- [Architecture and interaction diagrams](docs/ARCHITECTURE.md)
+- [Book workflow](docs/BOOKS.md)
+- [Manga workflow](docs/MANGA.md)
+- [Native manga runtime](docs/MANGA_RUNTIME.md)
+- [Settings and provider profiles](docs/SETTINGS.md)
+- [Book assistant](docs/ASSISTANT.md)
+- [Development and verification](docs/DEVELOPMENT.md)
 - [Documentation index](docs/README.md)
-
-[Current architecture](docs/ARCHITECTURE.md) describes the active backend. Use the refactoring status for remaining work and verification evidence.
 
 ## License
 
 Book Converter is free and open-source software under the [MIT License](LICENSE.md).
-Third-party components and model weights retain their own licenses.
+Third-party libraries, fonts and model weights retain their own licenses; bundled
+notices are in [third-party](third-party/) and the prepared runtime resources.

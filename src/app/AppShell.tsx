@@ -899,6 +899,10 @@ function Shell({
                 project &&
                 (panel === "glossary" ? (
                   <Glossary
+                    revision={jobList
+                      .filter((job) => job.state === "succeeded")
+                      .map((job) => `${job.job.jobId}:${job.revision}`)
+                      .join("|")}
                     key={project.id}
                     projectId={project.id}
                     t={t}

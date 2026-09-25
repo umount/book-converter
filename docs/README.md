@@ -1,14 +1,18 @@
 # Documentation
 
-- [Architecture](ARCHITECTURE.md): active modules, persistence, IPC and execution.
-- [Settings](SETTINGS.md): project configuration, providers, credentials and model downloads.
-- [Book assistant](ASSISTANT.md): supported actions, confirmation and context limits.
-- [Design decisions](DECISIONS.md): current product and implementation constraints.
-- [Manga requirements](MANGA.md): target workflow, selective reruns and acceptance.
-- [Manga tooling](MANGA_TOOLING.md): model/resource/platform assessment.
-- [Refactoring plan](REFACTORING.md): P00–P13 contracts and acceptance gates.
-- [Execution status](REFACTORING_STATUS.md): completed work, evidence and remaining work.
-- [Product overview and setup](../README.md).
+Start with the [project overview](../README.md) for capabilities and setup.
+These documents describe the current implementation, not a development roadmap.
 
-Implementation documents describe the current code; the manga requirements and
-refactoring plan also describe pending work. Use execution status to distinguish them.
+- [Architecture](ARCHITECTURE.md): component boundaries, data ownership, IPC,
+  background execution and interaction diagrams.
+- [Books](BOOKS.md): importing, translating, reviewing, terminology and export.
+- [Manga](MANGA.md): page processing, region editing and supported output.
+- [Settings](SETTINGS.md): languages, provider roles, credentials and data locations.
+- [Book assistant](ASSISTANT.md): context, proposals and confirmation.
+- [Native manga runtime](MANGA_RUNTIME.md): worker, models, resources and diagnostics.
+- [Development](DEVELOPMENT.md): setup, contracts, tests and packaging.
+
+Keep behavior descriptions with their owning feature. Keep cross-component rules
+and diagrams in Architecture, and reproducible development commands in Development.
+Changes to IPC must update generated contracts; changes to workflows should update
+the corresponding document in the same change.

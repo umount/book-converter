@@ -1,4 +1,4 @@
-# Synthetic refactoring fixtures
+# Synthetic test fixtures
 
 These fixtures are original generated test data, dedicated to the public domain
 under CC0-1.0. No source from `samples/` is included.

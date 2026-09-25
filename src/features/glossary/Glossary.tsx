@@ -13,7 +13,9 @@ export function Glossary({
   extract,
   canExtract,
   onJob,
+  revision,
 }: {
+  revision: string;
   onJob: (
     job: import("../../shared/contracts/generated").JobRef,
   ) => Promise<void>;
@@ -27,6 +29,7 @@ export function Glossary({
     [error, setError] = useState<unknown>(null),
     [busy, setBusy] = useState(false),
     [edit, setEdit] = useState<GlossaryTermView | null>(null);
+  const [totalTerms, setTotalTerms] = useState<number | null>(null);
   const [showExtraction, setShowExtraction] = useState(false);
   const [extractionCount, setExtractionCount] = useState("10");
   const [repeatExtraction, setRepeatExtraction] = useState(false);
@@ -107,16 +110,22 @@ export function Glossary({
         return kind;
     }
   };
+  async function readPage(cursor: string | null) {
+    const filtered = Boolean(filter.query || filter.pinnedOnly);
+    const [next, all] = await Promise.all([
+      projectApi.glossary({ projectId, ...filter, cursor, limit: 100 }),
+      filtered
+        ? projectApi.glossary({ projectId, query: "", pinnedOnly: false, cursor: null, limit: 1 })
+        : Promise.resolve(null),
+    ]);
+    return { next, total: all?.total ?? next.total };
+  }
   async function load(more = false) {
     setBusy(true);
     setError(null);
     try {
-      const next = await projectApi.glossary({
-        projectId,
-        ...filter,
-        cursor: more ? (page?.nextCursor ?? null) : null,
-        limit: 100,
-      });
+      const { next, total } = await readPage(more ? (page?.nextCursor ?? null) : null);
+      setTotalTerms(total);
       setPage((previous) => ({
         ...next,
         items: more ? [...(previous?.items ?? []), ...next.items] : next.items,
@@ -132,10 +141,12 @@ export function Glossary({
     setBusy(true);
     setPage(null);
     setError(null);
-    void projectApi
-      .glossary({ projectId, ...filter, cursor: null, limit: 100 })
-      .then((v) => {
-        if (alive) setPage(v);
+    void readPage(null)
+      .then(({ next, total }) => {
+        if (alive) {
+          setPage(next);
+          setTotalTerms(total);
+        }
       })
       .catch((e) => {
         if (alive) setError(e);
@@ -146,7 +157,7 @@ export function Glossary({
     return () => {
       alive = false;
     };
-  }, [projectId, filter]);
+  }, [projectId, filter, revision]);
   async function saveTerm() {
     if (!edit || !page) return;
     setBusy(true);
@@ -194,7 +205,12 @@ export function Glossary({
     <div className="bc-tool bc-glossary">
       {confirmation.dialog}
       <header className="bc-section-heading">
-        <h2>{t("glossary")}</h2>
+        <div>
+          <h2>{t("glossary")}</h2>
+          <span className="bc-hint" role="status">
+            {t("totalTerms")}: {totalTerms ?? "…"}
+          </span>
+        </div>
         <div>
           <button
             disabled={busy || !page}
@@ -268,7 +284,7 @@ export function Glossary({
           {t("pinnedOnly")}
         </label>
       </form>
-      {page && (
+      {page && (filter.query || filter.pinnedOnly) && (
         <p className="bc-hint" role="status">
           {t("termsFound")}: {page.total}
         </p>

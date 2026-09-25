@@ -2,9 +2,9 @@
 //! between languages via provider profiles. GUI is Tauri + React.
 //!
 //! The language pair is fixed at project creation: nothing here is
-//! written for one pair or one book (see `DECISIONS.md`, "Universal converter").
+//! written for one pair or one book (see `docs/ARCHITECTURE.md`).
 //!
-//! Architecture and design: see `docs/ARCHITECTURE.md` and `docs/DECISIONS.md`.
+//! Architecture and component interactions: see `docs/ARCHITECTURE.md`.
 //! The modules below are UI-agnostic; the frontend calls them via `commands`.
 
 pub mod ai;

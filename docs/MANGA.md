@@ -1,138 +1,75 @@
-# Manga workflow requirements
+# Manga
 
-Updated 2026-09-25. Automatic processing through lettering is implemented and tested
-with synthetic API replies plus real native image stages; product acceptance remains open.
-Book scope is frozen and superseded backend cleanup is complete. Manga work is active. See [execution status](REFACTORING_STATUS.md)
-and [model/platform assessment](MANGA_TOOLING.md).
+## Import and navigation
 
-## Domain and workspace
+Create a **Manga** project from CBZ/ZIP or an image folder. Folder/volume names and
+pages use natural ordering. Images are normalized for orientation; thumbnails are
+stored independently. Identical images can share asset bytes while retaining separate
+page identities. Project source/target languages are fixed at creation.
 
-Manga is an explicitly selected project kind. Illustrated books remain books. Volumes,
-pages, regions, masks and versioned renders are separate from book chapters/blocks.
-Identical image bytes can share an asset while remaining distinct pages with distinct IDs.
-The language pair is fixed at creation. RTL controls reading order, not image mirroring.
+RAR/CBR import and manga-specific EPUB import are not implemented. Extract unsupported
+archives to an image folder before importing. Imported projects keep their own assets,
+so navigation does not require the source archive to remain available.
 
-Import must preserve natural volume/page order. Initial sources are CBZ/ZIP, supported
-RAR/CBR extraction and image folders. If no RAR extractor is available, an extracted
-folder remains an import option. Password/corruption/unsupported-format errors must be
-clear. Archive traversal, links, expanded size/count and image dimensions are validated.
-EPUB manga import is a later adapter; a spine item is not necessarily one image/page.
+The workspace provides volume filtering, virtualized thumbnails, page navigation,
+zoom, panning, region overlays and original/translated views. A page without a render
+is not considered translated. A page without recognition is not treated as an empty
+page. Selecting a page does not start recognition or translation.
 
-The workspace needs volume/page navigation with virtualized thumbnails, a zoomable
-canvas, original/translation/comparison views and a switchable region inspector or
-assistant panel. Before a render exists, say that translation is not ready. Do not
-infer that a page has no text before recognition. Load full-resolution images only
-where necessary, with bounded memory and neighbor prefetch.
+## Processing prerequisites
 
-## Automatic pipeline
+Settings supplies API profiles for recognition and translation; unassigned roles use
+the shared default configuration. Recognition needs a provider/model that accepts
+image input. The local preflight validates configured access, model installation and
+native resources; it does not contact the provider or prove OCR quality.
 
-Recognition → region translation → generated masks → cleanup → lettering → review/export.
-Persist logical stages independently even when a provider combines requests. Recognition
-produces region IDs, geometry, source text, category and reading order; translation
-returns text keyed by those IDs, not invented geometry.
+Install both catalog models from Settings and ensure the packaged native worker/runtime
+is present. Development setup is described in [Native runtime](MANGA_RUNTIME.md).
+Import and viewing remain available without these processing prerequisites.
 
-Use cloud recognition/translation and lightweight local cleanup/lettering. Required
-model weights are downloaded on demand, including Hugging Face sources when selected;
-do not bundle the full weights by default. Windows, macOS and Linux are required,
-with no mandatory GPU. Actual model choice depends on tooling/quality/resource gates.
-There is no manual/model-free processing fallback. Import/viewing work without a ready
-processing stack, but processing preflight blocks until all capabilities are available.
+## Automatic batches
 
-Automatic masks identify text pixels without erasing whole rectangular bubbles or panel art.
-Explicitly moved/resized regions use the user-selected rectangle as a full cleanup mask.
-Coordinates use EXIF-normalized canonical pixels with inverse crop/resize mappings.
-Lettering records font, size, alignment, line spacing and stroke. Overflow requires
-review; never silently clip it. Complex SFX/handwriting matching is not promised initially.
+Start a requested number of eligible pages from the current page, within the selected
+volume or all volumes. The job freezes settings, both API profiles and local component
+versions. It finishes all stages for one page before moving to the next:
 
-## Revisions and selective reruns
+1. **Recognition:** cloud vision returns text, geometry, category and reading order.
+   Coordinates are mapped into the normalized original image space.
+2. **Translation:** cloud text generation translates ordered regions by ID, using
+   project languages and locally matched glossary terms. Manual translations are kept.
+3. **Masks:** the local segmentation model identifies text pixels.
+4. **Inpainting:** the local cleanup model generates a cleaned image.
+5. **Lettering:** local shaping/layout draws the translated text and publishes a render.
 
-Execution status, result freshness and human review are separate. Originals are immutable;
-every derived image/mask has a separate asset identity. Never overwrite bytes behind an
-unchanged URL. Publish only complete results whose input revisions still match.
+Each stage has its own durable result, fingerprint and checkpoint. Cancellation keeps
+committed work. Resume reuses current results and recomputes invalidated stages.
+Original pages are immutable; masks, cleaned pages and rendered pages use new asset IDs.
+The pipeline and worker interaction are shown in [Architecture](ARCHITECTURE.md).
 
-- Translation/font edits invalidate lettering, not recognition/cleanup.
-- Mask edits invalidate cleanup/lettering, not translation.
-- Source-text edits invalidate dependent translation/render.
-- Geometry edits invalidate masks/cleanup/layout.
-- Recognition reruns preserve old revisions and reconcile edited text.
-- Earlier dialogue changes may stale later context; never silently start paid reruns.
+## Region editing and rebuilds
 
-Start with bounded execution and sequential contextual translation. Resume stages from
-checkpoints; support cancellation, finite retry and stage/page progress with measured ETA.
-Manual region/mask drawing is outside this scope; failed automatic results need review/retry.
+Open **Regions**, select a frame, drag to move it and use its lower-right corner to
+resize. Geometry stays in original pixels at every zoom. Choose horizontal lettering
+or vertically oriented lettering rotated by 90 degrees in the inspector.
 
-## Portability and acceptance
+**Apply** saves pending edits and starts a local masks → inpainting → lettering rebuild
+using the original page and saved translations. It does not request recognition or
+translation again. Explicitly changed rectangles can be used as full cleanup masks.
+**Cancel** discards pending edits. Enlarging a region can resolve layout overflow.
 
-Project archives preserve kind, volumes, page identities, original assets, regions,
-masks, edits and versioned results in a consistent snapshot. Credentials and model
-weights are not project content. Manga output is ordered CBZ/EPUB with explicit policies:
-ready results only or originals for unfinished pages. Do not silently drop pages.
+Recognition reruns reconcile existing regions and preserve manual text where possible;
+unmatched edited regions remain available for review. Result freshness is separate
+from execution status and manual-review flags. Geometry changes invalidate local image
+stages; text/style changes invalidate their dependent outputs.
 
-Acceptance must verify multi-volume ordering, offline viewing after the source archive
-is removed, bounded image memory, correct geometry after crop/resize, selective reruns,
-stale-result rejection, restart/resume and portable archives. Validate actual Tauri image
-loading and model quality on representative samples. Manga assistant actions must call
-manga services and must never dispatch book chapter operations.
+## Errors and output
 
-## Implemented recognition backend
+Jobs distinguishes text overflow, missing font coverage, worker timeout and other local
+processing failures. Preflight reports missing API configuration, weights or native
+resources before a batch starts. A verified download means the artifact matches the
+catalog; it does not guarantee good segmentation, translation or typography on every page.
 
-An explicit bounded recognition-stage job now persists page geometry and OCR text,
-with cancellation and checkpointed resume. It requires the manga recognition profile
-and rejects unsupported stages; it does not run the complete translation pipeline.
-Reruns retain matched manual text and preserve unmatched edited regions for review.
-Original assets remain immutable. No automatic mask or inpainting result is generated
-from a text rectangle. The automatic job composes this stage with translation,
-masks, cleanup and lettering.
-
-The page workspace can inspect saved recognition results with selectable overlays
-and a collapsible right panel. It distinguishes unrecognized, empty and stale OCR
-and shows preserved manual-text flags. Region text is currently read-only in the UI.
-Opening or selecting a page never starts a paid recognition request.
-
-The workspace now exposes a local processing preflight with stage-specific reasons.
-Opening or refreshing it never uploads pages, downloads models or creates jobs.
-Configured recognition means the local profile validates, not that provider image
-access or OCR quality has been verified. Downloaded weights do not bypass missing
-segmentation, cleanup runtime or lettering capabilities.
-
-## Implemented dialogue translation backend
-
-The explicit translation stage uses the project's manga translation API profile,
-fixed languages, ordered OCR regions and locally matched glossary terms. It preserves
-manual translations, publishes a complete versioned result atomically and resumes
-without translating already completed pages again. Malformed or stale replies cannot
-replace region text. Qwen/local LLM deployment is explicitly outside this implementation.
-
-Local mask and cleanup stages now use the isolated native worker through the durable
-job runner. The backend resolves installed catalog models and packaged native files;
-results are revision-checked immutable assets. Lettering uses the cleaned result and
-current translated regions, validates font coverage/overflow and saves its chosen style.
-
-## Automatic batch controls
-
-A compact control starts a requested number of unfinished pages from the current page
-within the selected volume (or all volumes). One durable run freezes both API profiles,
-settings and native versions. Processing finishes each page before moving on, and
-resume reuses successful current results without repeating API calls. Stale results
-are recomputed, preserving attempt history. Nothing starts when a page is opened.
-
-Preflight requires valid profiles, downloaded mask/cleanup models and an intact native
-resource pack. `npm run manga:prepare` prepares development resources; release builds
-run it automatically. The manga viewer can switch between the current translated
-render and its immutable original. Job details show volume, page, stage and page count.
-
-Live API quality, native GUI interactions, representative manga typography, target
-resource budgets, review/export and non-Linux packaged builds still need acceptance.
-
-## Editing recognized regions
-
-Open **Regions**, drag a frame to move it, and drag its lower-right corner to resize.
-Coordinates stay in original image pixels at every zoom. Select horizontal lettering
-or vertical lettering rotated 90 degrees in the inspector. **Apply** saves pending edits
-and runs a local masks → inpainting → lettering job from the immutable original page,
-using existing translated text; it does not call recognition/translation APIs again.
-**Cancel** discards pending edits. Enlarging a narrow region can resolve text overflow.
-Manual rectangle cleanup and text direction survive subsequent local rebuilds.
-
-Worker overflow, unsupported glyphs and timeout errors are reported separately in Jobs.
-Old failures recorded as `mangaLocalProcessing` cannot recover details retrospectively.
+Portable `.bcproj` archives include pages, regions, edits and versioned assets.
+Rendered manga export to CBZ/EPUB is currently disabled. Complex SFX recreation and
+arbitrary handwritten lettering are not guaranteed by the existing layout engine.
+Check the resulting pages visually before treating a translation as finished.
