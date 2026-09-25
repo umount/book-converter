@@ -334,13 +334,13 @@ pub async fn manga_preflight(
     args: ProjectArgs,
 ) -> Result<crate::app::contracts::MangaPreflight, AppError> {
     use crate::application::manga::local;
-    context.models.list().await.map_err(|_|AppError::invalid("mangaModelMissing"))?;
-    let runtime=native_files(&app).is_ok();
-    let reasons=if !runtime {[Some("mangaRuntimeMissing");3]}else{[
-        context.models.downloaded_artifact(local::MASK_MODEL).is_none().then_some("mangaMaskModelRequired"),
-        context.models.downloaded_artifact(local::CLEAN_MODEL).is_none().then_some("mangaCleanupModelRequired"),None]};
+    let models=context.models.clone();
     let manager = context.manager.clone();
     tauri::async_runtime::spawn_blocking(move || {
+        let runtime=native_files(&app).is_ok();
+        let reasons=if !runtime {[Some("mangaRuntimeMissing");3]}else{[
+            (!models.artifact_present(local::MASK_MODEL)).then_some("mangaMaskModelRequired"),
+            (!models.artifact_present(local::CLEAN_MODEL)).then_some("mangaCleanupModelRequired"),None]};
         manager
             .lease(&args.project_id)?
             .with_connection(|db, _| crate::application::manga::preflight::inspect(db,reasons))
@@ -403,6 +403,7 @@ pub async fn manga_update_region(context: tauri::State<'_, AppContext>, args: cr
 #[tauri::command]
 pub async fn manga_rebuild_page(context:tauri::State<'_,AppContext>,app:tauri::AppHandle,args:crate::app::requests::GetMangaPageArgs)->Result<crate::app::contracts::JobRef,AppError>{
     use crate::{application::manga::local,app::{contracts::{MangaStage,EntitySelection,JobRef},requests::{StartMangaStageArgs,MangaStageOptions}}};
+    context.models.list().await.map_err(|_|AppError::invalid("mangaModelMissing"))?;
     let pipeline=local::pipeline(&context.models,native_files(&app)?,MangaStage::Masks)?;
     let manager=context.manager.clone();
     let job=tauri::async_runtime::spawn_blocking(move||{

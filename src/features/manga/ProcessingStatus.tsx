@@ -36,12 +36,14 @@ export function ProcessingStatus({
   pageIds,
   onSettings,
   setupVersion,
+  batch = false,
   t,
 }: {
   projectId: string;
   pageIds: string[];
   onSettings: () => void;
   setupVersion: number;
+  batch?: boolean;
   t: T;
 }) {
   const [count, setCount] = useState(10);
@@ -142,8 +144,11 @@ export function ProcessingStatus({
     try {
       await projectApi.startMangaAutomatic({
         projectId,
-        selection: { kind: "explicit_ids", ids: pageIds },
-        options: { maxPages: count, force: false },
+        selection: {
+          kind: "explicit_ids",
+          ids: batch ? pageIds : pageIds.slice(0, 1),
+        },
+        options: { maxPages: batch ? count : 1, force: false },
       });
       setVersion((value) => value + 1);
     } catch (reason) {
@@ -155,30 +160,37 @@ export function ProcessingStatus({
   return (
     <section className="bc-manga-processing">
       <div className="bc-toolbar">
-        <label>
-          {t("pages")}{" "}
-          <input
-            type="number"
-            min={1}
-            max={pageIds.length || 1}
-            value={count}
-            onChange={(event) => setCount(Number(event.target.value))}
-            style={{ width: 64 }}
-          />
-        </label>
+        {batch && (
+          <label>
+            {t("pages")}{" "}
+            <input
+              type="number"
+              min={1}
+              max={pageIds.length || 1}
+              value={count}
+              onChange={(event) => setCount(Number(event.target.value))}
+              style={{ width: 64 }}
+            />
+          </label>
+        )}
         <button
           disabled={
             !ready ||
             starting ||
             !!activeJob ||
             !pageIds.length ||
-            !Number.isInteger(count) ||
-            count < 1
+            (batch && (!Number.isInteger(count) || count < 1))
           }
-          title={t("mangaBatchHint")}
+          title={t(batch ? "mangaBatchHint" : "translatePage")}
           onClick={() => void start()}
         >
-          {t(starting ? "processing" : "translateBatch")}
+          {t(
+            starting
+              ? "processing"
+              : batch
+                ? "translateBatch"
+                : "translatePage",
+          )}
         </button>
         {activeJob && (
           <span role="status" className="bc-hint">
@@ -210,7 +222,7 @@ export function ProcessingStatus({
           {t("loading")}
         </p>
       )}
-      {ready && (!Number.isInteger(count) || count < 1) && (
+      {batch && ready && (!Number.isInteger(count) || count < 1) && (
         <p role="status" className="bc-warning">
           {t("mangaCountRequired")}
         </p>

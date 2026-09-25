@@ -122,6 +122,15 @@ impl ModelManager {
         self.initialize().await?;
         Ok(self.inner.lock().unwrap().views.clone())
     }
+    /// Fast UI readiness only. Admission still initializes and verifies pinned hashes.
+    pub fn artifact_present(&self, id: &str) -> bool {
+        let Ok(inner)=self.inner.lock() else {return false};
+        let Some(view)=inner.views.iter().find(|v|v.model.id==id) else {return false};
+        if view.status==ModelStatus::Failed {return false;}
+        let directory=self.root.join(view.model.directory());
+        check_directory(&self.root).is_ok() && check_directory(&directory).is_ok()
+            && regular_size(&directory.join(view.model.artifact_name())).ok().flatten()==Some(u64::from(view.model.bytes))
+    }
     /// Admission only; the isolated worker rechecks pinned bytes/hash at model load.
     pub fn downloaded_artifact(&self, id: &str) -> Option<(ModelSpec, PathBuf)> {
         let inner = self.inner.lock().ok()?;

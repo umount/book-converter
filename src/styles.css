@@ -1810,3 +1810,5 @@ button + button {
 .bc-loading-spinner { width:24px; height:24px; border:2px solid var(--line); border-top-color:var(--accent); border-radius:50%; animation:bc-spin .8s linear infinite; }
 @keyframes bc-spin { to { transform:rotate(360deg); } }
 @media (prefers-reduced-motion:reduce) { .bc-loading-spinner { animation:none; } }
+
+.bc-manga-batch {padding:12px 16px; overflow:auto;}

@@ -467,7 +467,7 @@ function Shell({
   const tabs =
     project?.kind === "book"
       ? (["reader", "overview", "glossary", "reference"] as const)
-      : (["reader", "glossary"] as const);
+      : (["reader", "overview", "glossary"] as const);
   const commands: Command[] = [
     {
       id: "library",
@@ -846,7 +846,7 @@ function Shell({
                   {t(
                     tab === "reader" && project?.kind === "manga"
                       ? "pages"
-                      : tab,
+                      : tab === "overview" && project?.kind === "manga" ? "batchTranslation" : tab,
                   )}
                 </button>
               ))}
@@ -913,6 +913,7 @@ function Shell({
                   />
                 ) : project.kind === "manga" ? (
                   <MangaWorkspace
+                    batch={panel === "overview"}
                     jobs={jobList}
                     onJob={(job) => jobs.refresh(job)}
                     onSettings={()=>setSettings(true)}

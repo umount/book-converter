@@ -20,6 +20,7 @@ export function MangaWorkspace({
   t,
   onSettings,
   setupVersion,
+  batch = false,
   jobs,
   onJob,
 }: {
@@ -27,6 +28,7 @@ export function MangaWorkspace({
   t: T;
   onSettings: () => void;
   setupVersion: number;
+  batch?: boolean;
   jobs: JobView[];
   onJob: (job: JobRef) => Promise<void>;
 }) {
@@ -37,6 +39,7 @@ export function MangaWorkspace({
       t={t}
       onSettings={onSettings}
       setupVersion={setupVersion}
+      batch={batch}
       jobs={jobs}
       onJob={onJob}
     />
@@ -48,6 +51,7 @@ function MangaProjectWorkspace({
   t,
   onSettings,
   setupVersion,
+  batch = false,
   jobs,
   onJob,
 }: {
@@ -55,6 +59,7 @@ function MangaProjectWorkspace({
   t: T;
   onSettings: () => void;
   setupVersion: number;
+  batch?: boolean;
   jobs: JobView[];
   onJob: (job: JobRef) => Promise<void>;
 }) {
@@ -191,6 +196,22 @@ function MangaProjectWorkspace({
   const activeRegion = view?.regions.some((r) => r.id === selectedRegion)
     ? selectedRegion
     : (view?.regions[0]?.id ?? null);
+  if (batch)
+    return (
+      <div className="bc-manga-batch">
+        <p className="bc-hint">
+          {t("mangaBatchHint")} {t("page")} {selected + 1} / {pages.length}
+        </p>
+        <ProcessingStatus
+          batch
+          projectId={projectId}
+          pageIds={loading ? [] : pages.slice(selected).map((p) => p.id)}
+          onSettings={onSettings}
+          setupVersion={setupVersion}
+          t={t}
+        />
+      </div>
+    );
   return (
     <div className="bc-manga">
       <aside>

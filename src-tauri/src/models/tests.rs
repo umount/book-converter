@@ -267,3 +267,19 @@ async fn safetensors_use_their_own_verified_cache_artifact_and_resume_path() {
     assert!(!dir.join(model.artifact_name()).exists());
     std::fs::remove_dir_all(&manager.root).unwrap();
 }
+
+#[tokio::test]
+async fn presence_check_does_not_bypass_checksum_verification() {
+    let (manager,spec)=fixture();
+    assert!(!manager.artifact_present(&spec.id));
+    let directory=manager.root.join(spec.directory());
+    std::fs::create_dir_all(&directory).unwrap();
+    std::fs::write(directory.join(spec.artifact_name()),b"xxxxxx").unwrap();
+    assert!(manager.artifact_present(&spec.id));
+    assert!(manager.downloaded_artifact(&spec.id).is_none());
+    let views=manager.list().await.unwrap();
+    assert_eq!(views[0].status,ModelStatus::Failed);
+    assert!(!manager.artifact_present(&spec.id));
+    assert!(manager.downloaded_artifact(&spec.id).is_none());
+    std::fs::remove_dir_all(&manager.root).unwrap();
+}
