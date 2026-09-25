@@ -30,14 +30,16 @@ export function Assistant({
   const [busy, setBusy] = useState(false);
   const [autoRun, setAutoRun] = useState(false);
   const [error, setError] = useState<unknown>(null);
+  const viewVersion = useRef(0);
   const active = useRef(true),
     lock = useRef(false);
   useEffect(() => {
     active.current = true;
+    const version = ++viewVersion.current;
     void projectApi
       .assistantView({ projectId })
       .then((v) => {
-        if (active.current) setView(v);
+        if (active.current && version === viewVersion.current) setView(v);
       })
       .catch((e) => {
         if (active.current) setError(e);
@@ -58,13 +60,20 @@ export function Assistant({
       proposalId: id,
       approved,
     });
+    // The mutation has succeeded. Remove its confirmation before refreshing any
+    // other UI so a refresh failure cannot make an applied action look pending.
+    if (active.current) setView((current) => ({
+      ...current, proposals: current.proposals.filter((p) => p.id !== id),
+    }));
+    const next = await projectApi.assistantView({ projectId });
+    if (active.current) setView(next);
     if (job) await onJob(job);
     if (approved) await refresh();
-    if (active.current) setView(await projectApi.assistantView({ projectId }));
   }
   async function act(work: () => Promise<void>) {
     if (lock.current) return;
     lock.current = true;
+    ++viewVersion.current;
     setBusy(true);
     setError(null);
     try {
@@ -73,15 +82,14 @@ export function Assistant({
     } catch (e) {
       if (active.current) setError(e);
     } finally {
-      lock.current = false;
-      if (active.current) {
-        setBusy(false);
-        void projectApi
-          .assistantView({ projectId })
-          .then((v) => {
-            if (active.current) setView(v);
-          })
-          .catch(() => {});
+      try {
+        const next = await projectApi.assistantView({ projectId });
+        if (active.current) setView(next);
+      } catch {
+        // Keep the known local state if transcript refresh is unavailable.
+      } finally {
+        lock.current = false;
+        if (active.current) setBusy(false);
       }
     }
   }
@@ -108,7 +116,7 @@ export function Assistant({
                   ? t("actionResult")
                   : t("assistant")}
             </strong>
-            <p style={{ whiteSpace: "pre-wrap" }}>{m.text}</p>
+            <p style={{ whiteSpace: "pre-wrap" }}>{messageText(m.role, m.text, t)}</p>
           </article>
         ))}
         {view.proposals.map((p) => (
@@ -161,7 +169,8 @@ export function Assistant({
         ))}
         {error != null && (
           <p className="bc-error" role="alert">
-            {errorText(error, t)}
+            {(error as { code?: string })?.code === "revision_conflict"
+              ? t("assistantConflict") : errorText(error, t)}
           </p>
         )}
       </div>
@@ -234,4 +243,18 @@ export function Assistant({
       </form>
     </section>
   );
+}
+
+
+// Tool outcomes are authoritative; do not show raw JSON or repeat a whole chapter.
+function messageText(role: string, text: string, t: T): string {
+  if (role !== "tool") return text;
+  try {
+    const result = JSON.parse(text) as { status?: string };
+    if (result.status === "applied") return t("assistantApplied");
+    if (result.status === "queued") return t("queued");
+  } catch {
+    // Older plain-text history is still readable.
+  }
+  return text;
 }

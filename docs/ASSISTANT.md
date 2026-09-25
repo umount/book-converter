@@ -17,7 +17,11 @@ Project conversation history is persisted in SQLite.
 The model returns a reply and structured suggestions. The backend prepares previews
 bound to the project and captured revisions. Confirmation invokes the same services
 used by editor controls; stale proposals cannot overwrite newer work. The UI's explicit
-auto-apply option can apply supported proposals for that request.
+auto-apply option can apply supported proposals for that request. All literal replacements
+in one answer are combined into a single preview and atomic chapter revision; they
+require only one confirmation. Applied proposals disappear before the editor refreshes,
+and the transcript displays a clear applied/queued result. Local editorial corrections
+do not mark subsequent chapters for review. New answers supersede earlier pending proposals.
 
 Pending proposals live in memory, expire after 30 minutes and do not survive application
 restart. Cancelling a turn aborts the pending request. Active-turn guards prevent

@@ -99,7 +99,11 @@ pub fn save_translation_in(
     for (id, text) in &value.blocks {
         tx.execute("INSERT INTO book_translation_blocks(translation_id,chapter_id,source_block_id,translated_text) VALUES(?1,?2,?3,?4)",params![value.id,value.chapter_id,id,text]).map_err(storage_error)?;
     }
-    tx.execute("UPDATE book_translations SET status='needs_review' WHERE status='ready' AND provenance!='reference' AND chapter_id IN (SELECT id FROM book_chapters WHERE position > (SELECT position FROM book_chapters WHERE id=?1))",[&value.chapter_id]).map_err(storage_error)?;
+    // Local editorial corrections do not invalidate the rest of the book.
+    // Source edits and newly generated translations retain their own dependency checks.
+    if !matches!(value.provenance.as_str(), "manual" | "manual-replace") {
+        tx.execute("UPDATE book_translations SET status='needs_review' WHERE status='ready' AND provenance!='reference' AND chapter_id IN (SELECT id FROM book_chapters WHERE position > (SELECT position FROM book_chapters WHERE id=?1))",[&value.chapter_id]).map_err(storage_error)?;
+    }
     Ok(Revision(revision.to_string()))
 }
 

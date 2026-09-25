@@ -69,14 +69,28 @@ pub fn preview(
     db: &mut Connection,
     args: &BookReplacePreviewArgs,
 ) -> Result<PreparedReplacement, AppError> {
-    if args.search.is_empty() || args.search.len() > 8192 || args.replacement.len() > 65536 {
+    preview_replacements(db, args, &[(args.search.clone(), args.replacement.clone())])
+}
+
+/// One snapshot and one publication for all literal corrections in an assistant reply.
+pub fn preview_replacements(
+    db: &mut Connection,
+    args: &BookReplacePreviewArgs,
+    replacements: &[(String, String)],
+) -> Result<PreparedReplacement, AppError> {
+    if replacements.is_empty() {
         return Err(AppError::invalid("search"));
     }
+    let patterns = replacements.iter().map(|(search, replacement)| {
+        if search.is_empty() || search.len() > 8192 || replacement.len() > 65536 {
+            return Err(AppError::invalid("search"));
+        }
+        let pattern = regex::RegexBuilder::new(&regex::escape(search))
+            .case_insensitive(!args.case_sensitive).build()
+            .map_err(|_| AppError::invalid("search"))?;
+        Ok((pattern, replacement))
+    }).collect::<Result<Vec<_>, AppError>>()?;
     ProjectRepository::new(db, ProjectKind::Book)?;
-    let pattern = regex::RegexBuilder::new(&regex::escape(&args.search))
-        .case_insensitive(!args.case_sensitive)
-        .build()
-        .map_err(|_| AppError::invalid("search"))?;
     // One read transaction captures settings, chapter and translation revisions together.
     let tx = db.transaction().map_err(storage_error)?;
     let settings = shared::settings(&tx)?;
@@ -122,14 +136,17 @@ pub fn preview(
         let before_count = changes.len();
         for (block, text) in &mut blocks {
             bytes = bytes.saturating_add(text.len());
-            let replaced = pattern.replace_all(text, regex::NoExpand(&args.replacement));
+            let mut replaced = text.clone();
+            for (pattern, replacement) in &patterns {
+                replaced = pattern.replace_all(&replaced, regex::NoExpand(replacement)).into_owned();
+            }
             if replaced != *text {
                 bytes = bytes.saturating_add(replaced.len());
                 changes.push(BookReplaceChange {
                     chapter_id: ChapterId(chapter.clone()),
                     block_id: BlockId(block.clone()),
                     before: text.clone(),
-                    after: replaced.into_owned(),
+                    after: replaced,
                 });
                 *text = changes.last().unwrap().after.clone();
             }
