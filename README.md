@@ -66,16 +66,16 @@ remain available alongside an unbundled executable or in the application's resou
 See [Development](docs/DEVELOPMENT.md) for checks, packaging and test commands, and
 [Settings](docs/SETTINGS.md) for providers and local data locations.
 
-## Windows: запуск и сборка
+## Windows: development and builds
 
-Поддерживается Windows x64. Для сборки из исходников установите:
+Windows x64 is supported. To build from source, install:
 
-- Node.js 22 с npm.
-- Rust через rustup с toolchain `stable-x86_64-pc-windows-msvc`.
-- Visual Studio 2022 Build Tools: **Desktop development with C++**, MSVC и Windows SDK.
-- Microsoft Edge WebView2 Runtime, если его ещё нет в системе.
+- Node.js 22 with npm.
+- Rust through rustup with the `stable-x86_64-pc-windows-msvc` toolchain.
+- Visual Studio 2022 Build Tools with **Desktop development with C++**, MSVC and the Windows SDK.
+- Microsoft Edge WebView2 Runtime, if it is not already installed.
 
-Откройте PowerShell в каталоге проекта. Команды выполняются без `make`:
+Open PowerShell in the project directory. These commands do not require `make`:
 
 ```powershell
 npm ci
@@ -83,47 +83,48 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/prepare-windows.
 npm run tauri -- dev
 ```
 
-Первый запуск требует интернет: подготовка скачивает ONNX Runtime и собирает
-`manga-inference.exe`, затем открывает приложение. Последующие запуски используют
-кэш скачивания и инкрементальную сборку Rust. `npm run dev` запускает только веб-интерфейс,
-без нативных функций приложения.
+The first launch requires internet access: preparation downloads ONNX Runtime and
+builds `manga-inference.exe` before opening the application. Subsequent launches use
+the download cache and incremental Rust compilation. `npm run dev` starts only the
+web interface, without the application's native features.
 
-Для перевода манги настройте API в **Настройках** и скачайте обе модели обработки.
-Модели и исполняемый компонент — разные вещи: скачивание моделей не исправляет
-отсутствующий `manga-runtime`. При запуске по инструкции компонент готовится автоматически.
+For manga translation, configure API access in **Settings** and download both
+processing models. Model weights and the executable runtime are separate components:
+downloading models does not restore a missing `manga-runtime`. The launch command
+above prepares the runtime automatically.
 
-### Обычный установщик
+### Release installer
 
-После подготовки зависимостей и pdfium команда выше заменяется на:
+After preparing the dependencies and pdfium, build the installer:
 
 ```powershell
 npm run tauri -- build --target x86_64-pc-windows-msvc --bundles nsis
 ```
 
-Установщик находится в
+The installer is written to
 `src-tauri/target/x86_64-pc-windows-msvc/release/bundle/nsis/`.
-Передавайте пользователям установщик: отдельный `book-converter.exe` без ресурсов
-недостаточен для обработки манги.
+Distribute the installer: a standalone `book-converter.exe` without its resources
+cannot process manga.
 
-### Диагностическая сборка для тестировщиков
+### Diagnostic build for testers
 
 ```powershell
 npm run build:debug:windows
 ```
 
-Скрипт сам выполняет `npm ci`, подготовку pdfium и сборку установщика с компонентом
-манги, отладочной информацией и полным логированием по умолчанию.
-Результат: `src-tauri/target/x86_64-pc-windows-msvc/debug/bundle/nsis/*-setup.exe`.
-Тестировщикам не нужны Node.js, Rust или Python — только установщик, API-настройки
-и скачанные через приложение модели.
+The script runs `npm ci`, prepares pdfium and builds an installer with the manga
+runtime, debug information and full diagnostic logging enabled by default.
+Output: `src-tauri/target/x86_64-pc-windows-msvc/debug/bundle/nsis/*-setup.exe`.
+Testers do not need Node.js, Rust or Python; they need the installer, configured API
+access and models downloaded through the application.
 
-После воспроизведения ошибки: **Настройки → Диагностика → Сохранить логи диагностики**.
-Галочка **Полное диагностическое логирование** применяется сразу и запоминается;
-API-ключи, тексты книг и изображения в логи не записываются. Ранее сохранённое
-отключение логирования сохраняется и после установки диагностической сборки.
+After reproducing an issue, select **Settings → Diagnostics → Save diagnostic logs**.
+The **Full diagnostic logging** checkbox takes effect immediately and persists across
+restarts. API keys, book text and images are not written to logs. A previously saved
+preference to disable logging also applies to diagnostic builds.
 
-Также предусмотрен ручной workflow **Windows diagnostic installer** в GitHub Actions.
-После его запуска установщик доступен в артефакте `book-converter-windows-debug`.
+The manual **Windows diagnostic installer** GitHub Actions workflow builds the same
+installer and uploads it as the `book-converter-windows-debug` artifact.
 
 ## Documentation
 

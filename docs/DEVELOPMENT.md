@@ -1,5 +1,12 @@
 # Development and verification
 
+## Language conventions
+
+Write project documentation, commit messages and code comments in English.
+Localized interface strings and multilingual test data retain their required
+languages. Non-English examples in English-language explanations are appropriate
+when they demonstrate parsing, translation or language-specific behavior.
+
 ## Local setup
 
 Install stable Rust/Cargo, Node.js/npm and the native Tauri prerequisites for your
