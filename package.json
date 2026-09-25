@@ -10,7 +10,8 @@
     "tauri": "tauri",
     "contracts:generate": "cargo run --manifest-path src-tauri/Cargo.toml --example export_contracts",
     "contracts:check": "cargo run --manifest-path src-tauri/Cargo.toml --example export_contracts -- --check",
-    "test": "node scripts/test-frontend.mjs"
+    "test": "node scripts/test-frontend.mjs",
+    "manga:prepare": "node scripts/prepare-manga-runtime.mjs"
   },
   "dependencies": {
     "@tauri-apps/api": "^2",

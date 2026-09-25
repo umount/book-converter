@@ -36,3 +36,9 @@ src-tauri/pdfium/
 .claude/settings.local.json
 
 /crates/*/target
+
+/.cache/
+/src-tauri/manga-runtime/*
+!/src-tauri/manga-runtime/.gitkeep
+/src-tauri/manga-runtime.previous/
+/src-tauri/manga-runtime.next/

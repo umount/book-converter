@@ -6,6 +6,10 @@ use std::{
 };
 fn run() -> Result<(), Box<dyn std::error::Error>> {
     let args = std::env::args().skip(1).collect::<Vec<_>>();
+    if args.len() == 2 && args[0] == "verify-runtime" {
+        onnx::initialize(Path::new(&args[1]))?;
+        return Ok(());
+    }
     if args == ["worker"] {
         return worker();
     }
