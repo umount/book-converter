@@ -171,7 +171,11 @@ impl ChatCompletions {
             return Err(AppError::invalid("requestSize"));
         }
         for attempt in 0..=self.profile.network_retries {
+            let started = std::time::Instant::now();
+            tracing::debug!(attempt, request_bytes = bytes.len(), "Provider request started");
             let result = self.once(&bytes).await;
+            tracing::debug!(attempt, elapsed_ms = started.elapsed().as_millis() as u64,
+                success = result.is_ok(), "Provider request finished");
             match result {
                 Err(ref e) if e.retryable && attempt < self.profile.network_retries => {
                     tokio::time::sleep(Duration::from_millis((250u64 << attempt).min(8000))).await;
@@ -195,6 +199,7 @@ impl ChatCompletions {
             .await
             .map_err(|_| error(ErrorCode::Provider, "errors.providerTransport", true))?;
         let status = response.status();
+        tracing::debug!(http_status = status.as_u16(), "Provider HTTP response");
         if !status.is_success() {
             let mut failure = error(
                 ErrorCode::Provider,

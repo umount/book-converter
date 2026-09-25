@@ -45,7 +45,8 @@ make dev
 ```
 
 `make dev` downloads pdfium if needed and starts the desktop application with Vite.
-For local manga processing, also prepare the native resources:
+Tauri dev/build prepares the native manga resources automatically. To prepare them
+separately:
 
 ```bash
 npm run manga:prepare
@@ -64,6 +65,65 @@ Release builds prepare the manga runtime automatically. The runtime directory mu
 remain available alongside an unbundled executable or in the application's resources.
 See [Development](docs/DEVELOPMENT.md) for checks, packaging and test commands, and
 [Settings](docs/SETTINGS.md) for providers and local data locations.
+
+## Windows: запуск и сборка
+
+Поддерживается Windows x64. Для сборки из исходников установите:
+
+- Node.js 22 с npm.
+- Rust через rustup с toolchain `stable-x86_64-pc-windows-msvc`.
+- Visual Studio 2022 Build Tools: **Desktop development with C++**, MSVC и Windows SDK.
+- Microsoft Edge WebView2 Runtime, если его ещё нет в системе.
+
+Откройте PowerShell в каталоге проекта. Команды выполняются без `make`:
+
+```powershell
+npm ci
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/prepare-windows.ps1
+npm run tauri -- dev
+```
+
+Первый запуск требует интернет: подготовка скачивает ONNX Runtime и собирает
+`manga-inference.exe`, затем открывает приложение. Последующие запуски используют
+кэш скачивания и инкрементальную сборку Rust. `npm run dev` запускает только веб-интерфейс,
+без нативных функций приложения.
+
+Для перевода манги настройте API в **Настройках** и скачайте обе модели обработки.
+Модели и исполняемый компонент — разные вещи: скачивание моделей не исправляет
+отсутствующий `manga-runtime`. При запуске по инструкции компонент готовится автоматически.
+
+### Обычный установщик
+
+После подготовки зависимостей и pdfium команда выше заменяется на:
+
+```powershell
+npm run tauri -- build --target x86_64-pc-windows-msvc --bundles nsis
+```
+
+Установщик находится в
+`src-tauri/target/x86_64-pc-windows-msvc/release/bundle/nsis/`.
+Передавайте пользователям установщик: отдельный `book-converter.exe` без ресурсов
+недостаточен для обработки манги.
+
+### Диагностическая сборка для тестировщиков
+
+```powershell
+npm run build:debug:windows
+```
+
+Скрипт сам выполняет `npm ci`, подготовку pdfium и сборку установщика с компонентом
+манги, отладочной информацией и полным логированием по умолчанию.
+Результат: `src-tauri/target/x86_64-pc-windows-msvc/debug/bundle/nsis/*-setup.exe`.
+Тестировщикам не нужны Node.js, Rust или Python — только установщик, API-настройки
+и скачанные через приложение модели.
+
+После воспроизведения ошибки: **Настройки → Диагностика → Сохранить логи диагностики**.
+Галочка **Полное диагностическое логирование** применяется сразу и запоминается;
+API-ключи, тексты книг и изображения в логи не записываются. Ранее сохранённое
+отключение логирования сохраняется и после установки диагностической сборки.
+
+Также предусмотрен ручной workflow **Windows diagnostic installer** в GitHub Actions.
+После его запуска установщик доступен в артефакте `book-converter-windows-debug`.
 
 ## Documentation
 

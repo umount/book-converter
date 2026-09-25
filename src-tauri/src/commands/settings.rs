@@ -15,6 +15,8 @@ fn settings_db() -> std::path::PathBuf {
 /// API key itself is never returned.
 #[derive(serde::Serialize)]
 pub struct EffectiveConfig {
+    pub full_logging: bool,
+    pub log_directory: String,
     pub model: String,
     pub target_lang: String,
     pub base_url: String,
@@ -49,6 +51,8 @@ pub async fn get_effective_config() -> Result<EffectiveConfig, String> {
         }
     }
     Ok(EffectiveConfig {
+        full_logging: crate::diagnostics::enabled(),
+        log_directory: crate::diagnostics::directory().to_string_lossy().into_owned(),
         target_lang: std::env::var("TARGET_LANG").ok()
             .filter(|value| !value.trim().is_empty())
             .or(crate::settings::get(&settings_db(), "target_lang").map_err(err)?
@@ -121,7 +125,14 @@ pub async fn set_setting(key: String, value: String) -> Result<(), String> {
     {
         return Err("use_set_api_key".into());
     }
-    crate::settings::set(&settings_db(), &key, &value).map_err(err)
+    if key == crate::diagnostics::SETTING && !matches!(value.as_str(), "true" | "false") {
+        return Err("invalid_logging_setting".into());
+    }
+    crate::settings::set(&settings_db(), &key, &value).map_err(err)?;
+    if key == crate::diagnostics::SETTING {
+        crate::diagnostics::configure(value == "true");
+    }
+    Ok(())
 }
 
 /// Store the DeepSeek API key, or clear it when given an empty string.
@@ -138,6 +149,28 @@ pub async fn set_api_key(key: String) -> Result<(), String> {
     } else {
         crate::settings::set(&db, crate::config::API_KEY_SETTING, key).map_err(err)?;
         tracing::info!("API key saved to settings");
+    }
+    Ok(())
+}
+
+
+#[tauri::command]
+pub async fn export_diagnostics(destination: String) -> Result<(), String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        crate::diagnostics::export(std::path::Path::new(&destination)).map_err(err)
+    }).await.map_err(err)?
+}
+
+/// Deliberately accepts no IPC arguments, results, error messages or credentials.
+#[tauri::command]
+pub async fn diagnostic_event(command: String, elapsed_ms: u32, failed: bool) -> Result<(), String> {
+    if command.len() > 80 || !command.bytes().all(|c| c.is_ascii_alphanumeric() || c == b'_') {
+        return Err("invalid_diagnostic_event".into());
+    }
+    if failed {
+        tracing::warn!(command, elapsed_ms, "Frontend command failed");
+    } else {
+        tracing::debug!(command, elapsed_ms, "Frontend command completed");
     }
     Ok(())
 }

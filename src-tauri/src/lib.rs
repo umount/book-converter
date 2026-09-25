@@ -7,6 +7,7 @@
 //! Architecture and component interactions: see `docs/ARCHITECTURE.md`.
 //! The modules below are UI-agnostic; the frontend calls them via `commands`.
 
+mod diagnostics;
 pub mod ai;
 pub mod app;
 pub mod application;
@@ -32,15 +33,7 @@ pub const APP_NAME: &str = "Book Converter";
 
 /// Build and run the Tauri application.
 pub fn run() {
-    tracing_subscriber::fmt()
-        .with_env_filter(
-            tracing_subscriber::EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| "book_converter=info".into()),
-        )
-        .init();
-
-    tracing::info!("book-converter starting");
-
+    diagnostics::init();
 
     tauri::Builder::default()
         .manage(app::services::AppContext::default())
@@ -73,6 +66,8 @@ pub fn run() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
+            commands::export_diagnostics,
+            commands::diagnostic_event,
             commands::model_list,
             commands::model_download,
             commands::model_pause,

@@ -136,7 +136,13 @@ pub async fn execute<E: StepExecutor>(
     }
     transition(&lease, id, JobState::Running, None)?;
     emit(&lease, project, id, &sink)?;
+    tracing::info!(project = project.as_str(), job = id, "Job started");
     let result = execute_steps(&lease, id, executor, &cancel, &sink, project).await;
+    match &result {
+        Ok(()) => tracing::info!(job = id, "Job completed"),
+        Err(error) => tracing::warn!(job = id, code = ?error.code, message_key = %error.message_key,
+            field = ?error.params.get("field"), "Job failed"),
+    }
     // Deletion has already sealed new writes and waits for this lease to drop.
     if lease.cancelled() {
         return Err(cancelled());
@@ -207,6 +213,7 @@ async fn execute_steps<E: StepExecutor>(
         };
         lease.with_connection(|db, _| runs::begin_step(db, &step))?;
         emit(lease, project, id, sink)?;
+        tracing::debug!(job = id, entity, stage, attempt = step.attempt, "Processing step started");
         let start = std::time::Instant::now();
         let output = tokio::select! {
             result=executor.compute(lease,&run,entity,stage)=>result?,
@@ -237,6 +244,7 @@ async fn execute_steps<E: StepExecutor>(
             tx.commit().map_err(storage_error)?;
             Ok(())
         })?;
+        tracing::debug!(job = id, entity, stage, elapsed_ms = start.elapsed().as_millis() as u64, "Processing step saved");
         emit(lease, project, id, sink)?;
     }
     Ok(())

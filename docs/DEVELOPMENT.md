@@ -16,7 +16,8 @@ only Vite; it does not provide native IPC. To work on UI fixtures without Tauri,
 `http://localhost:1420/?preview=1`. Fixtures are enabled only in development and make
 no real provider requests. They do not validate native file dialogs or model quality.
 
-Prepare local manga resources separately during development:
+Tauri development now prepares and verifies manga resources before starting Vite.
+To prepare them separately:
 
 ```bash
 npm run manga:prepare
@@ -143,3 +144,33 @@ This executes real processing, can send the selected source text to the configur
 provider and writes results into that project. Do not run the same job concurrently
 from the desktop application. The example does not emit webview updates; reopen the
 project in the UI after completion. For ordinary use, prefer **Resume** in Jobs.
+
+
+## Windows diagnostic installer for testers
+
+On a Windows x64 build machine with Node.js, Rust MSVC and Visual Studio C++ build
+tools, run from PowerShell:
+
+```powershell
+npm run build:debug:windows
+```
+
+The script installs npm dependencies, fetches pdfium, and builds an NSIS installer
+using `tauri build --debug --features diagnostics`. The normal build hook also builds
+the native manga worker and packages the pinned ONNX DLLs and manifest.
+Output: `src-tauri/target/x86_64-pc-windows-msvc/debug/bundle/nsis/*-setup.exe`.
+
+Send the **installer**, not the bare application executable. Testers do not need
+Rust, Node.js or Python. They still download model weights from Settings.
+The diagnostic feature defaults full logging to on unless the user has explicitly
+saved a different preference. This build includes debug information and is larger
+than a release build.
+
+The manually dispatched **Windows diagnostic installer** GitHub Actions workflow
+builds the same installer and uploads it as `book-converter-windows-debug`.
+It does not publish a release or run automatically on pushes.
+
+For a report: reproduce the issue, open **Settings → Diagnostics → Save diagnostic
+logs**, and attach the ZIP. It includes build identification and recent logs, not
+settings, provider credentials or project contents. Both regular and diagnostic
+builds have the logging checkbox; it takes effect immediately.

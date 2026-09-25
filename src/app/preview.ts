@@ -596,6 +596,10 @@ export async function invokePreview<T>(
       result = job;
       break;
     }
+    case "export_diagnostics":
+    case "diagnostic_event":
+      result = null;
+      break;
     case "get_effective_config":
       result = {
         target_lang: defaultTargetLanguage,
@@ -603,6 +607,8 @@ export async function invokePreview<T>(
         base_url: "https://example.invalid",
         has_key: false,
         env_locked: [],
+        full_logging: false,
+        log_directory: "Preview / logs",
       };
       break;
     case "set_setting":

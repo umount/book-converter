@@ -29,9 +29,18 @@ impl ImageWorker for NativeWorker {
         request: &'a Request,
     ) -> Pin<Box<dyn Future<Output = Result<Response, AppError>> + Send + 'a>> {
         Box::pin(async move {
-            manga_inference::worker::execute(&self.executable, request, Duration::from_secs(300))
-                .await
-                .map_err(|error| AppError::invalid(match error {manga_inference::Error::TextOverflow=>"mangaTextOverflow",manga_inference::Error::FontCoverage=>"mangaFontCoverage",manga_inference::Error::Timeout=>"mangaWorkerTimeout",_=>"mangaLocalProcessing"}))
+            let started = std::time::Instant::now();
+            tracing::debug!(executable = %self.executable.display(), runtime = %request.runtime.display(),
+                model = %request.model.display(), "Starting manga worker");
+            let result = manga_inference::worker::execute(&self.executable, request, Duration::from_secs(300)).await;
+            match &result {
+                Ok(response) => tracing::debug!(elapsed_ms = started.elapsed().as_millis() as u64,
+                    load_ms = response.load_millis, inference_ms = response.inference_millis,
+                    "Manga worker completed"),
+                Err(error) => tracing::error!(?error, elapsed_ms = started.elapsed().as_millis() as u64,
+                    executable = %self.executable.display(), "Manga worker failed"),
+            }
+            result.map_err(|error| AppError::invalid(match error {manga_inference::Error::TextOverflow=>"mangaTextOverflow",manga_inference::Error::FontCoverage=>"mangaFontCoverage",manga_inference::Error::Timeout=>"mangaWorkerTimeout",_=>"mangaLocalProcessing"}))
         })
     }
 }
@@ -43,6 +52,7 @@ pub struct NativeFiles {
 impl NativeFiles {
     pub fn discover(resources: &Path) -> Result<Self, AppError> {
         let root = resources.join("manga-runtime");
+        tracing::debug!(path = %root.display(), "Checking manga runtime pack");
         let executable = root.join(if cfg!(windows) {
             "manga-inference.exe"
         } else {
@@ -57,15 +67,20 @@ impl NativeFiles {
         });
         for path in [&root, &executable, &runtime] {
             let metadata = std::fs::symlink_metadata(path)
-                .map_err(|_| AppError::invalid("mangaRuntimeMissing"))?;
+                .map_err(|error| {
+                    tracing::error!(path = %path.display(), %error, "Manga runtime file missing or inaccessible");
+                    AppError::invalid("mangaRuntimeMissing")
+                })?;
             if metadata.file_type().is_symlink()
                 || (path != &root && !metadata.is_file())
                 || (path == &root && !metadata.is_dir())
             {
+                tracing::error!(path = %path.display(), "Manga runtime has an invalid file type");
                 return Err(AppError::invalid("mangaRuntimeMissing"));
             }
         }
         verify_pack(&root, &executable, &runtime)?;
+        tracing::debug!(path = %root.display(), "Manga runtime pack verified");
         Ok(Self {
             executable,
             runtime,
@@ -224,11 +239,18 @@ fn verify_pack(root: &Path, executable: &Path, runtime: &Path) -> Result<(), App
     use sha2::{Digest, Sha256};
     use std::io::Read;
     let invalid = || AppError::invalid("mangaRuntimeMissing");
-    let bytes = std::fs::read(root.join("manifest.json")).map_err(|_| invalid())?;
+    let bytes = std::fs::read(root.join("manifest.json")).map_err(|error| {
+        tracing::error!(path = %root.display(), %error, "Manga runtime manifest missing or unreadable");
+        invalid()
+    })?;
     if bytes.len() > 16 * 1024 {
+        tracing::error!(path = %root.display(), "Manga runtime manifest exceeds expected size");
         return Err(invalid());
     }
-    let manifest: serde_json::Value = serde_json::from_slice(&bytes).map_err(|_| invalid())?;
+    let manifest: serde_json::Value = serde_json::from_slice(&bytes).map_err(|error| {
+        tracing::error!(path = %root.display(), %error, "Invalid manga runtime manifest JSON");
+        invalid()
+    })?;
     let target = if cfg!(target_os = "windows") {
         "x86_64-pc-windows-msvc"
     } else if cfg!(target_os = "macos") {
@@ -244,6 +266,8 @@ fn verify_pack(root: &Path, executable: &Path, runtime: &Path) -> Result<(), App
         || manifest["onnxVersion"] != "1.22.0"
         || manifest["target"] != target
     {
+        tracing::error!(path = %root.display(), expected_target = target,
+            "Manga runtime manifest version or target mismatch");
         return Err(invalid());
     }
     let mut required = vec![
@@ -263,15 +287,19 @@ fn verify_pack(root: &Path, executable: &Path, runtime: &Path) -> Result<(), App
     }
     for name in required {
         let path = root.join(name);
-        let info = std::fs::symlink_metadata(&path).map_err(|_| invalid())?;
+        let info = std::fs::symlink_metadata(&path).map_err(|error| {
+            tracing::error!(path = %path.display(), %error, "Required manga runtime library unavailable");
+            invalid()
+        })?;
         if !info.is_file()
             || info.len() > 128 * 1024 * 1024
             || manifest["files"][name]["bytes"].as_u64() != Some(info.len())
         {
+            tracing::error!(path = %path.display(), bytes = info.len(), "Manga runtime file size or type mismatch");
             return Err(invalid());
         }
         let mut bytes = Vec::new();
-        std::fs::File::open(path)
+        std::fs::File::open(&path)
             .map_err(|_| invalid())?
             .take(128 * 1024 * 1024 + 1)
             .read_to_end(&mut bytes)
@@ -279,6 +307,7 @@ fn verify_pack(root: &Path, executable: &Path, runtime: &Path) -> Result<(), App
         if bytes.len() as u64 != info.len()
             || manifest["files"][name]["sha256"] != format!("{:x}", Sha256::digest(&bytes))
         {
+            tracing::error!(path = %path.display(), "Manga runtime SHA-256 mismatch");
             return Err(invalid());
         }
     }

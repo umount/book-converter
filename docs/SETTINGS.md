@@ -66,3 +66,18 @@ The fixed catalog records repository, revision, size and SHA-256. Interrupted do
 can be resumed; only verified completed artifacts are available to local processing.
 Weights are stored under the application `models/` directory and are not bundled in
 project archives. See [Native runtime](MANGA_RUNTIME.md) for the required components.
+
+
+## Diagnostics
+
+**Full diagnostic logging** applies immediately and persists across restarts.
+It records runtime-file validation, processing stages, provider HTTP status/timings,
+worker errors and frontend command timings. It does not log provider request/response
+bodies, API keys or images. Paths and project/job identifiers can appear in logs.
+
+**Save diagnostic logs** writes a ZIP containing build metadata and recent session
+logs. Logs live in the application data directory under `logs/`; the exact path is
+shown in Settings. Files rotate at 20 MiB, startup prunes old sessions and export
+includes at most five files. Warnings/errors and startup identification remain
+available when detailed logging is disabled. Diagnostic builds enable detailed
+logging by default, unless a preference was previously saved.

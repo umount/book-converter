@@ -9,9 +9,10 @@ license = "MIT"
 default = []
 onnx = ["dep:ort", "lettering"]
 lettering = ["dep:fontdue", "dep:rustybuzz", "dep:unicode-linebreak"]
-worker = ["dep:tokio"]
+worker = ["dep:tokio", "dep:tracing"]
 
 [dependencies]
+tracing = { version = "0.1", optional = true }
 fontdue = { version = "0.9.4", optional = true }
 rustybuzz = { version = "0.20.1", optional = true }
 unicode-linebreak = { version = "0.1.5", optional = true }

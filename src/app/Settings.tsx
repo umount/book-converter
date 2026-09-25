@@ -1,3 +1,4 @@
+import { save as saveFile } from "@tauri-apps/plugin-dialog";
 import { ProviderProfiles } from "../features/projects/ProviderProfiles";
 import type { ProjectDescriptor } from "../shared/contracts/generated";
 import { useEffect, useState } from "react";
@@ -7,6 +8,8 @@ import { ModelDownloads } from "../features/manga/ModelDownloads";
 import { LANGS, type Lang } from "../i18n";
 import { errorText, languages, languageName, type T } from "./strings";
 type Config = {
+  full_logging: boolean;
+  log_directory: string;
   model: string;
   target_lang: string;
   base_url: string;
@@ -49,6 +52,7 @@ export function Settings({
     setError(null);
     try {
       for (const [k, value] of [
+        ["full_logging", String(config.full_logging)],
         ["target_lang", config.target_lang],
         ["model", config.model],
         ["base_url", config.base_url],
@@ -58,6 +62,34 @@ export function Settings({
       if (key.trim()) await invoke("set_api_key", { key });
       setKey("");
       onClose();
+    } catch (e) {
+      setError(e);
+    } finally {
+      setBusy(false);
+    }
+  }
+  async function exportLogs() {
+    setBusy(true);
+    setError(null);
+    try {
+      const destination = await saveFile({
+        defaultPath: "book-converter-diagnostics.zip",
+        filters: [{ name: "ZIP", extensions: ["zip"] }],
+      });
+      if (destination) await invoke("export_diagnostics", { destination });
+    } catch (e) {
+      setError(e);
+    } finally {
+      setBusy(false);
+    }
+  }
+  async function setLogging(full: boolean) {
+    if (!config) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await invoke("set_setting", { key: "full_logging", value: String(full) });
+      setConfig({ ...config, full_logging: full });
     } catch (e) {
       setError(e);
     } finally {
@@ -163,6 +195,21 @@ export function Settings({
         onBusy={setBusy}
       />
       <ModelDownloads t={t} />
+      {config && (
+        <section>
+          <h3>{t("diagnostics")}</h3>
+          <label className="bc-check">
+            <input type="checkbox" checked={config.full_logging} disabled={busy}
+              onChange={(e) => void setLogging(e.target.checked)} />
+            {t("fullLogging")}
+          </label>
+          <p className="bc-hint">{t("fullLoggingHint")}</p>
+          <p className="bc-hint">{config.log_directory}</p>
+          <button disabled={busy} onClick={() => void exportLogs()}>
+            {t("exportDiagnostics")}
+          </button>
+        </section>
+      )}
     </Modal>
   );
 }

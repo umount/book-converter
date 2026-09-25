@@ -49,13 +49,19 @@ pub async fn execute(executable: &Path, request: &Request, deadline: Duration) -
         return Err(Error::Request);
     }
     let permit = WORKERS.acquire().await.map_err(|_| Error::Worker)?;
-    let child = Command::new(executable)
-        .arg("worker")
+    let mut command = Command::new(executable);
+    // Avoid a console window flashing for each processed page on Windows.
+    #[cfg(windows)]
+    command.creation_flags(0x08000000);
+    let child = command.arg("worker")
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::null())
         .kill_on_drop(true)
-        .spawn()?;
+        .spawn().map_err(|error| {
+            tracing::error!(path = %executable.display(), %error, "Cannot spawn manga worker");
+            error
+        })?;
     let mut guard = NativeWorker {
         child: Some(child),
         permit: Some(permit),
@@ -75,7 +81,9 @@ pub async fn execute(executable: &Path, request: &Request, deadline: Duration) -
         if response.len() as u64 > MAX_RESPONSE {
             return Err(Error::Output);
         }
-        if !child.wait().await?.success() {
+        let status = child.wait().await?;
+        if !status.success() {
+            tracing::error!(exit_code = ?status.code(), "Manga worker process exited unsuccessfully");
             let failure: serde_json::Value = serde_json::from_slice(&response).unwrap_or_default();
             return Err(match failure.get("error").and_then(|v| v.as_str()) {
                 Some("text_overflow") => Error::TextOverflow,

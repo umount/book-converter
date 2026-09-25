@@ -22,8 +22,8 @@ pin is ONNX Runtime 1.22.0.
 npm run manga:prepare
 ```
 
-Run this for development before testing local manga stages. Tauri release builds call
-it through `beforeBuildCommand`. Downloads are cached under `.cache/manga-runtime` by
+Both Tauri development and packaged builds run this automatically through their
+build hooks. Downloaded model weights alone do not supply the worker or runtime DLLs. Downloads are cached under `.cache/manga-runtime` by
 default; `MANGA_RUNTIME_CACHE` overrides that location. `TAURI_ENV_TARGET_TRIPLE`
 selects the packaging target when provided. Model weights are not bundled by this step.
 
@@ -57,7 +57,7 @@ inside the worker process and become structured application errors.
 
 ## Diagnostics and verification
 
-- **Runtime missing/damaged:** prepare resources again during development, or check
+- **Runtime missing/damaged:** logs identify the missing path or a manifest/target/size/hash mismatch. Prepare resources again during development, or check
   that the installed application includes its `manga-runtime` directory.
 - **Model missing:** install the required catalog artifact in Settings.
 - **Font coverage:** the current font cannot render required characters.
@@ -68,3 +68,6 @@ Unit and worker tests do not download weights. Opt-in native tests require expli
 runtime/model paths and exercise actual CPU inference on synthetic pages. Commands
 are in [Development](DEVELOPMENT.md). Review representative manga pages separately
 for segmentation quality, preserved artwork and typography.
+
+Enable **Settings → Diagnostics → Full diagnostic logging** and export the log ZIP
+after reproducing a failure. See [Windows diagnostic builds](DEVELOPMENT.md#windows-diagnostic-installer-for-testers).
