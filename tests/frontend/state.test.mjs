@@ -9,6 +9,30 @@ const deferred = () => { let resolve; const promise = new Promise(r => { resolve
 const project = id => ({ id, kind: "book" });
 const view = id => ({ chapter: { id }, blocks: [{ chapterId: id }] });
 
+test("clearing jobs keeps active jobs and other projects; resumed jobs reappear", async () => {
+  const items = [
+    { job: { projectId: "p", jobId: "done" }, revision: "1", state: "succeeded" },
+    { job: { projectId: "p", jobId: "failed" }, revision: "1", state: "failed" },
+    { job: { projectId: "p", jobId: "active" }, revision: "1", state: "running" },
+    { job: { projectId: "q", jobId: "done" }, revision: "1", state: "succeeded" },
+  ];
+  const store = new JobStore({
+    subscribe: () => ({ ready: Promise.resolve(), dispose() {} }),
+    jobs: async ({ projectId }) => items.filter(j => j.job.projectId === projectId),
+    job: async ({ jobId }) => items.find(j => j.job.jobId === jobId),
+  }, error => { throw error; });
+  await store.watch("p"); await store.watch("q");
+  store.clearFinished("p");
+  assert.deepEqual(store.list("p").map(j => j.job.jobId), ["active"]);
+  assert.equal(store.list("q").length, 1);
+  await store.refresh(items[1].job);
+  assert.equal(store.list("p").length, 1);
+  items[1] = { ...items[1], revision: "2", state: "running" };
+  await store.refresh(items[1].job);
+  assert.equal(store.list("p").length, 2);
+  store.dispose();
+});
+
 test("rapid project switches never display a late chapter from the old project", async () => {
   const old = deferred();
   const store = new WorkspaceStore({

@@ -212,9 +212,14 @@ impl StepExecutor for BookPipeline {
         }
         lease.with_connection(|db,_|{
             let source:i64=db.query_row("SELECT revision FROM book_chapters WHERE id=?1",[entity],|r|r.get(0)).map_err(storage_error)?;
-            let current_settings=shared::settings(db)?.revision;let glossary=shared::glossary_revision(db)?;
+            let current_settings=shared::settings(db)?.revision;
+            // Additive glossary publication must not replay paid, completed chapters.
+            let saved_glossary:Option<i64>=if run.kind=="book_translation" {
+                db.query_row("SELECT t.glossary_revision FROM book_translations t WHERE t.chapter_id=?1 AND t.status='ready' AND t.revision=(SELECT MAX(revision) FROM book_translations WHERE chapter_id=t.chapter_id AND target_language=t.target_language) AND (?2='context' OR EXISTS(SELECT 1 FROM job_steps s WHERE s.run_id=?3 AND s.entity_id=?1 AND s.stage=?2 AND s.state='succeeded' AND s.output_reference=t.id)) ORDER BY t.revision DESC LIMIT 1",rusqlite::params![entity,stage,run.id],|r|r.get(0)).optional().map_err(storage_error)?
+            } else {None};
+            let glossary=saved_glossary.map(|v|v.to_string()).unwrap_or(shared::glossary_revision(db)?.0);
             let translation:Option<String>=if stage=="context"{db.query_row("SELECT id FROM book_translations WHERE chapter_id=?1 AND status='ready' ORDER BY revision DESC LIMIT 1",[entity],|r|r.get(0)).optional().map_err(storage_error)?}else{None};
-            digest(&(entity,stage,source,current_settings.0,glossary.0,&run.snapshot.prompt_version,&self.instructions,self.provider.profile(),predecessor(db,entity)?,translation))
+            digest(&(entity,stage,source,current_settings.0,glossary,&run.snapshot.prompt_version,&self.instructions,self.provider.profile(),predecessor(db,entity)?,translation))
         })
     }
     fn compute<'a>(
@@ -244,20 +249,15 @@ impl StepExecutor for BookPipeline {
     }
     fn steps(&self, run: &runs::RunRecord) -> Vec<(String, String)> {
         let mut steps = Vec::new();
-        if run.kind == "book_translation" && run.snapshot.stages.iter().any(|s| s == "glossary") {
-            steps.extend(
-                run.snapshot
-                    .selected_ids
-                    .iter()
-                    .map(|id| (id.clone(), "glossary".into())),
-            );
-        }
         for id in &run.snapshot.selected_ids {
             for stage in &run.snapshot.stages {
                 if run.kind == "book_translation" && stage == "glossary" {
                     continue;
                 }
                 steps.push((id.clone(), stage.clone()));
+            }
+            if run.kind == "book_translation" && run.snapshot.stages.iter().any(|s| s == "glossary") {
+                steps.push((id.clone(), "glossary".into()));
             }
         }
         steps

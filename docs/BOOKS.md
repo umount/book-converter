@@ -23,7 +23,8 @@ or an annotation is an explicit provider-backed job.
 
 Choose a positive chapter count and start translation. Selection follows source order
 and skips ineligible/alsaved translated chapters unless repeat processing is requested.
-Optional glossary extraction precedes translation for each selected chapter.
+Each chapter is translated and its context saved before optional glossary extraction
+updates terms from that completed translation. The next chapter uses the updated glossary.
 Processing stops when the selected batch is finished.
 
 Requests carry stable text-segment IDs, relevant glossary entries, book/chapter
@@ -49,6 +50,8 @@ and preserves existing targets. Terms that do not literally occur in the source 
 kept with zero frequency. The model must still return complete, parseable JSON.
 Repeated extraction can include chapters already processed at their current revisions.
 
+Only chapters containing the changed source term (including chapter titles) are marked
+for review; pin and frequency edits do not mark book translations for review.
 Saving a changed target offers correction of existing translations. The preview gives
 local candidate counts; confirmation starts a bounded correction job. It supplies the
 old/new terminology, translated fragments, original context and relevant glossary
@@ -75,6 +78,8 @@ Active work appears before completed history. Failed, cancelled and interrupted 
 can be resumed; valid successful checkpoints are reused. Opening a project never
 resumes paid work automatically. A failure does not discard previously committed
 chapters or successful stages.
+The Jobs panel can clear finished or stopped entries from its local history without
+deleting processing records or results. Active jobs remain visible.
 
 Provider connection/HTTP failures, malformed segment output and malformed or truncated
 glossary output are different conditions. Correct the relevant provider setting or

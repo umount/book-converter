@@ -52,6 +52,29 @@ fn count(db: &rusqlite::Connection, table: &str) -> i64 {
 }
 
 #[test]
+fn glossary_marks_only_matching_chapters_and_ignores_pin_changes() {
+    let mut db = book();
+    results::save_translation(&mut db, &translation()).unwrap();
+    let mut term = shared::GlossaryTerm { id:"term".into(), source:"Absent".into(), target:"Target".into(), kind:"term".into(), pinned:false, frequency:0, revision:rev(0) };
+    let status = |db: &rusqlite::Connection| db.query_row("SELECT status FROM book_translations", [], |r| r.get::<_,String>(0)).unwrap();
+    shared::put_term(&mut db, &term, None).unwrap();
+    assert_eq!(status(&db), "ready");
+    term.source = "Source".into();
+    shared::put_term(&mut db, &term, Some(&rev(0))).unwrap();
+    assert_eq!(status(&db), "needs_review");
+    db.execute("UPDATE book_translations SET status='ready'", []).unwrap();
+    term.pinned = true;
+    shared::put_term(&mut db, &term, Some(&rev(1))).unwrap();
+    assert_eq!(status(&db), "ready");
+    term.target = "Changed".into();
+    shared::put_term(&mut db, &term, Some(&rev(2))).unwrap();
+    assert_eq!(status(&db), "needs_review");
+    db.execute("UPDATE book_translations SET status='ready'", []).unwrap();
+    shared::delete_term(&mut db, "term", &rev(3)).unwrap();
+    assert_eq!(status(&db), "needs_review");
+}
+
+#[test]
 fn glossary_and_settings_are_atomic_versioned_and_invalidate_results() {
     let mut db = book();
     results::save_translation(&mut db, &translation()).unwrap();

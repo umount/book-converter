@@ -18,6 +18,7 @@ export function JobPanel({
   close,
   cancel,
   resume,
+  clear,
 }: {
   jobs: JobView[];
   catalog: ProjectSummary[];
@@ -26,6 +27,7 @@ export function JobPanel({
   close: () => void;
   cancel: (job: JobRef) => void;
   resume: (job: JobRef) => void;
+  clear: () => void;
 }) {
   const activeStates = ["running", "cancelling", "queued"];
   const orderedJobs = [...jobs].sort((a, b) => {
@@ -42,6 +44,15 @@ export function JobPanel({
             ? ` · ${catalog.find((p) => p.descriptor.id === jobs[0].job.projectId)?.descriptor.name ?? ""}`
             : ""}
         </strong>
+        <button
+          className="bc-icon-button"
+          aria-label={t("clearFinishedJobs")}
+          title={t("clearFinishedJobs")}
+          disabled={!jobs.some(job => !activeStates.includes(job.state))}
+          onClick={clear}
+        >
+          ⌫
+        </button>
         <button
           className="bc-icon-button"
           aria-label={t("close")}

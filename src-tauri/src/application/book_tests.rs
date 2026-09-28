@@ -111,6 +111,7 @@ async fn unknown_ids_are_rejected_and_malformed_repairs_are_bounded() {
 struct Echo {
     profile: ProviderProfile,
     glossary_calls: std::sync::atomic::AtomicUsize,
+    translation_calls: std::sync::atomic::AtomicUsize,
     fail_context_once: std::sync::atomic::AtomicBool,
 }
 impl Provider for Echo {
@@ -128,6 +129,7 @@ impl Provider for Echo {
             let text = if system.starts_with("Extract recurring names") {
                 let payload: serde_json::Value = serde_json::from_str(&user).unwrap();
                 assert_eq!(payload["bookInstructions"], "Keep the established names.");
+                assert!(payload["translatedChapter"].as_str().unwrap().contains("Translated"));
                 assert!(payload["referenceExcerpt"].as_str().unwrap().starts_with("Mapped reference"));
                 assert!(payload["referenceExcerpt"].as_str().unwrap().chars().count() <= 16000);
                 if payload["source"].as_str().unwrap().contains("Original") {
@@ -147,6 +149,7 @@ impl Provider for Echo {
                 // Leave the fake English output unchanged; language repair has its own tests.
                 r#"{"lines":[]}"#.into()
             } else if system.starts_with("Translate every") {
+                self.translation_calls.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
                 let mut payload: serde_json::Value = serde_json::from_str(&user).unwrap();
                 if payload["segments"].as_array().unwrap().iter().any(|s|s["text"].as_str().is_some_and(|t|t.contains("Before"))) {
                     assert!(system.contains("Continuity notes"));
@@ -165,7 +168,7 @@ impl Provider for Echo {
                 } else {
                     assert_eq!(payload["previousSummary"], "");
                 }
-                if self
+                if chapter.contains("Before") && self
                     .fail_context_once
                     .swap(false, std::sync::atomic::Ordering::SeqCst)
                 {
@@ -183,7 +186,7 @@ impl Provider for Echo {
     }
 }
 #[tokio::test]
-async fn pipeline_populates_batch_glossary_and_resumes_without_repeating_completed_steps() {
+async fn pipeline_updates_glossary_after_each_chapter_and_resumes_without_retranslation() {
     use crate::{
         app::{
             contracts::ProjectKind,
@@ -232,6 +235,7 @@ async fn pipeline_populates_batch_glossary_and_resumes_without_repeating_complet
     let provider = Arc::new(Echo {
         profile,
         glossary_calls: std::sync::atomic::AtomicUsize::new(0),
+        translation_calls: std::sync::atomic::AtomicUsize::new(0),
         fail_context_once: AtomicBool::new(true),
     });
     let pipeline = BookPipeline {
@@ -249,7 +253,7 @@ async fn pipeline_populates_batch_glossary_and_resumes_without_repeating_complet
     .await
     .is_err());
     manager.lease(&project.id).unwrap().with_connection(|db,_| {
-        let chapter: String=db.query_row("SELECT id FROM book_chapters ORDER BY position LIMIT 1",[],|r|r.get(0)).unwrap();
+        let chapter: String=db.query_row("SELECT id FROM book_chapters ORDER BY position DESC LIMIT 1",[],|r|r.get(0)).unwrap();
         let view=crate::storage::repository::ProjectRepository::new(db,ProjectKind::Book)?.chapter(&chapter)?;
         assert_eq!(view.status,"failed"); assert!(view.translation_error.is_some());
         Ok(())
@@ -258,8 +262,9 @@ async fn pipeline_populates_batch_glossary_and_resumes_without_repeating_complet
         provider
             .glossary_calls
             .load(std::sync::atomic::Ordering::SeqCst),
-        2
+        1
     );
+    let translated_calls = provider.translation_calls.load(std::sync::atomic::Ordering::SeqCst);
     durable::execute(
         &manager,
         &project.id,
@@ -270,6 +275,7 @@ async fn pipeline_populates_batch_glossary_and_resumes_without_repeating_complet
     )
     .await
     .unwrap();
+    assert_eq!(provider.translation_calls.load(std::sync::atomic::Ordering::SeqCst), translated_calls);
     assert_eq!(
         provider
             .glossary_calls

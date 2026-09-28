@@ -518,6 +518,11 @@ button + button {
   min-height: 24px;
   margin: 0;
 }
+.bc-jobs > header > strong {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
 .bc-job {
   display: flex;
   gap: 4px 12px;

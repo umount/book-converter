@@ -109,7 +109,7 @@ pub fn prepare_book_run(
             selected_ids: selected,
             prompt_version: "book-segments-v1".into(),
             stages: if options.extract_glossary {
-                vec!["glossary".into(), "translation".into(), "context".into()]
+                vec!["translation".into(), "context".into(), "glossary".into()]
             } else {
                 vec!["translation".into(), "context".into()]
             },

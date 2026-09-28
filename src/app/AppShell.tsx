@@ -1108,6 +1108,7 @@ function Shell({
           t={t}
           busy={busy}
           close={() => setShowJobs(false)}
+          clear={() => jobs.clearFinished(project.id)}
           cancel={(job) =>
             void api
               .cancelJob(job)

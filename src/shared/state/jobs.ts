@@ -12,9 +12,24 @@ export class JobStore {
   private minimum = new Map<string, bigint>();
   private listeners = new Set<() => void>();
   private closed = false;
-  constructor(private api: Api, private onError: (error: unknown) => void) {}
+  private hidden = new Map<string, string>();
+  constructor(private api: Api, private onError: (error: unknown) => void) {
+    try {
+      const saved: unknown = JSON.parse(localStorage.getItem("book-converter.hidden-jobs") ?? "[]");
+      if (Array.isArray(saved)) for (const item of saved) {
+        if (Array.isArray(item) && typeof item[0] === "string" && typeof item[1] === "string" && validRevision(item[1])) this.hidden.set(item[0], item[1]);
+      }
+    } catch { /* Storage may be unavailable. */ }
+  }
   subscribe(listener: () => void) { this.listeners.add(listener); return () => { this.listeners.delete(listener); }; }
-  list(projectId: string): JobView[] { return [...this.values.values()].filter(v => v.job.projectId === projectId); }
+  list(projectId: string): JobView[] { return [...this.values.values()].filter(v => v.job.projectId === projectId && this.hidden.get(key(v.job)) !== v.revision); }
+  clearFinished(projectId: string) {
+    for (const job of this.values.values()) {
+      if (job.job.projectId === projectId && ["succeeded", "failed", "cancelled", "interrupted"].includes(job.state)) this.hidden.set(key(job.job), job.revision);
+    }
+    try { localStorage.setItem("book-converter.hidden-jobs", JSON.stringify([...this.hidden])); } catch { /* Keep session-only clearing available. */ }
+    for (const listener of this.listeners) listener();
+  }
   private accept(job: JobView, expected: JobRef) {
     if (this.closed || job.job.projectId !== expected.projectId || job.job.jobId !== expected.jobId || !validRevision(job.revision)) return;
     const id = key(job.job), revision = BigInt(job.revision), previous = this.values.get(id);

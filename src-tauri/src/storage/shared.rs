@@ -205,6 +205,10 @@ pub fn put_term_in(
     if term.id.is_empty() || term.source.trim().is_empty() || term.target.trim().is_empty() {
         return Err(AppError::invalid("term"));
     }
+    let previous: Option<(String, String)> = tx.query_row(
+        "SELECT source,target FROM glossary_terms WHERE id=?1", [&term.id],
+        |r| Ok((r.get(0)?, r.get(1)?)),
+    ).optional().map_err(storage_error)?;
     let revision = if let Some(expected) = expected {
         let expected = expected.value()?;
         let revision = next(expected)?;
@@ -222,6 +226,10 @@ pub fn put_term_in(
         0
     };
     bump_glossary(tx)?;
+    if previous.as_ref().is_none_or(|(source, target)| source != &term.source || target != &term.target) {
+        invalidate_term(tx, &term.source)?;
+        if let Some((source, _)) = previous { invalidate_term(tx, &source)?; }
+    }
     Ok(Revision(revision.to_string()))
 }
 
@@ -232,6 +240,7 @@ pub fn delete_term(db: &mut Connection, id: &str, expected: &Revision) -> Result
 }
 
 pub fn delete_term_in(tx: &Transaction<'_>, id: &str, expected: &Revision) -> Result<(), AppError> {
+    let source: Option<String> = tx.query_row("SELECT source FROM glossary_terms WHERE id=?1", [id], |r| r.get(0)).optional().map_err(storage_error)?;
     if tx
         .execute(
             "DELETE FROM glossary_terms WHERE id=?1 AND revision=?2",
@@ -246,7 +255,14 @@ pub fn delete_term_in(tx: &Transaction<'_>, id: &str, expected: &Revision) -> Re
             id,
         )?);
     }
-    bump_glossary(tx)
+    bump_glossary(tx)?;
+    if let Some(source) = source { invalidate_term(tx, &source)?; }
+    Ok(())
+}
+
+fn invalidate_term(tx: &Transaction<'_>, source: &str) -> Result<(), AppError> {
+    tx.execute("UPDATE book_translations SET status='needs_review' WHERE status='ready' AND provenance!='reference' AND chapter_id IN (SELECT id FROM book_chapters WHERE instr(source_title,?1)>0 UNION SELECT chapter_id FROM book_source_blocks WHERE instr(text,?1)>0)", [source]).map_err(storage_error)?;
+    Ok(())
 }
 
 pub(crate) fn bump_glossary(tx: &Transaction<'_>) -> Result<(), AppError> {
@@ -255,7 +271,8 @@ pub(crate) fn bump_glossary(tx: &Transaction<'_>) -> Result<(), AppError> {
         [],
     )
     .map_err(storage_error)?;
-    invalidate(tx)
+    tx.execute("UPDATE manga_results SET validity='stale' WHERE validity='current'", []).map_err(storage_error)?;
+    Ok(())
 }
 
 pub(super) fn missing_or_conflict(

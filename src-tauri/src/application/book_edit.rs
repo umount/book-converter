@@ -117,7 +117,7 @@ pub fn preview_replacements(
             title,
             source,
             setting_rev,
-            glossary_rev,
+            _glossary_rev,
             context,
             status,
             provenance,
@@ -169,8 +169,7 @@ pub fn preview_replacements(
         if status != "ready"
             || (provenance != "reference"
                 && (source != current_source
-                    || setting_rev.to_string() != settings.revision.0
-                    || glossary_rev.to_string() != glossary.0))
+                    || setting_rev.to_string() != settings.revision.0))
         {
             needs_review.insert(chapter.clone());
         }
