@@ -61,10 +61,12 @@ pub fn render(chapters: &[TranslatedChapter], meta: &OutputMeta) -> String {
     // --- description ---
     out.push_str("<description>\n<title-info>\n");
     let _ = writeln!(out, "<genre>literature</genre>");
+    // Some readers ignore nickname-only authors. Keep the full display name in
+    // last-name rather than guessing how to split names or pen names.
     let _ = writeln!(
         out,
-        "<author><nickname>{}</nickname></author>",
-        esc(&meta.author)
+        "<author><first-name></first-name><last-name>{}</last-name></author>",
+        esc(meta.author.trim())
     );
     let _ = writeln!(out, "<book-title>{}</book-title>", esc(&meta.title));
     if let Some(annotation) = meta.annotation.as_deref().filter(|a| !a.trim().is_empty()) {
@@ -189,6 +191,18 @@ mod tests {
         assert!(xml.contains("<coverpage><image l:href=\"#cover.jpg\"/></coverpage>"));
         assert!(xml.contains("<binary id=\"cover.jpg\" content-type=\"image/jpeg\">QUJD</binary>"));
         assert!(xml.contains("&lt; &amp; &gt;"));
+    }
+
+    #[test]
+    fn author_survives_export_and_readers_using_name_fields() {
+        for author in ["Хвост лисы", "Маибао Сяо Лан Цзюнь", "Иван Петров", "A & B <C>"] {
+            let meta = OutputMeta { author: author.into(), ..OutputMeta::default() };
+            let xml = render(&sample(), &meta);
+            assert!(xml.contains(&format!("<last-name>{}</last-name>", esc(author))));
+            assert!(!xml.contains("<nickname>"));
+            let parsed = crate::book::fb2::parse_fb2(&xml).unwrap();
+            assert_eq!(parsed.meta.author.as_deref(), Some(author));
+        }
     }
 
     /// An illustrated chapter carries its picture, not a `[[img:…]]` line.
