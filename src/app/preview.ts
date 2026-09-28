@@ -570,9 +570,7 @@ export async function invokePreview<T>(
       const steps =
         selected.length *
         (command === "book_start_translation"
-          ? args.extractGlossary
-            ? 3
-            : 2
+          ? 3
           : 1);
       jobs.push({
         job,

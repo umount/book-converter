@@ -1,6 +1,6 @@
 import { ReferenceMappings } from "./ReferenceMappings";
 import { BookOverview } from "./BookOverview";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { open } from "@tauri-apps/plugin-dialog";
 import { projectApi } from "../../shared/api/projects";
 import type {
@@ -26,7 +26,9 @@ function Tools({
   t,
   refresh,
   registerFlush,
+  updateReferenceGlossary,
 }: {
+  updateReferenceGlossary: (ids: string[]) => Promise<void>;
   metadataRevision: string;
   translationControls: import("react").ReactNode;
   tool: BookTool;
@@ -38,6 +40,7 @@ function Tools({
   refresh: () => Promise<void>;
   registerFlush: (flush: (() => Promise<void>) | null) => void;
 }) {
+  const savedMappings = useRef<BookReferenceView["mappings"]>([]);
   const [reference, setReference] = useState<BookReferenceView | null>(null);
   const [mappingDirty, setMappingDirty] = useState(false);
   const [busy, setBusy] = useState(false),
@@ -62,7 +65,10 @@ function Tools({
     const request =
       tool === "reference"
         ? projectApi.reference({ projectId: project.id }).then((v) => {
-            if (alive) setReference(v);
+            if (alive) {
+              setReference(v);
+              savedMappings.current = v.mappings;
+            }
           })
         : Promise.resolve();
     void request.catch((e) => {
@@ -72,18 +78,25 @@ function Tools({
       alive = false;
     };
   }, [project.id, tool]);
+  async function acceptReference(value: BookReferenceView) {
+    const previous = new Map(savedMappings.current.map(m => [m.chapterId, m.referenceId]));
+    const changed = value.mappings.filter(m => previous.get(m.chapterId) !== m.referenceId).map(m => m.chapterId);
+    setReference(value);
+    setMappingDirty(false);
+    await refresh();
+    await updateReferenceGlossary(changed);
+    savedMappings.current = value.mappings;
+  }
   async function flushTools() {
     if (busy) throw new Error(t("processing"));
     if (mappingDirty && reference) {
-      setReference(
+      await acceptReference(
         await projectApi.mapReference({
           projectId: project.id,
           expectedFingerprint: reference.fingerprint,
           mappings: reference.mappings,
         }),
       );
-      setMappingDirty(false);
-      await refresh();
     }
   }
   useEffect(() => {
@@ -109,20 +122,21 @@ function Tools({
                   ],
                 });
                 if (typeof path === "string") {
-                  await flushTools();
-                  setReference(
+                  // Import replaces the mappings; do not extract terms from the
+                  // old draft immediately before replacing that reference.
+                  await acceptReference(
                     await projectApi.importReference({
                       projectId: project.id,
                       path,
                     }),
                   );
-                  await refresh();
                 }
               })
             }
           >
             {t("referenceImport")}
           </button>
+          <p className="bc-hint">{t("referenceGlossaryHint")}</p>
           {!reference?.chapters.length ? (
             <p className="bc-hint">{t("noReference")}</p>
           ) : (
@@ -142,15 +156,13 @@ function Tools({
                 disabled={busy}
                 onClick={() =>
                   void act(async () => {
-                    setReference(
+                    await acceptReference(
                       await projectApi.mapReference({
                         projectId: project.id,
                         expectedFingerprint: reference.fingerprint,
                         mappings: reference.mappings,
                       }),
                     );
-                    setMappingDirty(false);
-                    await refresh();
                     setNotice(t("saved"));
                   })
                 }

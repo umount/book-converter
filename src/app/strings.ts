@@ -146,8 +146,9 @@ const en = {
   bookPromptHint:
     "Applied to the next batch. Earlier translations remain available for review. Stop an active batch before changing its instructions.",
 
+  automaticGlossary: "The glossary updates automatically after each translated chapter.",
+  referenceGlossaryHint: "Importing a reference or changing chapter mappings automatically updates the glossary for those chapters.",
   batchCount: "Chapters per batch",
-  batchGlossary: "Extract terms before translating the batch",
   chooseFolder: "Choose image folder",
   providerProfiles: "Model profiles",
   projectProviders: "Project models",
@@ -531,8 +532,9 @@ const ru: Record<Key, string> = {
   bookPromptHint:
     "Применяется к следующей партии. Предыдущие переводы сохраняются для проверки. Перед изменением инструкций остановите текущую партию.",
 
+  automaticGlossary: "Словарь пополняется автоматически после каждой переведённой главы.",
+  referenceGlossaryHint: "При импорте референса или изменении сопоставления глав словарь автоматически пополняется по этим главам.",
   batchCount: "Глав в партии",
-  batchGlossary: "Пополнять словарь перед переводом",
   chooseFolder: "Выбрать папку изображений",
   providerProfiles: "Профили моделей",
   projectProviders: "Модели проекта",
@@ -905,8 +907,9 @@ const zh: Record<Key, string> = {
   bookPromptHint:
     "应用于下一批次。已有译文将保留供检查。修改说明前请停止当前批次。",
 
+  automaticGlossary: "每章翻译完成后自动更新术语表。",
+  referenceGlossaryHint: "导入参考译文或更改章节映射后，会自动更新对应章节的术语表。",
   batchCount: "每批章节数",
-  batchGlossary: "翻译本批次前提取术语",
   chooseFolder: "选择图片文件夹",
   providerProfiles: "模型配置",
   projectProviders: "项目模型",

@@ -109,11 +109,10 @@ pub fn prepare_book_run(
             glossary_revision: shared::glossary_revision(db)?,
             selected_ids: selected,
             prompt_version: "book-budget-v2".into(),
-            stages: if options.extract_glossary {
-                vec!["translation".into(), "context".into(), "glossary".into()]
-            } else {
-                vec!["translation".into(), "context".into()]
-            },
+            // Every newly translated chapter updates the glossary before the next one.
+            // Keep the legacy request flag readable for older clients, but do not
+            // allow it to disable this part of the translation workflow.
+            stages: vec!["translation".into(), "context".into(), "glossary".into()],
             provider: Some(profile),
             instructions: Some(
                 [

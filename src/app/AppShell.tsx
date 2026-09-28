@@ -98,7 +98,6 @@ function Shell({
     [filter, setFilter] = useState(""),
     [showJobs, setShowJobs] = useState(false),
     [force, setForce] = useState(false),
-    [extractGlossary, setExtractGlossary] = useState(true),
     [batchSizes, setBatchSizes] = useState<Record<string, string>>(() => {
       try {
         return JSON.parse(localStorage.getItem("bc.batchSizes") || "{}") || {};
@@ -416,6 +415,17 @@ function Shell({
     await jobs.refresh(job);
     setShowJobs(true);
   }
+  async function updateReferenceGlossary(ids: string[]) {
+    if (!state.project || !ids.length) return;
+    const job = await api.extractGlossary({
+      projectId: state.project.id,
+      selection: { kind: "explicit_ids", ids },
+      maxChapters: ids.length,
+      force: true,
+    });
+    await jobs.refresh(job);
+    setShowJobs(true);
+  }
   async function translate(all: boolean) {
     if (!state.project) return;
     if (all && !validBatchSize) return;
@@ -431,7 +441,7 @@ function Shell({
         force,
         instructions: null,
         maxChapters: all ? Number(batchSize) : 1,
-        extractGlossary,
+        extractGlossary: true,
       },
     });
     await jobs.refresh(job);
@@ -878,14 +888,7 @@ function Shell({
                     />
                     {t("force")}
                   </label>
-                  <label className="bc-check">
-                    <input
-                      type="checkbox"
-                      checked={extractGlossary}
-                      onChange={(e) => setExtractGlossary(e.target.checked)}
-                    />
-                    {t("batchGlossary")}
-                  </label>{" "}
+                  <span className="bc-hint">{t("automaticGlossary")}</span>
                 </details>
               </div>
             )}
@@ -1031,21 +1034,13 @@ function Shell({
                             />
                             {t("force")}
                           </label>
-                          <label className="bc-check">
-                            <input
-                              type="checkbox"
-                              checked={extractGlossary}
-                              onChange={(e) =>
-                                setExtractGlossary(e.target.checked)
-                              }
-                            />
-                            {t("batchGlossary")}
-                          </label>
+                          <span className="bc-hint">{t("automaticGlossary")}</span>
                           <span className="bc-hint">{t("batchHint")}</span>
                         </div>
                       </section>
                     }
                     tool={panel}
+                    updateReferenceGlossary={updateReferenceGlossary}
                     registerFlush={registerFlush}
                     project={project}
                     chapters={state.chapters}

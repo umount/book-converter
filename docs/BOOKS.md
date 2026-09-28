@@ -23,7 +23,7 @@ or an annotation is an explicit provider-backed job.
 
 Choose a positive chapter count and start translation. Selection follows source order
 and skips ineligible/alsaved translated chapters unless repeat processing is requested.
-Each chapter is translated and its context saved before optional glossary extraction
+Each chapter is translated and its context saved before glossary extraction
 updates terms from that completed translation. The next chapter uses the updated glossary.
 Processing stops when the selected batch is finished.
 
@@ -78,7 +78,9 @@ chapter instructions from the reader toolbar. Search and replace use the sidebar
 newer edits. Translation changes publish a new revision rather than rewriting history.
 
 Reference import aligns chapters and can supply their full translated content.
-Mapping does not silently replace an existing authored translation. Origin (generated,
+Mapping does not silently replace an existing authored translation. Importing a reference
+or saving changed mappings in the reader starts glossary extraction for newly mapped
+or remapped chapters; unchanged mappings do not repeat extraction. Origin (generated,
 reference or manual), execution errors, language issues and review state are separate
 properties. Changing dependencies can mark results for review while keeping them
 available to read and edit.
