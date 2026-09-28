@@ -190,6 +190,7 @@ const en = {
   profileKeyHint:
     "Changing the endpoint clears the old key unless you enter a replacement.",
   temperature: "Temperature",
+  contextTokens: "Context window (tokens)",
   outputTokens: "Maximum output tokens",
 
   zoom: "Zoom",
@@ -573,6 +574,7 @@ const ru: Record<Key, string> = {
   profileKeyHint:
     "При смене адреса старый ключ удаляется, если не указан новый.",
   temperature: "Температура",
+  contextTokens: "Размер контекста (токены)",
   outputTokens: "Максимум токенов ответа",
 
   zoom: "Масштаб",
@@ -943,6 +945,7 @@ const zh: Record<Key, string> = {
   mangaTranslationProfile: "漫画翻译",
   profileKeyHint: "更改服务地址会清除旧密钥，除非输入新密钥。",
   temperature: "温度",
+  contextTokens: "上下文窗口（令牌）",
   outputTokens: "最大输出令牌数",
 
   zoom: "缩放",

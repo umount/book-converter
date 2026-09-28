@@ -69,6 +69,7 @@ pub fn provider_profile(selected: Option<&str>) -> Result<(ProviderProfile, Stri
             model: config.model,
             temperature: config.temperature,
             max_output_tokens: config.max_output_tokens,
+            context_window_tokens: config.context_window_tokens,
             timeout_seconds: config.request_timeout_secs,
             network_retries: u32::try_from(config.max_retries.min(5)).unwrap_or(5),
         }
@@ -107,7 +108,7 @@ pub fn prepare_book_run(
             settings_revision: settings.revision,
             glossary_revision: shared::glossary_revision(db)?,
             selected_ids: selected,
-            prompt_version: "book-segments-v1".into(),
+            prompt_version: "book-budget-v2".into(),
             stages: if options.extract_glossary {
                 vec!["translation".into(), "context".into(), "glossary".into()]
             } else {
@@ -342,6 +343,7 @@ mod credential_tests {
             model: "model".into(),
             temperature: 0.5,
             max_output_tokens: 100,
+            context_window_tokens: crate::ai::default_context_window_tokens(),
             timeout_seconds: 10,
             network_retries: 0,
         };
@@ -431,7 +433,7 @@ pub fn prepare_title_run(manager:&ProjectManager,args:&crate::app::requests::Sta
         ChatCompletions::new(profile.clone(),key)?;
         let snapshot=runs::RunSnapshot { manga: None,
             retarget: None,
-            settings:settings.choices,settings_revision:settings.revision,glossary_revision:shared::glossary_revision(db)?,selected_ids:vec![args.chapter_id.0.clone()],prompt_version:"book-title-v1".into(),stages:vec!["title".into()],provider:Some(profile),instructions:Some(super::book_presentation::read(db)?.instructions),
+            settings:settings.choices,settings_revision:settings.revision,glossary_revision:shared::glossary_revision(db)?,selected_ids:vec![args.chapter_id.0.clone()],prompt_version:"book-title-v2".into(),stages:vec!["title".into()],provider:Some(profile),instructions:Some(super::book_presentation::read(db)?.instructions),
         };
         let job_id=uuid::Uuid::new_v4().to_string();
         runs::create_run(db,&job_id,"book_title",&snapshot,&now())?;

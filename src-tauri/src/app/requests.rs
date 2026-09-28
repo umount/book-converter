@@ -886,6 +886,8 @@ pub struct AssistantView {pub messages:Vec<AssistantMessage>,pub proposals:Vec<A
 #[serde(rename_all="camelCase",deny_unknown_fields)]
 pub struct ProviderEntry {
     pub id:String, pub name:String, pub base_url:String, pub model:String,
+    #[serde(default = "crate::ai::default_context_window_tokens")]
+    pub context_window_tokens:u32,
     pub temperature:f32, pub max_output_tokens:u32, pub timeout_seconds:u32,
     pub network_retries:u32, pub has_key:bool, pub revision:Revision,
 }

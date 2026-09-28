@@ -15,7 +15,7 @@ export function ProviderProfiles({
 }: {
   project: ProjectDescriptor | null;
   t: T;
-  defaults: { model: string; base_url: string } | null;
+  defaults: { model: string; base_url: string; context_window_tokens: number; max_output_tokens: number } | null;
   onBusy: (busy: boolean) => void;
 }) {
   const [profiles, setProfiles] = useState<ProviderEntry[]>([]);
@@ -40,7 +40,7 @@ export function ProviderProfiles({
           if (!p.length && project?.kind !== "manga") setDraft({
             id: crypto.randomUUID(), name: "",
             baseUrl: defaults?.base_url ?? "", model: defaults?.model ?? "",
-            temperature: 0.3, maxOutputTokens: 4096, timeoutSeconds: 120,
+            temperature: 0.3, maxOutputTokens: defaults?.max_output_tokens ?? 4096, contextWindowTokens: defaults?.context_window_tokens ?? 32768, timeoutSeconds: 120,
             networkRetries: 2, hasKey: false, revision: "0",
           });
         }
@@ -114,7 +114,7 @@ export function ProviderProfiles({
               baseUrl: defaults?.base_url ?? "",
               model: defaults?.model ?? "",
               temperature: 0.3,
-              maxOutputTokens: 4096,
+              maxOutputTokens: defaults?.max_output_tokens ?? 4096, contextWindowTokens: defaults?.context_window_tokens ?? 32768,
               timeoutSeconds: 120,
               networkRetries: 2,
               hasKey: false,
@@ -180,6 +180,11 @@ export function ProviderProfiles({
                 />
               </label>
               <label>
+                {t("contextTokens")}
+                <input type="number" min={1} value={draft.contextWindowTokens}
+                  onChange={(e) => setDraft({ ...draft, contextWindowTokens: Number(e.target.value) })} />
+              </label>
+              <label>
                 {t("outputTokens")}
                 <input
                   type="number"
@@ -199,7 +204,11 @@ export function ProviderProfiles({
               disabled={
                 !draft.name.trim() ||
                 !draft.model.trim() ||
-                !draft.baseUrl.trim()
+                !draft.baseUrl.trim() ||
+                !Number.isInteger(draft.contextWindowTokens) ||
+                !Number.isInteger(draft.maxOutputTokens) ||
+                draft.maxOutputTokens < 1 ||
+                draft.contextWindowTokens <= draft.maxOutputTokens
               }
               onClick={() =>
                 void act(async () => {

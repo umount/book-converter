@@ -540,7 +540,7 @@ mod tests {
                 },
             )
             .unwrap();
-        let provider=FakeProvider{profile:ProviderProfile{id:"test".into(),base_url:"https://example.invalid/v1".into(),model:"test".into(),temperature:0.0,max_output_tokens:1000,timeout_seconds:10,network_retries:0},reply:r#"{"text":"Proposed instructions","actions":[{"kind":"book_prompt","instructions":"Use consistent names"}]}"#.into()};
+        let provider=FakeProvider{profile:ProviderProfile{id:"test".into(),base_url:"https://example.invalid/v1".into(),model:"test".into(),temperature:0.0,max_output_tokens:1000,context_window_tokens:32768,timeout_seconds:10,network_retries:0},reply:r#"{"text":"Proposed instructions","actions":[{"kind":"book_prompt","instructions":"Use consistent names"}]}"#.into()};
         let service = AssistantService::default();
         let args = AssistantSendArgs {
             project_id: project.id.clone(),

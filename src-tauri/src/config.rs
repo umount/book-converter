@@ -30,6 +30,7 @@ pub struct Config {
 
     /// Max tokens the model may generate per reply (DeepSeek V4: up to 384K).
     pub max_output_tokens: u32,
+    pub context_window_tokens: u32,
     /// Number of retries on network errors / 429 / 5xx.
     pub max_retries: usize,
 }
@@ -44,6 +45,7 @@ impl std::fmt::Debug for Config {
             .field("temperature", &self.temperature)
             .field("request_timeout_secs", &self.request_timeout_secs)
             .field("max_output_tokens", &self.max_output_tokens)
+            .field("context_window_tokens", &self.context_window_tokens)
             .field("max_retries", &self.max_retries)
             .finish()
     }
@@ -58,6 +60,7 @@ impl Default for Config {
             temperature: 0.3,
             request_timeout_secs: 600,
             max_output_tokens: 384_000,
+            context_window_tokens: 1_000_000,
             max_retries: 5,
         }
     }
@@ -104,6 +107,19 @@ impl Config {
             }
         }
 
+        for (key, slot) in [
+            ("context_window_tokens", &mut cfg.context_window_tokens),
+            ("max_output_tokens", &mut cfg.max_output_tokens),
+        ] {
+            if let Ok(Some(value)) = crate::settings::get(&sdb, key) {
+                if let Ok(n) = value.parse::<u32>() {
+                    if n > 0 {
+                        *slot = n;
+                    }
+                }
+            }
+        }
+
         // The API key is the one setting the UI owns outright: it is entered on
         // the Settings page and kept in the settings DB. The environment
         // variable is the fallback for a machine with no UI (CI, a headless
@@ -120,6 +136,14 @@ impl Config {
         }
         if let Ok(base) = std::env::var("DEEPSEEK_BASE_URL") {
             cfg.base_url = base;
+        }
+        if !crate::settings::get(&sdb, "context_window_tokens")
+            .ok()
+            .flatten()
+            .is_some_and(|v| v.parse::<u32>().is_ok_and(|n| n > 0))
+        {
+            cfg.context_window_tokens =
+                crate::ai::context_window_default(&cfg.base_url, &cfg.model);
         }
         cfg
     }

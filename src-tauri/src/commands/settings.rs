@@ -24,6 +24,7 @@ pub struct EffectiveConfig {
     pub temperature: f32,
     pub request_timeout_secs: u64,
     pub max_output_tokens: u32,
+    pub context_window_tokens: u32,
     pub has_key: bool,
     /// Enough of the key to recognise it, never enough to use it.
     pub key_hint: Option<String>,
@@ -64,6 +65,7 @@ pub async fn get_effective_config() -> Result<EffectiveConfig, String> {
         temperature: cfg.temperature,
         request_timeout_secs: cfg.request_timeout_secs,
         max_output_tokens: cfg.max_output_tokens,
+        context_window_tokens: cfg.context_window_tokens,
         has_key,
         key_hint,
         key_from_env,
@@ -124,6 +126,10 @@ pub async fn set_setting(key: String, value: String) -> Result<(), String> {
         || key.starts_with("ai_profile_name:")
     {
         return Err("use_set_api_key".into());
+    }
+    if matches!(key.as_str(), "context_window_tokens" | "max_output_tokens")
+        && !value.parse::<u32>().is_ok_and(|n| n > 0) {
+        return Err("invalid_token_limit".into());
     }
     if key == crate::diagnostics::SETTING && !matches!(value.as_str(), "true" | "false") {
         return Err("invalid_logging_setting".into());

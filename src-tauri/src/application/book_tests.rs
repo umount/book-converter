@@ -21,6 +21,7 @@ impl Fake {
                 model: "fake".into(),
                 temperature: 0.,
                 max_output_tokens: 1000,
+                context_window_tokens: 1_000_000,
                 timeout_seconds: 1,
                 network_retries: 0,
             },

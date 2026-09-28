@@ -39,6 +39,7 @@ fn read(db: &Connection, id: &str) -> Result<Option<ProviderEntry>, AppError> {
         model: p.model,
         temperature: p.temperature,
         max_output_tokens: p.max_output_tokens,
+        context_window_tokens: p.context_window_tokens,
         timeout_seconds: u32::try_from(p.timeout_seconds)
             .map_err(|_| AppError::invalid("providerProfile"))?,
         network_retries: p.network_retries,
@@ -85,6 +86,7 @@ pub fn save(path: &Path, args: SaveProviderArgs) -> Result<ProviderEntry, AppErr
         model: p.model,
         temperature: p.temperature,
         max_output_tokens: p.max_output_tokens,
+        context_window_tokens: p.context_window_tokens,
         timeout_seconds: u64::from(p.timeout_seconds),
         network_retries: p.network_retries,
     };
@@ -141,6 +143,7 @@ mod tests {
             model: "model".into(),
             temperature: 0.2,
             max_output_tokens: 4096,
+            context_window_tokens: crate::ai::default_context_window_tokens(),
             timeout_seconds: 60,
             network_retries: 1,
             has_key: false,

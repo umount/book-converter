@@ -1,5 +1,6 @@
 //! Domain application services shared by commands and assistant tools.
 pub mod book;
+mod book_budget;
 mod book_language;
 mod book_terms;
 pub mod book_glossary;

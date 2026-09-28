@@ -82,6 +82,7 @@ async fn imported_book_survives_batch_edit_reopen_search_and_export() {
         model: "fixture".into(),
         temperature: 0.,
         max_output_tokens: 1000,
+        context_window_tokens: crate::ai::default_context_window_tokens(),
         timeout_seconds: 1,
         network_retries: 0,
     }));

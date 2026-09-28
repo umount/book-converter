@@ -604,6 +604,8 @@ export async function invokePreview<T>(
       result = {
         target_lang: defaultTargetLanguage,
         model: "preview-model",
+        context_window_tokens: 32768,
+        max_output_tokens: 4096,
         base_url: "https://example.invalid",
         has_key: false,
         env_locked: [],

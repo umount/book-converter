@@ -26,6 +26,7 @@ fn profile() -> ProviderProfile {
         model: "fake".into(),
         temperature: 0.0,
         max_output_tokens: 1000,
+        context_window_tokens: crate::ai::default_context_window_tokens(),
         timeout_seconds: 10,
         network_retries: 0,
     }

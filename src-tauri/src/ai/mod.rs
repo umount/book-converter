@@ -8,16 +8,72 @@ use std::{
     time::Duration,
 };
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub fn default_context_window_tokens() -> u32 {
+    32_768
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq)]
 pub struct ProviderProfile {
     pub id: String,
     pub base_url: String,
     pub model: String,
     pub temperature: f32,
     pub max_output_tokens: u32,
+    pub context_window_tokens: u32,
     pub timeout_seconds: u64,
     pub network_retries: u32,
 }
+pub fn context_window_default(base_url: &str, model: &str) -> u32 {
+    let official = reqwest::Url::parse(base_url)
+        .ok()
+        .is_some_and(|u| u.host_str() == Some("api.deepseek.com"))
+        && matches!(
+            model,
+            "deepseek-chat"
+                | "deepseek-reasoner"
+                | "deepseek-flash"
+                | "deepseek-pro"
+                | "deepseek-v4-flash"
+                | "deepseek-v4-pro"
+        );
+    if official {
+        1_000_000
+    } else {
+        default_context_window_tokens()
+    }
+}
+
+// Old saved job snapshots/profiles have no context field. Only the official
+// DeepSeek endpoint gets its documented default; compatible/custom endpoints
+// need their own explicit limits instead of inheriting a model-name guess.
+impl<'de> Deserialize<'de> for ProviderProfile {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        #[derive(Deserialize)]
+        struct Stored {
+            id: String,
+            base_url: String,
+            model: String,
+            temperature: f32,
+            max_output_tokens: u32,
+            context_window_tokens: Option<u32>,
+            timeout_seconds: u64,
+            network_retries: u32,
+        }
+        let p = Stored::deserialize(deserializer)?;
+        let fallback = context_window_default(&p.base_url, &p.model);
+        Ok(Self {
+            id: p.id,
+            base_url: p.base_url,
+            model: p.model,
+            temperature: p.temperature,
+            max_output_tokens: p.max_output_tokens,
+            context_window_tokens: p.context_window_tokens.unwrap_or(fallback),
+            timeout_seconds: p.timeout_seconds,
+            network_retries: p.network_retries,
+        })
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum ContentPart {
@@ -140,6 +196,7 @@ impl ChatCompletions {
         }
         if profile.model.is_empty()
             || profile.max_output_tokens == 0
+            || profile.context_window_tokens <= profile.max_output_tokens
             || profile.timeout_seconds == 0
             || profile.network_retries > 5
             || !profile.temperature.is_finite()
@@ -172,10 +229,18 @@ impl ChatCompletions {
         }
         for attempt in 0..=self.profile.network_retries {
             let started = std::time::Instant::now();
-            tracing::debug!(attempt, request_bytes = bytes.len(), "Provider request started");
+            tracing::debug!(
+                attempt,
+                request_bytes = bytes.len(),
+                "Provider request started"
+            );
             let result = self.once(&bytes).await;
-            tracing::debug!(attempt, elapsed_ms = started.elapsed().as_millis() as u64,
-                success = result.is_ok(), "Provider request finished");
+            tracing::debug!(
+                attempt,
+                elapsed_ms = started.elapsed().as_millis() as u64,
+                success = result.is_ok(),
+                "Provider request finished"
+            );
             match result {
                 Err(ref e) if e.retryable && attempt < self.profile.network_retries => {
                     tokio::time::sleep(Duration::from_millis((250u64 << attempt).min(8000))).await;
@@ -333,6 +398,24 @@ fn parse_completion(bytes: &[u8]) -> Result<Completion, AppError> {
 mod tests {
     use super::*;
     #[test]
+    fn saved_profiles_keep_explicit_limits_and_legacy_deepseek_jobs_remain_loadable() {
+        let mut value = serde_json::json!({"id":"old","base_url":"https://api.deepseek.com/v1","model":"deepseek-chat","temperature":0.3,"max_output_tokens":384000,"timeout_seconds":600,"network_retries":2});
+        let p: ProviderProfile = serde_json::from_value(value.clone()).unwrap();
+        assert_eq!(p.context_window_tokens, 1_000_000);
+        assert!(ChatCompletions::new(p, "test".into()).is_ok());
+        value["base_url"] = "https://custom.example/v1".into();
+        let p: ProviderProfile = serde_json::from_value(value.clone()).unwrap();
+        assert_eq!(p.context_window_tokens, 32768);
+        assert!(ChatCompletions::new(p, "test".into()).is_err());
+        value["context_window_tokens"] = 500000.into();
+        let p: ProviderProfile = serde_json::from_value(value).unwrap();
+        assert_eq!(p.context_window_tokens, 500000);
+        assert_eq!(
+            serde_json::from_str::<ProviderProfile>(&serde_json::to_string(&p).unwrap()).unwrap(),
+            p
+        );
+    }
+    #[test]
     fn finish_reason_and_usage_survive_parsing() {
         let value=parse_completion(br#"{"choices":[{"message":{"content":"partial"},"finish_reason":"length"}],"usage":{"prompt_tokens":7,"completion_tokens":3}}"#).unwrap();
         assert_eq!(value.finish_reason, "length");
@@ -347,6 +430,7 @@ mod tests {
             model: "explicit-model".into(),
             temperature: 0.3,
             max_output_tokens: 4000,
+            context_window_tokens: crate::ai::default_context_window_tokens(),
             timeout_seconds: 60,
             network_retries: 2,
         };

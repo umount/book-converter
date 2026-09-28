@@ -27,6 +27,18 @@ Each chapter is translated and its context saved before optional glossary extrac
 updates terms from that completed translation. The next chapter uses the updated glossary.
 Processing stops when the selected batch is finished.
 
+Chapters are sent whole when the configured context window and output limit allow.
+The budget includes instructions, preceding context, references, relevant glossary entries,
+JSON overhead and reserved output tokens. Without a model-specific tokenizer, input
+uses a conservative UTF-8 byte estimate and translation output reserves three tokens
+per source character plus JSON overhead, with a 10% margin. Oversized blocks split at
+paragraphs or sentences (Unicode character boundaries only as a last resort). Source
+text is never overlapped between pieces. Configure the actual model limits in Settings
+or its provider profile; older profiles without a context limit use 1,000,000 tokens for known models on the
+official DeepSeek endpoint ([provider limits](https://api-docs.deepseek.com/quick_start/pricing/))
+and a conservative 32,768 for other endpoints.
+A prompt that leaves no room for text fails before calling the provider.
+
 Requests carry stable text-segment IDs, relevant glossary entries, book/chapter
 instructions and preceding story context. The backend retries unresolved segment
 output and repairs affected foreign-language lines. Images retain their original

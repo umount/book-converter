@@ -11,6 +11,8 @@ type Config = {
   full_logging: boolean;
   log_directory: string;
   model: string;
+  context_window_tokens: number;
+  max_output_tokens: number;
   target_lang: string;
   base_url: string;
   has_key: boolean;
@@ -55,6 +57,8 @@ export function Settings({
         ["full_logging", String(config.full_logging)],
         ["target_lang", config.target_lang],
         ["model", config.model],
+        ["context_window_tokens", String(config.context_window_tokens)],
+        ["max_output_tokens", String(config.max_output_tokens)],
         ["base_url", config.base_url],
       ])
         if (!config.env_locked.includes(k))
@@ -109,7 +113,7 @@ export function Settings({
           </button>
           <button
             className="primary"
-            disabled={busy || !config?.model.trim() || !config.base_url.trim()}
+            disabled={busy || !config?.model.trim() || !config.base_url.trim() || !Number.isInteger(config.context_window_tokens) || !Number.isInteger(config.max_output_tokens) || config.max_output_tokens < 1 || config.context_window_tokens <= config.max_output_tokens}
             onClick={() => void save()}
           >
             {t("save")}
@@ -167,6 +171,16 @@ export function Settings({
                 setConfig({ ...config, base_url: e.target.value })
               }
             />
+          </label>
+          <label>
+            {t("contextTokens")}
+            <input type="number" min={1} value={config.context_window_tokens}
+              onChange={(e) => setConfig({ ...config, context_window_tokens: Number(e.target.value) })} />
+          </label>
+          <label>
+            {t("outputTokens")}
+            <input type="number" min={1} value={config.max_output_tokens}
+              onChange={(e) => setConfig({ ...config, max_output_tokens: Number(e.target.value) })} />
           </label>
           <label>
             {t("apiKey")}
