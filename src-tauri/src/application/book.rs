@@ -87,34 +87,72 @@ fn translation_request(system: &str, pending: &[Segment], terms: &[shared::Gloss
     })
 }
 
+// Persist only structural metadata in job errors; the rejected reply belongs in logs.
+fn segment_rejection<const N: usize>(
+    attempt: usize,
+    pending: &[Segment],
+    reason: &str,
+    response: Option<&str>,
+    details: [(&str, String); N],
+) -> AppError {
+    let mut error = invalid_output();
+    error.params.insert("reason".into(), reason.into());
+    error.params.insert("attempt".into(), attempt.to_string());
+    error.params.insert("pending".into(), pending.len().to_string());
+    error.params.extend(details.into_iter().map(|(key, value)| (key.into(), value)));
+    tracing::warn!(details = ?error.params, response = ?response, segment_ids = ?pending.iter().map(|s| &s.id).collect::<Vec<_>>(),
+        "Translation response rejected");
+    error
+}
+
 pub(super) async fn transform_segments(
     provider: &dyn Provider, segments: &[Segment], request: impl Fn(&[Segment]) -> Result<Request,AppError>,
 ) -> Result<HashMap<String,String>,AppError> {
     let mut accepted = HashMap::new();
     let mut pending = segments.to_vec();
-    for _ in 0..3 {
+    let mut last_error = invalid_output();
+    for attempt in 1..=3 {
         if pending.is_empty() {
             return Ok(accepted);
         }
         let response = provider.complete(request(&pending)?).await;
         let response = match response {
             Ok(response) => response,
-            Err(error) if error.code == ErrorCode::InvalidOutput => continue,
+            Err(error) if error.code == ErrorCode::InvalidOutput => {
+                last_error = segment_rejection(attempt, &pending, "provider_response", None, [
+                    ("providerError", error.message_key),
+                ]);
+                continue;
+            },
             Err(error) => return Err(error),
         };
         if response.finish_reason != "stop" {
+            last_error = segment_rejection(attempt, &pending, "finish_reason", Some(&response.text), [
+                ("finishReason", response.finish_reason.clone()),
+                ("responseBytes", response.text.len().to_string()),
+            ]);
             if response.finish_reason == "length" {
                 continue;
             }
-            return Err(invalid_output());
+            return Err(last_error);
         }
         #[derive(Deserialize)]
         #[serde(deny_unknown_fields)]
         struct Output {
             segments: Vec<Segment>,
         }
-        let Ok(output) = serde_json::from_str::<Output>(&response.text) else {
-            continue;
+        let output = match serde_json::from_str::<Output>(&response.text) {
+            Ok(output) => output,
+            Err(error) => {
+                // Keep parser details stored in the job free of response text.
+                last_error = segment_rejection(attempt, &pending, "invalid_json", Some(&response.text), [
+                    ("jsonCategory", format!("{:?}", error.classify())),
+                    ("line", error.line().to_string()),
+                    ("column", error.column().to_string()),
+                    ("responseBytes", response.text.len().to_string()),
+                ]);
+                continue;
+            }
         };
         let expected: HashSet<_> = pending.iter().map(|s| s.id.as_str()).collect();
         if output
@@ -122,7 +160,10 @@ pub(super) async fn transform_segments(
             .iter()
             .any(|s| !expected.contains(s.id.as_str()))
         {
-            // Discard an untrustworthy response and retry the unresolved input.
+            last_error = segment_rejection(attempt, &pending, "unknown_ids", Some(&response.text), [
+                ("received", output.segments.len().to_string()),
+                ("unknown", output.segments.iter().filter(|s| !expected.contains(s.id.as_str())).count().to_string()),
+            ]);
             continue;
         }
         let mut counts = HashMap::new();
@@ -140,12 +181,24 @@ pub(super) async fn transform_segments(
                 accepted.insert(s.id.clone(), s.text.clone());
             }
         }
+        let missing = pending.iter().filter(|s| !counts.contains_key(s.id.as_str())).count();
+        let duplicated = pending.iter().filter(|s| counts.get(s.id.as_str()).is_some_and(|n| *n > 1)).count();
+        let empty = pending.iter().filter(|s| counts.get(s.id.as_str()) == Some(&1)
+            && !accepted.contains_key(&s.id)).count();
         pending.retain(|s| !accepted.contains_key(&s.id));
+        if !pending.is_empty() {
+            last_error = segment_rejection(attempt, &pending, "unresolved_segments", Some(&response.text), [
+                ("missing", missing.to_string()),
+                ("duplicated", duplicated.to_string()),
+                ("empty", empty.to_string()),
+                ("received", output.segments.len().to_string()),
+            ]);
+        }
     }
     if pending.is_empty() {
         Ok(accepted)
     } else {
-        Err(invalid_output())
+        Err(last_error)
     }
 }
 

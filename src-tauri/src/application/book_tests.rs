@@ -8,6 +8,7 @@ use std::sync::Mutex;
 use std::{future::Future, pin::Pin};
 
 struct Fake {
+    finish_reason: String,
     profile: ProviderProfile,
     replies: Mutex<std::collections::VecDeque<Result<String, AppError>>>,
     requests: Mutex<Vec<serde_json::Value>>,
@@ -15,6 +16,7 @@ struct Fake {
 impl Fake {
     fn new(replies: Vec<&str>) -> Self {
         Self {
+            finish_reason: "stop".into(),
             profile: ProviderProfile {
                 id: "fake".into(),
                 base_url: "https://unused.test".into(),
@@ -54,7 +56,7 @@ impl Provider for Fake {
                     .unwrap()
                     .pop_front()
                     .expect("bounded number of calls")?,
-                finish_reason: "stop".into(),
+                finish_reason: self.finish_reason.clone(),
                 usage: Usage::default(),
                 tool_calls: vec![],
             })
@@ -713,4 +715,51 @@ async fn glossary_is_filtered_again_for_only_the_unresolved_fragments() {
     let requests=fake.requests.lock().unwrap();let first=requests[0]["system"].as_str().unwrap();let retry=requests[1]["system"].as_str().unwrap();
     assert!(first.contains("Первый"));assert!(first.contains("Второй"));assert!(!first.contains("НЕ ОТПРАВЛЯТЬ"));
     assert!(retry.contains("Второй"));assert!(!retry.contains("Первый"));assert!(!retry.contains("NeverOccurs"));
+}
+
+#[tokio::test]
+async fn rejected_segments_preserve_structural_diagnostics() {
+    let segment = Segment { id: "a".into(), text: "private source".into() };
+    for (reply, reason, detail, value) in [
+        ("private malformed response", "invalid_json", "jsonCategory", "Syntax"),
+        (r#"{"segments":[{"id":"wrong","text":"private translation"}]}"#, "unknown_ids", "unknown", "1"),
+        (r#"{"segments":[]}"#, "unresolved_segments", "missing", "1"),
+        (r#"{"segments":[{"id":"a","text":" "}]}"#, "unresolved_segments", "empty", "1"),
+        (r#"{"segments":[{"id":"a","text":"one"},{"id":"a","text":"two"}]}"#, "unresolved_segments", "duplicated", "1"),
+    ] {
+        let fake = Fake::new(vec![reply; 3]);
+        let error = translate_segments(&fake, "JSON", std::slice::from_ref(&segment)).await.unwrap_err();
+        assert_eq!(error.params["reason"], reason);
+        assert_eq!(error.params[detail], value);
+        assert_eq!(error.params["attempt"], "3");
+        assert_eq!(error.params["pending"], "1");
+        assert!(!format!("{:?}", error.params).contains("private"));
+        assert_eq!(fake.requests.lock().unwrap().len(), 3);
+    }
+    let fake = Fake::new(vec![]);
+    for _ in 0..3 {
+        fake.replies.lock().unwrap().push_back(Err(AppError {
+            code: crate::app::contracts::ErrorCode::InvalidOutput,
+            message_key: "errors.providerResponse".into(),
+            params: Default::default(), retryable: false,
+        }));
+    }
+    let error = translate_segments(&fake, "JSON", &[segment]).await.unwrap_err();
+    assert_eq!(error.params["reason"], "provider_response");
+    assert_eq!(error.params["providerError"], "errors.providerResponse");
+}
+
+#[tokio::test]
+async fn premature_finish_reason_is_preserved() {
+    for (reason, attempts) in [("length", 3), ("content_filter", 1)] {
+        let mut fake = Fake::new(vec!["partial"; attempts]);
+        fake.finish_reason = reason.into();
+        let error = translate_segments(&fake, "JSON", &[Segment {
+            id: "a".into(), text: "source".into(),
+        }]).await.unwrap_err();
+        assert_eq!(error.params["reason"], "finish_reason");
+        assert_eq!(error.params["finishReason"], reason);
+        assert_eq!(error.params["attempt"], attempts.to_string());
+        assert_eq!(fake.requests.lock().unwrap().len(), attempts);
+    }
 }
