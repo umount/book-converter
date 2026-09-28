@@ -62,8 +62,10 @@ pub fn export_book(manager: &ProjectManager, args: &BookExportArgs) -> Result<()
             .file_name()
             .ok_or_else(|| AppError::invalid("destination"))?,
     );
-    // Refuse to replace existing source/project files. A new name can always be chosen.
-    if destination.try_exists().map_err(storage_error)? {
+    // Confirmation applies only to the path selected in the save dialog, not an
+    // alternative filename produced by FB2 extension normalization.
+    let overwrite = args.overwrite && destination_path == Path::new(&args.destination);
+    if !overwrite && destination.try_exists().map_err(storage_error)? {
         return Err(AppError::invalid("destinationExists"));
     }
     manager.validate_export_directory(&parent)?;
@@ -122,8 +124,12 @@ pub fn export_book(manager: &ProjectManager, args: &BookExportArgs) -> Result<()
     if lease.cancelled() {
         return Err(AppError::invalid("projectClosing"));
     }
-    // Same-filesystem link publishes the completed file without clobbering a raced destination.
-    std::fs::hard_link(&temporary, &destination).map_err(storage_error)?;
+    if overwrite {
+        // The old file remains intact until the completed export is ready to replace it.
+        std::fs::rename(&temporary, &destination).map_err(storage_error)?;
+    } else {
+        std::fs::hard_link(&temporary, &destination).map_err(storage_error)?;
+    }
     Ok(())
 }
 
@@ -401,6 +407,7 @@ mod tests {
             project_id: project.id.clone(),
             selection: EntitySelection::All,
             destination: temp.0.join("output.epub").to_string_lossy().into_owned(),
+            overwrite: false,
             format: BookExportFormat::Epub,
             incomplete_policy: IncompletePolicy::Reject,
         };
@@ -411,6 +418,15 @@ mod tests {
         let before = std::fs::read(&args.destination).unwrap();
         assert!(export_book(&manager, &args).is_err());
         assert_eq!(std::fs::read(&args.destination).unwrap(), before);
+        args.overwrite = true;
+        args.incomplete_policy = IncompletePolicy::Reject;
+        assert!(export_book(&manager, &args).is_err());
+        assert_eq!(std::fs::read(&args.destination).unwrap(), before);
+        args.incomplete_policy = IncompletePolicy::Originals;
+        std::fs::write(&args.destination, b"Old export").unwrap();
+        export_book(&manager, &args).unwrap();
+        assert!(zip::ZipArchive::new(std::fs::File::open(&args.destination).unwrap()).is_ok());
+        args.overwrite = false;
         let mut zip = zip::ZipArchive::new(std::io::Cursor::new(before)).unwrap();
         let mut image_files = 0;
         let mut image_occurrences = 0;
@@ -431,6 +447,11 @@ mod tests {
         args.destination = temp.0.join("output.fb2.zip").to_string_lossy().into_owned();
         export_book(&manager, &args).unwrap();
         let text = read_fb2_zip(Path::new(&args.destination), "output.fb2");
+        args.overwrite = true;
+        std::fs::write(&args.destination, b"Old FB2 export").unwrap();
+        export_book(&manager, &args).unwrap();
+        assert_eq!(read_fb2_zip(Path::new(&args.destination), "output.fb2"), text);
+        args.overwrite = false;
         assert_eq!(text.matches("<image ").count(), 3);
         assert_eq!(text.matches("<binary ").count(), 1);
         let imported = manager
@@ -456,6 +477,7 @@ mod tests {
                 project_id: imported.id,
                 selection: EntitySelection::All,
                 destination: roundtrip_path.to_string_lossy().into_owned(),
+                overwrite: false,
                 format: BookExportFormat::Fb2,
                 incomplete_policy: IncompletePolicy::Originals,
             },
@@ -587,6 +609,7 @@ mod tests {
                 project_id: project.id.clone(),
                 selection: EntitySelection::All,
                 destination: destination.to_string_lossy().into_owned(),
+                overwrite: false,
                 format: BookExportFormat::Txt,
                 incomplete_policy: IncompletePolicy::Reject,
             },
@@ -618,6 +641,7 @@ mod tests {
                 .into_owned(),
             format: BookExportFormat::Fb2,
             incomplete_policy: IncompletePolicy::TranslatedOnly,
+            overwrite: false,
         };
         export_book(&manager, &args).unwrap();
         let partial = read_fb2_zip(Path::new(&args.destination), "partial.fb2");

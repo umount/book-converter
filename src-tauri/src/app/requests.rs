@@ -192,6 +192,8 @@ pub struct BookExportArgs {
     pub project_id: ProjectId,
     pub selection: EntitySelection,
     pub destination: String,
+    #[serde(default)]
+    pub overwrite: bool,
     pub format: BookExportFormat,
     pub incomplete_policy: IncompletePolicy,
 }

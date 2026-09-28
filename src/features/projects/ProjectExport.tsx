@@ -112,6 +112,7 @@ export function ProjectExport({
         await projectApi.exportBook({
           projectId: project.id,
           destination,
+          overwrite: true,
           format,
           incompletePolicy: policy,
           selection:

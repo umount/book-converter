@@ -222,6 +222,7 @@ async fn imported_book_survives_batch_edit_reopen_search_and_export() {
         project_id: project.id.clone(),
         selection: EntitySelection::All,
         destination: destination.to_string_lossy().into_owned(),
+        overwrite: false,
         format: BookExportFormat::Epub,
         incomplete_policy: IncompletePolicy::Reject,
     };
