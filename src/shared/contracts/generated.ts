@@ -78,6 +78,7 @@ export type ArchiveExportArgs = { projectId: ProjectId, destination: string, };
 export type ArchiveImportArgs = { path: string, };
 export type ListChaptersArgs = { projectId: ProjectId, cursor: string | null, limit: number, };
 export type GetChapterArgs = { projectId: ProjectId, chapterId: ChapterId, };
+export type DeleteChapterArgs = { projectId: ProjectId, chapterId: ChapterId, expectedRevision: Revision, expectedTranslationRevision: Revision | null, };
 export type UpdateBookBlockArgs = { projectId: ProjectId, blockId: BlockId, text: string, expectedRevision: Revision, };
 export type UpdateChapterInstructionsArgs = { projectId: ProjectId, chapterId: ChapterId, instructions: string, expectedRevision: Revision, };
 export type TranslationOptions = { maxChapters: number, extractGlossary: boolean, force: boolean, instructions: string | null, };

@@ -8,6 +8,14 @@ use crate::storage::{repository::storage_error, runs};
 use tauri::{Emitter, State};
 
 #[tauri::command]
+pub async fn book_delete_chapter(context: State<'_, AppContext>, args: DeleteChapterArgs) -> Result<(), AppError> {
+    let manager = context.manager.clone();
+    tauri::async_runtime::spawn_blocking(move || manager.lease(&args.project_id)?.with_connection(|db, _| {
+        crate::application::book_delete::delete(db, &args)
+    })).await.map_err(|_| AppError::invalid("task"))?
+}
+
+#[tauri::command]
 pub async fn book_get_chapter(
     context: State<'_, AppContext>,
     args: GetChapterArgs,

@@ -77,6 +77,15 @@ chapter instructions from the reader toolbar. Search and replace use the sidebar
 (Ctrl/Cmd+F and Ctrl/Cmd+H). Saves use expected revisions and cannot silently overwrite
 newer edits. Translation changes publish a new revision rather than rewriting history.
 
+The reader toolbar can delete the selected chapter after a confirmation naming it.
+Deletion removes its source blocks, all saved translation revisions, reference mapping
+and glossary extraction records from the project. The original book file, shared image
+assets and glossary terms remain. Term frequencies are recalculated. Later rolling
+summaries are cleared when they depended on a deleted chapter with saved context;
+other chapter translations remain intact. Deletion is blocked while a project job is
+active, and old jobs containing deleted chapters must be replaced by a new run.
+The reader selects the next chapter, or the preceding one when deleting the last.
+
 Reference import aligns chapters and can supply their full translated content.
 Mapping does not silently replace an existing authored translation. Importing a reference
 or saving changed mappings in the reader starts glossary extraction for newly mapped

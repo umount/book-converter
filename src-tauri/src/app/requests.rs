@@ -75,6 +75,15 @@ pub struct GetChapterArgs {
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct DeleteChapterArgs {
+    pub project_id: ProjectId,
+    pub chapter_id: ChapterId,
+    pub expected_revision: Revision,
+    pub expected_translation_revision: Option<Revision>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct UpdateBookBlockArgs {
     pub project_id: ProjectId,
     pub block_id: BlockId,
@@ -741,6 +750,7 @@ pub fn typescript() -> String {
         ArchiveImportArgs::decl(&config),
         ListChaptersArgs::decl(&config),
         GetChapterArgs::decl(&config),
+        DeleteChapterArgs::decl(&config),
         UpdateBookBlockArgs::decl(&config),
         UpdateChapterInstructionsArgs::decl(&config),
         TranslationOptions::decl(&config),

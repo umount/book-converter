@@ -192,7 +192,16 @@ pub fn resume_provider(
 ) -> Result<super::book::BookPipeline, AppError> {
     let run = manager
         .lease(project)?
-        .with_connection(|db, _| runs::get_run(db, job))?;
+        .with_connection(|db, _| {
+            let run = runs::get_run(db, job)?;
+            if run.kind != "book_metadata" {
+                for id in &run.snapshot.selected_ids {
+                    let exists: bool = db.query_row("SELECT EXISTS(SELECT 1 FROM book_chapters WHERE id=?1)", [id], |r|r.get(0)).map_err(storage_error)?;
+                    if !exists { return Err(AppError::invalid("chapterDeleted")); }
+                }
+            }
+            Ok(run)
+        })?;
     if !["book_translation", "book_metadata", "book_glossary", "book_title", "book_retarget"].contains(&run.kind.as_str())
         || !matches!(
             run.state,

@@ -426,6 +426,24 @@ function Shell({
     await jobs.refresh(job);
     setShowJobs(true);
   }
+  async function deleteCurrentChapter() {
+    if (!state.project || !editorRef.current) return;
+    const projectId = state.project.id;
+    const chapterId = editorRef.current.snapshot().view.chapter.id;
+    const current = await api.chapter({ projectId, chapterId });
+    if (!await confirmation.confirm({
+      title: t("deleteChapter"),
+      message: t("deleteChapterConfirm").replace("{title}", current.chapter.title),
+      action: t("deleteChapter"), danger: true,
+    })) return;
+    await api.deleteChapter({ projectId, chapterId,
+      expectedRevision: current.chapter.revision,
+      expectedTranslationRevision: current.translation?.revision ?? null,
+    });
+    rememberedChapters.current.delete(projectId);
+    await workspace.refreshChapters();
+    await reload();
+  }
   async function translate(all: boolean) {
     if (!state.project) return;
     if (all && !validBatchSize) return;
@@ -877,6 +895,15 @@ function Shell({
                   }
                 >
                   {t("instructions")}
+                </button>
+                <button
+                  className="bc-icon-button danger"
+                  title={t("deleteChapter")}
+                  aria-label={t("deleteChapter")}
+                  disabled={busy || !editor || jobList.some(j => ["queued", "running", "cancelling"].includes(j.state))}
+                  onClick={() => void act(deleteCurrentChapter)}
+                >
+                  <ToolbarIcon name="clear" />
                 </button>
                 <details className="bc-translation-options">
                   <summary>{t("translationOptions")}</summary>

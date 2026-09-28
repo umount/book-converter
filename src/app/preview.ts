@@ -357,6 +357,19 @@ export async function invokePreview<T>(
       result = { matches, nextCursor: null };
       break;
     }
+    case "book_delete_chapter": {
+      const index = views.findIndex(v => v.chapter.id === args.chapterId);
+      const view = views[index];
+      if (!view || view.chapter.revision !== args.expectedRevision || (view.translation?.revision ?? null) !== args.expectedTranslationRevision) throw { code: "revision_conflict" };
+      views.splice(index, 1);
+      const summaryIndex = chapters.findIndex(c => c.id === args.chapterId);
+      if (summaryIndex >= 0) chapters.splice(summaryIndex, 1);
+      chapters.forEach((c, i) => { c.position = i; });
+      views.forEach((v, i) => { v.chapter.position = i; });
+      previewReference.mappings = previewReference.mappings.filter(m => m.chapterId !== args.chapterId);
+      result = null;
+      break;
+    }
     case "book_get_chapter":
       result = views.find((v) => v.chapter.id === args.chapterId);
       break;

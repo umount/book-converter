@@ -101,3 +101,25 @@ test("chapter list refresh from a closed project is discarded", async () => {
   delayed.resolve({items:[{id:"a",status:"done"}],nextCursor:null});await refresh;
   assert.equal(store.snapshot().project,null);assert.deepEqual(store.snapshot().chapters,[]);
 });
+
+test("removing the selected chapter opens its next neighbour and handles an empty book", async () => {
+  let chapters = [{id:"a",position:0},{id:"b",position:1},{id:"c",position:2}];
+  const reads=[];
+  const store=new WorkspaceStore({
+    open:async()=>project("p"),settings:async()=>({}),
+    chapters:async()=>({items:chapters,nextCursor:null}),
+    chapter:async({chapterId})=>{reads.push(chapterId);return {chapter:{...chapters.find(c=>c.id===chapterId)},blocks:[]};},
+  });
+  await store.open("p");await store.selectChapter("b");
+  chapters=[{id:"a",position:0},{id:"c",position:1}];
+  await store.refreshChapters();
+  assert.equal(store.snapshot().chapter.chapter.id,"c");
+  chapters=[{id:"a",position:0}];await store.refreshChapters();
+  assert.equal(store.snapshot().chapter.chapter.id,"a");
+  chapters=[];await store.refreshChapters();
+  assert.equal(store.snapshot().chapter,null);
+  assert.deepEqual(store.snapshot().chapters,[]);
+  assert.equal(store.snapshot().loading,false);
+  assert.deepEqual(reads,["a","b","c","a"]);
+  store.dispose();
+});

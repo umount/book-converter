@@ -90,6 +90,7 @@ export function createProjectApi(transport: Transport) {
       call<C.BookPresentation>("book_cover_set", args),
     metadata: (args: C.ProjectArgs) =>
       call<C.BookMetadataView | null>("book_metadata_get", args),
+    deleteChapter: (args: C.DeleteChapterArgs) => call<void>("book_delete_chapter", args),
     importReference: (args: C.BookReferenceImportArgs) =>
       call<C.BookReferenceView>("book_reference_import", args),
     reference: (args: C.ProjectArgs) =>

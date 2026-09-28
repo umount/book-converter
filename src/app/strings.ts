@@ -1,5 +1,9 @@
 import type { Lang } from "../i18n";
 const en = {
+  deleteChapter: "Delete chapter",
+  deleteChapterConfirm: "Delete “{title}” from this project? Its source content, saved translations and reference mapping will be removed. This cannot be undone. The original book file is kept.",
+  chapterDeleteBusy: "Stop the project's active job before deleting a chapter.",
+  chapterDeleted: "This chapter has been deleted. Start a new job using the remaining chapters.",
   metadataLanguageError: "The model returned book details in the wrong language. Please retry.",
   glossaryOutputError: "Glossary extraction failed: the model returned invalid terms or an incomplete response. Retry the job.",
   providerTransportError: "Could not reach the translation provider. Check the connection and provider timeout.",
@@ -384,6 +388,10 @@ const en = {
 };
 type Key = keyof typeof en;
 const ru: Record<Key, string> = {
+  deleteChapter: "Удалить главу",
+  deleteChapterConfirm: "Удалить «{title}» из проекта? Будут удалены содержимое главы, сохранённые переводы и сопоставление с референсом. Отменить удаление нельзя. Исходный файл книги сохранится.",
+  chapterDeleteBusy: "Перед удалением главы остановите обработку проекта.",
+  chapterDeleted: "Глава удалена. Запустите новое задание для оставшихся глав.",
   metadataLanguageError: "Модель вернула описание книги не на языке перевода. Повторите задание.",
   glossaryOutputError: "Не удалось извлечь глоссарий: модель вернула некорректные термины или неполный ответ. Повторите задание.",
   providerTransportError: "Не удалось связаться с провайдером перевода. Проверьте соединение и тайм-аут провайдера.",
@@ -769,6 +777,10 @@ const ru: Record<Key, string> = {
   book_glossary: "Извлечение терминов",
 };
 const zh: Record<Key, string> = {
+  deleteChapter: "删除章节",
+  deleteChapterConfirm: "从项目中删除“{title}”？章节原文、已保存译文和参考映射将被删除，且无法撤销。原始书籍文件保留。",
+  chapterDeleteBusy: "删除章节前请停止项目中正在运行的任务。",
+  chapterDeleted: "此章节已删除。请为剩余章节启动新任务。",
   metadataLanguageError: "模型返回的书籍信息语言不正确。请重试。",
   glossaryOutputError: "术语提取失败：模型返回了无效术语或不完整的响应。请重试任务。",
   providerTransportError: "无法连接翻译服务。请检查网络和超时设置。",
@@ -1142,6 +1154,8 @@ export function errorText(error: unknown, t: T): string {
       finishReason?: string;
     };
   } | null;
+  if (e?.params?.field === "chapterDeleteBusy") return t("chapterDeleteBusy");
+  if (e?.params?.field === "chapterDeleted") return t("chapterDeleted");
   if (e?.params?.field === "metadataLanguage") return t("metadataLanguageError");
   if (e?.messageKey === "errors.glossaryOutput") {
     const reasons: Record<string, Key> = {

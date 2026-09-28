@@ -79,7 +79,15 @@ export class WorkspaceStore {
       if(cursor!==null && seen.has(cursor)) throw new Error("Repeated chapter cursor");
       if(cursor!==null) seen.add(cursor);
     } while(cursor!==null);
-    this.publish({...this.state,chapters});
+    const previous = this.state.chapter;
+    if (previous && !chapters.some(c => c.id === previous.chapter.id)) {
+      ++this.chapterGeneration;
+      this.publish({ ...this.state, chapters, chapter: null, loading: false });
+      const next = chapters.find(c => c.position >= previous.chapter.position) ?? chapters[chapters.length - 1];
+      if (next) await this.selectChapter(next.id);
+    } else {
+      this.publish({...this.state,chapters});
+    }
   }
   clearError() { this.publish({ ...this.state, error: null }); }
   close() { ++this.generation; ++this.chapterGeneration; this.publish(empty()); }
