@@ -8,10 +8,12 @@ function AutoText({
   value,
   onChange,
   label,
+  busy,
 }: {
   value: string;
   onChange: (v: string) => void;
   label: string;
+  busy: boolean;
 }) {
   const ref = useRef<HTMLTextAreaElement>(null);
   useLayoutEffect(() => {
@@ -36,6 +38,7 @@ function AutoText({
       ref={ref}
       className="bc-prose-editor"
       aria-label={label}
+      readOnly={busy}
       spellCheck
       value={value}
       onChange={(e) => onChange(e.target.value)}
@@ -48,8 +51,10 @@ export function BookReader({
   focusBlock,
   onTranslateTitle,
   busy,
+  editingLocked,
 }: {
   session: BookEditorSession;
+  editingLocked: boolean;
   focusBlock?: string | null;
   onTranslateTitle: () => void;
   busy: boolean;
@@ -67,6 +72,7 @@ export function BookReader({
   return (
     <div className="bc-reader">
       {confirmation.dialog}
+      {editingLocked && <div className="bc-reader-lock" role="status"><span className="bc-chapter-spinner" aria-hidden="true" /><span>{t("chapterEditBusy")}</span></div>}
       <div className="bc-reader-titles">
         <div>
           <h2>{view.chapter.title}</h2>
@@ -76,6 +82,7 @@ export function BookReader({
             <>
               <input
                 className="bc-title-editor"
+                readOnly={editingLocked}
                 aria-label={t("translatedChapterTitle")}
                 value={state.drafts.get(TITLE_DRAFT) ?? view.translation.title}
                 onChange={(e) => session.editTitle(e.target.value)}
@@ -188,6 +195,7 @@ export function BookReader({
               />
             ) : view.translation ? (
               <AutoText
+                busy={editingLocked}
                 label={`${t("translation")} ${index + 1}`}
                 value={state.drafts.get(block.id) ?? block.translatedText ?? ""}
                 onChange={(text) => session.edit(block.id, text)}

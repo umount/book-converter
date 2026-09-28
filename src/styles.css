@@ -1896,3 +1896,16 @@ button + button {
 .bc-manga-batch {padding:12px 16px; overflow:auto;}
 
 .bc-export-progress { display: flex; align-items: center; gap: 12px; padding-block: 12px; }
+
+.bc-reader-lock {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 16px;
+  margin-bottom: 16px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+}
+.bc-reader-lock .bc-chapter-spinner { flex-shrink: 0; }
+.bc-reader input[readonly], .bc-reader textarea[readonly] { cursor: default; }

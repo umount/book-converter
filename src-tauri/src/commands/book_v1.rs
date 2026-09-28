@@ -211,6 +211,7 @@ fn job_view(db: &rusqlite::Connection, project: &ProjectId, id: &str) -> Result<
         (Some(count),page)
     }else{(None,None)};
     Ok(JobView {
+        editing_locked_chapters: if is_book { crate::storage::results::editing_locked_chapters(db)? } else { vec![] },
         total_pages:is_manga.then_some(run.snapshot.selected_ids.len() as u32),
         completed_pages,
         current_page_number:page.as_ref().map(|p|p.0),
@@ -523,11 +524,15 @@ mod progress_tests {
         db.execute_batch("CREATE TABLE job_runs(id TEXT,kind TEXT,state TEXT,settings_snapshot TEXT,revision INTEGER,created_at TEXT,updated_at TEXT,terminal_error TEXT);
             CREATE TABLE job_steps(run_id TEXT,entity_kind TEXT,entity_id TEXT,stage TEXT,attempt INTEGER,state TEXT,duration_ms INTEGER);
             CREATE TABLE book_chapters(id TEXT,position INTEGER,display_number INTEGER,source_title TEXT);
+            CREATE TABLE book_source_blocks(chapter_id TEXT,kind TEXT,text TEXT);
+            INSERT INTO book_source_blocks VALUES('a','text','First'),('b','text','Second');
             INSERT INTO book_chapters VALUES('a',0,100,'First'),('b',1,101,'Second');").unwrap();
         let snapshot = serde_json::json!({"settings":{"target_language":"ru"},"settings_revision":"0","glossary_revision":"0","selected_ids":["a","b"],"prompt_version":"v1","stages":["glossary","translation","context"],"provider":null,"instructions":null});
         db.execute("INSERT INTO job_runs VALUES('run','book_translation','running',?1,0,'now','now',NULL)",[snapshot.to_string()]).unwrap();
         db.execute_batch("INSERT INTO job_steps VALUES('run','chapter','a','glossary',1,'succeeded',100),('run','chapter','a','translation',1,'succeeded',100),('run','chapter','a','context',1,'succeeded',100),('run','chapter','b','glossary',1,'running',NULL);").unwrap();
         let view = job_view(&db, &ProjectId::new(), "run").unwrap();
+        assert!(view.editing_locked_chapters.contains(&"a".into()));
+        assert!(view.editing_locked_chapters.contains(&"b".into()));
         assert_eq!(view.completed_steps, 3);
         assert_eq!(view.total_chapters, Some(2));
         assert_eq!(view.completed_chapters, Some(1));

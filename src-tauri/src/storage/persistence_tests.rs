@@ -906,3 +906,22 @@ fn automatic_glossary_growth_preserves_previous_translation_review_state() {
         assert_eq!(db.query_row("SELECT needs_review FROM book_chapter_states WHERE id='chapter'", [], |r| r.get::<_, bool>(0)).unwrap(), index == 2);
     }
 }
+
+#[test]
+fn active_step_locks_previous_chapter_and_releases_it_when_advancing() {
+    let mut db = book();
+    let value = translation();
+    results::save_translation(&mut db, &value).unwrap();
+    for (id, position) in [("next", 10), ("third", 11)] {
+        db.execute("INSERT INTO book_chapters(id,position,source_title) VALUES(?1,?2,'Title')", rusqlite::params![id,position]).unwrap();
+        db.execute("INSERT INTO book_source_blocks(id,chapter_id,position,kind,text) VALUES(?1,?1,0,'text','Source')", [id]).unwrap();
+    }
+    db.execute("INSERT INTO job_runs(id,kind,state,settings_snapshot,created_at,updated_at) VALUES('busy','book_translation','running','{}','0','0')", []).unwrap();
+    db.execute("INSERT INTO job_steps(id,run_id,entity_kind,entity_id,stage,attempt,input_fingerprint,state) VALUES('step','busy','chapter','next','translation',1,'test','running')", []).unwrap();
+    let title = results::edit_translation_title(&mut db, &value.id, &rev(0), "New title").unwrap_err();
+    let body = results::edit_translation_block(&mut db, &value.id, &value.blocks[0].0, &rev(0), "New body").unwrap_err();
+    assert_eq!(title.params["field"], "chapterEditBusy");
+    assert_eq!(body.params["field"], "chapterEditBusy");
+    db.execute("UPDATE job_steps SET entity_id='third'", []).unwrap();
+    results::edit_translation_title(&mut db, &value.id, &rev(0), "New title").unwrap();
+}

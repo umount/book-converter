@@ -763,3 +763,18 @@ async fn premature_finish_reason_is_preserved() {
         assert_eq!(fake.requests.lock().unwrap().len(), attempts);
     }
 }
+
+#[tokio::test]
+async fn dialogue_quote_repair_avoids_retry_but_still_validates_ids() {
+    let reply = r#"{"segments":[{"id":"a","text":"«Что такое "лапает"?»"}]}"#;
+    let fake = Fake::new(vec![reply]);
+    let segments = [Segment { id: "a".into(), text: "source".into() }];
+    let output = translate_segments(&fake, "JSON", &segments).await.unwrap();
+    assert_eq!(output["a"], "«Что такое \"лапает\"?»");
+    assert_eq!(fake.requests.lock().unwrap().len(), 1);
+
+    let wrong = reply.replace("\"id\":\"a\"", "\"id\":\"wrong\"");
+    let fake = Fake::new(vec![&wrong; 3]);
+    let error = translate_segments(&fake, "JSON", &segments).await.unwrap_err();
+    assert_eq!(error.params["reason"], "unknown_ids");
+}

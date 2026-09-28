@@ -2,6 +2,7 @@
 pub mod book;
 pub mod book_delete;
 mod book_budget;
+mod book_json;
 mod book_language;
 mod book_terms;
 pub mod book_glossary;

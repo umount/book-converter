@@ -1,5 +1,6 @@
 import type { Lang } from "../i18n";
 const en = {
+  chapterEditBusy: "This chapter is in use while processing it or the next chapter. Editing is temporarily locked.",
   deleteChapter: "Delete chapter",
   deleteChapterConfirm: "Delete “{title}” from this project? Its source content, saved translations and reference mapping will be removed. This cannot be undone. The original book file is kept.",
   chapterDeleteBusy: "Stop the project's active job before deleting a chapter.",
@@ -388,6 +389,7 @@ const en = {
 };
 type Key = keyof typeof en;
 const ru: Record<Key, string> = {
+  chapterEditBusy: "Глава используется при обработке текущей или следующей главы. Редактирование временно заблокировано.",
   deleteChapter: "Удалить главу",
   deleteChapterConfirm: "Удалить «{title}» из проекта? Будут удалены содержимое главы, сохранённые переводы и сопоставление с референсом. Отменить удаление нельзя. Исходный файл книги сохранится.",
   chapterDeleteBusy: "Перед удалением главы остановите обработку проекта.",
@@ -777,6 +779,7 @@ const ru: Record<Key, string> = {
   book_glossary: "Извлечение терминов",
 };
 const zh: Record<Key, string> = {
+  chapterEditBusy: "正在处理本章或下一章，暂时无法编辑本章。",
   deleteChapter: "删除章节",
   deleteChapterConfirm: "从项目中删除“{title}”？章节原文、已保存译文和参考映射将被删除，且无法撤销。原始书籍文件保留。",
   chapterDeleteBusy: "删除章节前请停止项目中正在运行的任务。",
@@ -1154,6 +1157,7 @@ export function errorText(error: unknown, t: T): string {
       finishReason?: string;
     };
   } | null;
+  if (e?.params?.field === "chapterEditBusy") return t("chapterEditBusy");
   if (e?.params?.field === "chapterDeleteBusy") return t("chapterDeleteBusy");
   if (e?.params?.field === "chapterDeleted") return t("chapterDeleted");
   if (e?.params?.field === "metadataLanguage") return t("metadataLanguageError");

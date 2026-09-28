@@ -123,6 +123,7 @@ let glossary: GlossaryTermView[] = [
 ];
 let settingsRevision = 1;
 const jobs: JobView[] = new URLSearchParams(location.search).has("rebuild") ? [{
+  editingLockedChapters: [],
   job:{projectId:manga.id,jobId:"preview-rebuild"},kind:"manga_rebuild",state:"running",revision:"1",totalSteps:3,completedSteps:1,
   totalPages:1,completedPages:0,currentPageId:mangaPages[0].id,currentPageNumber:1,currentVolumeTitle:"Volume 1",currentStage:"inpainting",
   totalChapters:null,completedChapters:null,currentChapterNumber:null,currentChapterTitle:null,remainingSeconds:null,error:null,
@@ -586,6 +587,7 @@ export async function invokePreview<T>(
           ? 3
           : 1);
       jobs.push({
+        editingLockedChapters: [],
         job,
         kind: command.replace("book_start_", "book_"),
         state: "succeeded",

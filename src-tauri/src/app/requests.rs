@@ -650,6 +650,7 @@ pub struct TranslationSummary {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
 #[serde(rename_all = "camelCase")]
 pub struct JobView {
+    pub editing_locked_chapters: Vec<String>,
     pub job: JobRef,
     pub kind: String,
     pub state: JobState,

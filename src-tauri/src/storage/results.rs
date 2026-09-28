@@ -247,6 +247,17 @@ pub fn save_manga_result_in(
     Ok(Revision(revision.to_string()))
 }
 
+pub fn editing_locked_chapters(db: &Connection) -> Result<Vec<String>, AppError> {
+    let mut query = db.prepare("SELECT DISTINCT c.id FROM book_chapters c JOIN job_steps s ON (c.id=s.entity_id OR c.position=(SELECT MAX(p.position) FROM book_chapters p WHERE p.position<(SELECT position FROM book_chapters WHERE id=s.entity_id) AND EXISTS(SELECT 1 FROM book_source_blocks b WHERE b.chapter_id=p.id AND b.kind IN ('text','caption') AND trim(b.text)!=''))) JOIN job_runs j ON j.id=s.run_id WHERE j.state IN ('running','cancelling') AND s.entity_kind='chapter' AND s.rowid=(SELECT MAX(last.rowid) FROM job_steps last WHERE last.run_id=j.id)").map_err(storage_error)?;
+    let rows = query.query_map([], |r| r.get(0)).map_err(storage_error)?;
+    rows.collect::<Result<Vec<_>, _>>().map_err(storage_error)
+}
+fn check_manual_edit_allowed(db: &Connection, translation: &str) -> Result<(), AppError> {
+    let chapter: String = db.query_row("SELECT chapter_id FROM book_translations WHERE id=?1", [translation], |r| r.get(0)).map_err(storage_error)?;
+    if editing_locked_chapters(db)?.contains(&chapter) { return Err(AppError::invalid("chapterEditBusy")); }
+    Ok(())
+}
+
 /// Manual editing publishes a new chapter translation revision, preserving historical contexts.
 pub fn edit_translation_block(
     db: &mut Connection,
@@ -256,6 +267,7 @@ pub fn edit_translation_block(
     text: &str,
 ) -> Result<Revision, AppError> {
     let tx = db.transaction().map_err(storage_error)?;
+    check_manual_edit_allowed(&tx, id)?;
     let (chapter,title,source,settings_rev,glossary,revision,context,status,provenance):(String,String,i64,i64,i64,i64,String,String,String)=tx.query_row("SELECT chapter_id,translated_title,source_revision,settings_revision,glossary_revision,revision,context_fingerprint,status,provenance FROM book_translations WHERE id=?1",[id],|r|Ok((r.get(0)?,r.get(1)?,r.get(2)?,r.get(3)?,r.get(4)?,r.get(5)?,r.get(6)?,r.get(7)?,r.get(8)?))).optional().map_err(storage_error)?.ok_or_else(not_found)?;
     if revision != expected.value()? {
         return Err(conflict());
@@ -319,6 +331,7 @@ pub fn edit_translation_block(
 /// Title-only revisions preserve the body's origin, review state and continuity.
 pub fn edit_translation_title(db: &mut Connection, id: &str, expected: &Revision, title: &str) -> Result<Revision, AppError> {
     let tx=db.transaction().map_err(storage_error)?;
+    check_manual_edit_allowed(&tx, id)?;
     let (_,revision)=edit_translation_title_in(&tx,id,expected,title,None)?;
     tx.commit().map_err(storage_error)?;
     Ok(revision)

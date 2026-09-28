@@ -141,7 +141,16 @@ pub(super) async fn transform_segments(
         struct Output {
             segments: Vec<Segment>,
         }
-        let output = match serde_json::from_str::<Output>(&response.text) {
+        let parsed = serde_json::from_str::<Output>(&response.text).or_else(|error| {
+            if let Some(fixed) = super::book_json::repair_dialogue_quotes(&response.text) {
+                if let Ok(output) = serde_json::from_str::<Output>(&fixed) {
+                    tracing::info!(attempt, "Repaired unescaped dialogue quotes in translation response");
+                    return Ok(output);
+                }
+            }
+            Err(error)
+        });
+        let output = match parsed {
             Ok(output) => output,
             Err(error) => {
                 // Keep parser details stored in the job free of response text.
@@ -222,7 +231,10 @@ fn digest(value: &impl Serialize) -> Result<String, AppError> {
     ))
 }
 #[derive(Debug, Serialize)]
+// Identity is used only for stored lineage, not model input or input fingerprints.
+// A title-only revision copies the same context under a new ID.
 struct Continuity {
+    #[serde(skip_serializing)]
     id: Option<String>,
     summary: String,
     previous_tail: String,
@@ -526,7 +538,19 @@ mod continuity_tests {
         assert!(context.previous_tail.starts_with("Полный текст."));
         assert!(context.previous_tail.ends_with("ФИНАЛ РЕФЕРЕНСА"));
         assert!(reference.ends_with(&context.previous_tail));
-        db.execute("DELETE FROM book_contexts WHERE translation_id='reference'",[]).unwrap();
+        let before = digest(&Some(&context)).unwrap();
+        results::edit_translation_title(&mut db, "reference", &Revision("0".into()), "Исправленный заголовок").unwrap();
+        let renamed = predecessor(&db, "next").unwrap().unwrap();
+        assert_ne!(renamed.id, context.id);
+        assert_eq!(digest(&Some(&renamed)).unwrap(), before);
+        assert_eq!(serde_json::to_value(&renamed).unwrap().get("id"), None);
+        db.execute("UPDATE book_contexts SET summary='Изменённое саммари' WHERE translation_id='first'", []).unwrap();
+        assert_ne!(digest(&predecessor(&db, "next").unwrap()).unwrap(), before);
+        db.execute("UPDATE book_contexts SET summary='Накопленное саммари' WHERE translation_id='first'", []).unwrap();
+        db.execute("UPDATE book_translation_blocks SET translated_text='Изменённое окончание' WHERE translation_id=(SELECT id FROM book_translations WHERE chapter_id='reference' AND status='ready')", []).unwrap();
+        assert_ne!(digest(&predecessor(&db, "next").unwrap()).unwrap(), before);
+        db.execute("UPDATE book_translation_blocks SET translated_text=?1 WHERE translation_id=(SELECT id FROM book_translations WHERE chapter_id='reference' AND status='ready')", [&reference]).unwrap();
+        db.execute("DELETE FROM book_contexts WHERE translation_id IN (SELECT id FROM book_translations WHERE chapter_id='reference')",[]).unwrap();
         let restored=predecessor(&db,"next").unwrap().unwrap();
         assert_eq!(restored.previous_tail,context.previous_tail);
         assert_eq!(restored.summary,context.summary);

@@ -959,6 +959,7 @@ function Shell({
                 ) : panel === "reader" ? (
                   editor ? (
                     <BookReader
+                      editingLocked={jobList.some(j => j.job.projectId === project.id && ["running", "cancelling"].includes(j.state) && j.editingLockedChapters?.includes(editor.snapshot().view.chapter.id))}
                       session={editor}
                       t={t}
                       focusBlock={focusBlock}
