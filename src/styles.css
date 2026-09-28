@@ -404,6 +404,9 @@ button + button {
 .bc-tool > button {
   margin-top: 12px;
 }
+.bc-reference-hint {
+  margin-top: 16px;
+}
 .bc-tool h2 {
   margin-bottom: 16px;
 }
@@ -1060,6 +1063,11 @@ button + button {
 }
 .bc-book-progress .bc-check {
   margin-left: 0;
+}
+.bc-book-progress .bc-batch-count {
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
 }
 .bc-book-progress .bc-hint {
   flex-basis: 100%;

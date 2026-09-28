@@ -993,7 +993,7 @@ function Shell({
                           </p>
                         )}
                         <div className="bc-toolbar">
-                          <label>
+                          <label className="bc-batch-count">
                             {t("batchCount")}
                             <input
                               type="number"
@@ -1001,7 +1001,7 @@ function Shell({
                               max="4294967295"
                               step="1"
                               value={batchSize}
-                              style={{ width: "6rem", marginLeft: "0.5rem" }}
+                              style={{ width: "6rem" }}
                               onChange={(e) => {
                                 const next = {
                                   ...batchSizes,

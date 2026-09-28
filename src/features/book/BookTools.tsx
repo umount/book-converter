@@ -136,7 +136,7 @@ function Tools({
           >
             {t("referenceImport")}
           </button>
-          <p className="bc-hint">{t("referenceGlossaryHint")}</p>
+          <p className="bc-hint bc-reference-hint">{t("referenceGlossaryHint")}</p>
           {!reference?.chapters.length ? (
             <p className="bc-hint">{t("noReference")}</p>
           ) : (
