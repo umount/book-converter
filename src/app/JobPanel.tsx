@@ -1,3 +1,4 @@
+import { ToolbarIcon } from "../shared/ui/ToolbarIcon";
 import type {
   JobRef,
   JobView,
@@ -51,7 +52,7 @@ export function JobPanel({
           disabled={!jobs.some(job => !activeStates.includes(job.state))}
           onClick={clear}
         >
-          ⌫
+          <ToolbarIcon name="clear" />
         </button>
         <button
           className="bc-icon-button"

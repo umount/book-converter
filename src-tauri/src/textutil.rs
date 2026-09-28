@@ -191,7 +191,10 @@ pub fn foreign_fragments(
         // Han in a non-Han target is untranslated source text, however short and
         // even though it does appear in the original - that is exactly the point.
         let is_source_script = script == Script::Han;
-        let long_enough = is_source_script || word.chars().count() >= min_len;
+        // Punctuation is not a letter: ranks like "S-" and initials like "A’"
+        // must not become foreign words merely because of a trailing separator.
+        let letters = word.chars().filter(|c| script_of(*c) == Some(script)).count();
+        let long_enough = is_source_script || letters >= min_len;
         let carried_over = !is_source_script && source.contains(&word);
         if long_enough && !carried_over && !out.contains(&word) {
             out.push(word);
@@ -279,6 +282,13 @@ mod tests {
         assert!(dirty.contains(&"王林".to_string()), "got: {dirty:?}");
         let clean = leftover_foreign("Russian", "Глава", "Он посмотрел на него.", "他看着王林");
         assert!(clean.is_empty(), "got: {clean:?}");
+    }
+
+    #[test]
+    fn single_letter_ranks_and_initials_are_not_foreign_words() {
+        let text = "Предмет S-класса, ранг A-, инициалы B’ и C'. Но Bai-er и 王 остались.";
+        let out = foreign_fragments(text, Script::Cyrillic, "", MIN_FOREIGN_RUN);
+        assert_eq!(out, vec!["Bai-er", "王"]);
     }
 
     #[test]

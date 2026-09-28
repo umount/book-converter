@@ -320,9 +320,25 @@ button + button {
   margin: 0 auto;
 }
 .bc-reader-titles,
+.bc-reader-status,
 .bc-block-pair {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+}
+.bc-translation-status {
+  grid-column: 2;
+  min-width: 0;
+  padding: 8px 22px;
+  border-left: 1px solid var(--line);
+  color: var(--muted);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+.bc-translation-status > p {
+  margin: 0;
+}
+.bc-translation-status > p + p {
+  margin-top: 4px;
 }
 .bc-reader-titles > div {
   padding: 6px 22px;
@@ -526,6 +542,17 @@ button + button {
   justify-content: space-between;
   min-height: 24px;
   margin: 0;
+}
+.bc-jobs > header > .bc-icon-button {
+  flex: 0 0 24px;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  font-size: 18px;
+}
+.bc-jobs > header > .bc-icon-button svg {
+  width: 15px;
+  height: 15px;
 }
 .bc-jobs > header > strong {
   flex: 1;
@@ -735,8 +762,13 @@ button + button {
     width: 150px;
   }
   .bc-reader-titles,
+  .bc-reader-status,
   .bc-block-pair {
     grid-template-columns: 1fr;
+  }
+  .bc-translation-status {
+    grid-column: 1;
+    border-left: 0;
   }
   .bc-target-block {
     border-left: 0;

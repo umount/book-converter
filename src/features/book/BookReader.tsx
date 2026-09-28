@@ -105,56 +105,60 @@ export function BookReader({
           )}
         </div>
       </div>
-      <p role="status">
-        {t(
-          view.status === "failed"
-            ? "chapterFailed"
-            : view.status === "in_progress"
-              ? "chapterInProgress"
-              : view.status === "done"
-                ? "chapterDone"
-                : view.status === "skipped"
-                  ? "chapterSkipped"
-                  : "chapterPending",
-        )}
-        {view.translation &&
-          ` · ${t(view.translation.origin === "reference" ? "originReference" : view.translation.origin === "manual" ? "originManual" : "originModel")}`}
-        {view.translation && view.translation.status !== "ready"
-          ? ` · ${t("review")}`
-          : ""}
-        {` · ${state.saving ? t("saving") : state.drafts.size ? t("unsaved") : t("saved")}`}
-      </p>
-      {view.translationError && (
-        <p role="alert">{errorText(view.translationError, t)}</p>
-      )}
-      {view.langIssues.length > 0 && (
-        <p role="status">
-          {t("languageIssues")}: {view.langIssues.join(", ")}
-        </p>
-      )}
-      {state.error != null && (
-        <div role="alert" className="bc-error bc-editor-error">
-          <p>{errorText(state.error, t)}</p>
-          <button onClick={() => void session.flush().catch(() => {})}>
-            {t("retry")}
-          </button>
-          <button
-            onClick={async () => {
-              if (
-                await confirmation.confirm({
-                  title: t("reload"),
-                  message: t("discardConfirm"),
-                  action: t("reload"),
-                  danger: true,
-                })
-              )
-                void session.discard().catch(() => {});
-            }}
-          >
-            {t("reload")}
-          </button>
+      <div className="bc-reader-status">
+        <div className="bc-translation-status">
+          <p role="status">
+            {t(
+              view.status === "failed"
+                ? "chapterFailed"
+                : view.status === "in_progress"
+                  ? "chapterInProgress"
+                  : view.status === "done"
+                    ? "chapterDone"
+                    : view.status === "skipped"
+                      ? "chapterSkipped"
+                      : "chapterPending",
+            )}
+            {view.translation &&
+              ` · ${t(view.translation.origin === "reference" ? "originReference" : view.translation.origin === "manual" ? "originManual" : "originModel")}`}
+            {view.translation && view.translation.status !== "ready"
+              ? ` · ${t("review")}`
+              : ""}
+            {view.translation && ` · ${state.saving ? t("saving") : state.drafts.size ? t("unsaved") : t("saved")}`}
+          </p>
+          {view.translationError && (
+            <p role="alert">{errorText(view.translationError, t)}</p>
+          )}
+          {view.langIssues.length > 0 && (
+            <p role="status">
+              {t("languageIssues")}: {view.langIssues.join(", ")}
+            </p>
+          )}
+          {state.error != null && (
+            <div role="alert" className="bc-error bc-editor-error">
+              <p>{errorText(state.error, t)}</p>
+              <button onClick={() => void session.flush().catch(() => {})}>
+                {t("retry")}
+              </button>
+              <button
+                onClick={async () => {
+                  if (
+                    await confirmation.confirm({
+                      title: t("reload"),
+                      message: t("discardConfirm"),
+                      action: t("reload"),
+                      danger: true,
+                    })
+                  )
+                    void session.discard().catch(() => {});
+                }}
+              >
+                {t("reload")}
+              </button>
+            </div>
+          )}
         </div>
-      )}
+      </div>
       {view.blocks.map((block, index) => (
         <section
           id={`book-block-${block.id}`}
