@@ -21,8 +21,6 @@ pub fn settings(db: &Connection) -> Result<ProjectSettingsView, AppError> {
         },
         choices: ProcessingChoices {
             book_translation_profile: v.book_translation_profile,
-            manga_recognition_profile: v.manga_recognition_profile,
-            manga_translation_profile: v.manga_translation_profile,
             assistant_profile: v.assistant_profile,
         },
         revision: value.revision,
@@ -34,8 +32,6 @@ pub fn update_settings(
 ) -> Result<Revision, AppError> {
     let mut choices = shared::settings(db)?.choices;
     choices.book_translation_profile = args.choices.book_translation_profile.clone();
-    choices.manga_recognition_profile = args.choices.manga_recognition_profile.clone();
-    choices.manga_translation_profile = args.choices.manga_translation_profile.clone();
     choices.assistant_profile = args.choices.assistant_profile.clone();
     shared::update_settings(db, &args.expected_revision, &choices)
 }

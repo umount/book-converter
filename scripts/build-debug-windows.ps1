@@ -8,7 +8,7 @@ npm ci
 if ($LASTEXITCODE -ne 0) { throw "npm ci failed" }
 
 & (Join-Path $PSScriptRoot "prepare-windows.ps1")
-# The regular build hook prepares and verifies the worker + ONNX DLLs.
+# The regular build hook builds the frontend.
 npm run tauri -- build --debug --features diagnostics --target x86_64-pc-windows-msvc --bundles nsis
 if ($LASTEXITCODE -ne 0) { throw "Diagnostic installer build failed" }
 Write-Host "Installer: src-tauri/target/x86_64-pc-windows-msvc/debug/bundle/nsis/"

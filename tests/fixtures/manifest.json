@@ -8,19 +8,11 @@
       "mixed"
     ],
     "image_occurrences": 3,
-    "unique_images": 1,
-    "comic_volumes": 2,
-    "comic_pages": 6,
-    "natural_page_order": [
-      1,
-      2,
-      10
-    ]
+    "unique_images": 1
   },
   "sha256": {
     "numbered-chinese.txt": "43e67ae6cc6fad84f60b4c946645fc14fbcbdae8e583ccac73824ab3acae2d1c",
     "reference.fb2": "19113186b6a1fca177fbba53b8ccb60727b887422274f76ece5176fe6fcae730",
-    "structural.epub": "76a7addd0a17ad85b8ae15d8d73f9142d16960f195780511c75ca7f5386f707f",
-    "two-volumes.cbz": "61d5b3708d61f73b505e9e39113e52bd59b92c0897cdd1d4b44074a1342c56a6"
+    "structural.epub": "76a7addd0a17ad85b8ae15d8d73f9142d16960f195780511c75ca7f5386f707f"
   }
 }

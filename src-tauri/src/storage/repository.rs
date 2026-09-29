@@ -2,7 +2,7 @@
 use crate::app::contracts::{
     AppError, BookBlockContent, BookBlockView, ErrorCode, ProjectKind, Revision,
 };
-use crate::app::requests::{BookChapterView, ChapterSummary, PageSummary, TranslationSummary};
+use crate::app::requests::{BookChapterView, ChapterSummary, TranslationSummary};
 use rusqlite::{params, Connection, OptionalExtension};
 
 pub(super) fn failure(code: ErrorCode, key: &str) -> AppError {
@@ -44,7 +44,6 @@ impl<'a> ProjectRepository<'a> {
             .map_err(storage_error)?;
         let expected = match expected_kind {
             ProjectKind::Book => "book",
-            ProjectKind::Manga => "manga",
         };
         if actual != expected {
             return Err(failure(
@@ -174,16 +173,50 @@ impl<'a> ProjectRepository<'a> {
                 |r| r.get::<_, String>(0),
             )
             .map_err(storage_error)?;
-        let target: String = tx.query_row("SELECT target_language FROM project_settings WHERE singleton=1", [], |r|r.get(0)).map_err(storage_error)?;
-        let source = blocks.iter().filter_map(|b| match &b.content {BookBlockContent::Text{text}|BookBlockContent::Caption{text}=>Some(text.as_str()), _=>None}).collect::<Vec<_>>().join("\n\n");
-        let body = blocks.iter().filter_map(|b|b.translated_text.as_deref()).collect::<Vec<_>>().join("\n\n");
-        let lang_issues = translation.as_ref().map(|t|crate::textutil::leftover_foreign(&target,&t.title,&body,&source)).unwrap_or_default();
-        let error:Option<String>=tx.query_row("SELECT translation_error FROM book_chapter_states WHERE id=?1",[id],|r|r.get(0)).map_err(storage_error)?;
-        let translation_error=error.map(|error|serde_json::from_str::<AppError>(&error).map_err(|_|AppError::invalid("jobError"))).transpose()?;
-        let status=chapter.status.clone();
+        let target: String = tx
+            .query_row(
+                "SELECT target_language FROM project_settings WHERE singleton=1",
+                [],
+                |r| r.get(0),
+            )
+            .map_err(storage_error)?;
+        let source = blocks
+            .iter()
+            .filter_map(|b| match &b.content {
+                BookBlockContent::Text { text } | BookBlockContent::Caption { text } => {
+                    Some(text.as_str())
+                }
+                _ => None,
+            })
+            .collect::<Vec<_>>()
+            .join("\n\n");
+        let body = blocks
+            .iter()
+            .filter_map(|b| b.translated_text.as_deref())
+            .collect::<Vec<_>>()
+            .join("\n\n");
+        let lang_issues = translation
+            .as_ref()
+            .map(|t| crate::textutil::leftover_foreign(&target, &t.title, &body, &source))
+            .unwrap_or_default();
+        let error: Option<String> = tx
+            .query_row(
+                "SELECT translation_error FROM book_chapter_states WHERE id=?1",
+                [id],
+                |r| r.get(0),
+            )
+            .map_err(storage_error)?;
+        let translation_error = error
+            .map(|error| {
+                serde_json::from_str::<AppError>(&error).map_err(|_| AppError::invalid("jobError"))
+            })
+            .transpose()?;
+        let status = chapter.status.clone();
         tx.commit().map_err(storage_error)?;
         Ok(BookChapterView {
-            status, lang_issues, translation_error,
+            status,
+            lang_issues,
+            translation_error,
             instructions,
             chapter,
             blocks,
@@ -263,67 +296,12 @@ impl<'a> ProjectRepository<'a> {
         tx.commit().map_err(storage_error)?;
         Ok(Revision(next.to_string()))
     }
-
-    pub fn insert_volume(
-        &mut self,
-        id: &str,
-        position: u32,
-        title: &str,
-        rtl: bool,
-    ) -> Result<(), AppError> {
-        self.require(ProjectKind::Manga)?;
-        self.connection.execute("INSERT INTO manga_volumes(id,position,title,reading_direction) VALUES(?1,?2,?3,?4)",params![id,position,title,if rtl { "rtl" } else { "ltr" }]).map_err(storage_error)?;
-        Ok(())
-    }
-
-    pub fn insert_page(&mut self, page: &PageSummary) -> Result<(), AppError> {
-        self.require(ProjectKind::Manga)?;
-        if page.revision.value()? != 0 {
-            return Err(AppError::invalid("revision"));
-        }
-        let tx = self.connection.transaction().map_err(storage_error)?;
-        // Dimension equality is checked inside the insert, not with a racy preflight read.
-        let count = tx.execute("INSERT INTO manga_pages(id,volume_id,position,original_asset_id,width,height) SELECT ?1,?2,?3,id,?5,?6 FROM assets WHERE id=?4 AND width=?5 AND height=?6",params![page.id.0,page.volume_id.0,page.position,page.original_asset_id.0,page.width,page.height]).map_err(storage_error)?;
-        if count != 1 {
-            return Err(AppError::invalid("originalAsset"));
-        }
-        if let Some(thumbnail) = &page.thumbnail_asset_id {
-            tx.execute(
-                "INSERT INTO manga_page_previews(page_id,asset_id) VALUES(?1,?2)",
-                params![page.id.0, thumbnail.0],
-            )
-            .map_err(storage_error)?;
-        }
-        tx.commit().map_err(storage_error)
-    }
-
-    pub fn pages(&self, volume_id: &str) -> Result<Vec<PageSummary>, AppError> {
-        self.require(ProjectKind::Manga)?;
-        let mut query = self.connection.prepare("SELECT id,volume_id,position,original_asset_id,width,height,revision,(SELECT asset_id FROM manga_page_previews WHERE page_id=manga_pages.id) FROM manga_pages WHERE volume_id=?1 ORDER BY position").map_err(storage_error)?;
-        let rows = query
-            .query_map([volume_id], |r| {
-                Ok(PageSummary {
-                    id: crate::app::contracts::PageId(r.get(0)?),
-                    volume_id: crate::app::contracts::VolumeId(r.get(1)?),
-                    position: r.get(2)?,
-                    original_asset_id: crate::app::contracts::AssetId(r.get(3)?),
-                    thumbnail_asset_id: r
-                        .get::<_, Option<String>>(7)?
-                        .map(crate::app::contracts::AssetId),
-                    width: r.get(4)?,
-                    height: r.get(5)?,
-                    revision: Revision(r.get::<_, i64>(6)?.to_string()),
-                })
-            })
-            .map_err(storage_error)?;
-        rows.collect::<Result<Vec<_>, _>>().map_err(storage_error)
-    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::app::contracts::{AssetId, ChapterId, PageId, VolumeId};
+    use crate::app::contracts::ChapterId;
 
     fn fixture(kind: ProjectKind) -> Connection {
         super::super::tests::database(kind)
@@ -345,10 +323,12 @@ mod tests {
         let mut db = fixture(ProjectKind::Book);
         let mut repo = ProjectRepository::new(&mut db, ProjectKind::Book).unwrap();
         let chapter = ChapterSummary {
-                translated_volume: None,
+            translated_volume: None,
             volume: None,
-            translated_title:None,
-            status:"pending".into(),origin:None,needs_review:false,
+            translated_title: None,
+            status: "pending".into(),
+            origin: None,
+            needs_review: false,
             id: ChapterId("chapter".into()),
             position: 0,
             title: "Example".into(),
@@ -395,46 +375,6 @@ mod tests {
             BookBlockContent::Text {
                 text: "After".into()
             }
-        );
-        assert_eq!(
-            repo.insert_volume("v", 0, "Volume", true).unwrap_err().code,
-            ErrorCode::WrongProjectKind
-        );
-    }
-
-    #[test]
-    fn manga_pages_reference_validated_dimensions_and_keep_occurrence_identity() {
-        let mut db = fixture(ProjectKind::Manga);
-        db.execute("INSERT INTO assets(id,relative_path,mime,byte_length,width,height) VALUES(?1,'assets/test.png','image/png',10,32,48)",["a".repeat(64)]).unwrap();
-        assert!(ProjectRepository::new(&mut db, ProjectKind::Book).is_err());
-        let mut repo = ProjectRepository::new(&mut db, ProjectKind::Manga).unwrap();
-        repo.insert_volume("volume", 0, "Volume", true).unwrap();
-        let mut page = PageSummary {
-            id: PageId("p1".into()),
-            volume_id: VolumeId("volume".into()),
-            position: 0,
-            thumbnail_asset_id: None,
-            original_asset_id: AssetId("a".repeat(64)),
-            width: 32,
-            height: 49,
-            revision: Revision("0".into()),
-        };
-        assert_eq!(
-            repo.insert_page(&page).unwrap_err().code,
-            ErrorCode::InvalidInput
-        );
-        page.height = 48;
-        repo.insert_page(&page).unwrap();
-        page.id = PageId("p2".into());
-        page.position = 1;
-        repo.insert_page(&page).unwrap();
-        let pages = repo.pages("volume").unwrap();
-        assert_eq!(pages.len(), 2);
-        assert_ne!(pages[0].id, pages[1].id);
-        assert_eq!(pages[0].original_asset_id, pages[1].original_asset_id);
-        assert_eq!(
-            repo.chapter("chapter").unwrap_err().code,
-            ErrorCode::WrongProjectKind
         );
     }
 }

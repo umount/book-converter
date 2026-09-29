@@ -90,10 +90,10 @@ mod tests {
     #[test]
     fn supported_manifest_requires_kind_and_valid_identity() {
         let mut value = serde_json::json!({"format_version": 1, "id": ProjectId::new(),
-            "kind":"manga", "name":"Example", "created_at":"2026-09-23T00:00:00Z",
-            "source":{"format":"cbz","displayName":"Example.cbz","originalPath":null}});
+            "kind":"book", "name":"Example", "created_at":"2026-09-23T00:00:00Z",
+            "source":{"format":"epub","displayName":"Example.epub","originalPath":null}});
         let parsed = Manifest::parse(&serde_json::to_vec(&value).unwrap()).unwrap();
-        assert_eq!(parsed.descriptor().kind, ProjectKind::Manga);
+        assert_eq!(parsed.descriptor().kind, ProjectKind::Book);
         value.as_object_mut().unwrap().remove("kind");
         assert!(Manifest::parse(&serde_json::to_vec(&value).unwrap()).is_err());
         value["format_version"] = 2.into();

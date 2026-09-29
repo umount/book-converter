@@ -26,9 +26,9 @@ pub fn enabled() -> bool {
 fn filter(full: bool) -> EnvFilter {
     // Do not enable HTTP dependency traces: they can contain headers or bodies.
     EnvFilter::new(if full {
-        "warn,book_converter_lib=trace,manga_inference=debug"
+        "warn,book_converter_lib=trace"
     } else {
-        "warn,book_converter_lib=info,manga_inference=warn"
+        "warn,book_converter_lib=info"
     })
 }
 pub fn configure(full: bool) {

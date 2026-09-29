@@ -1,11 +1,8 @@
-//! Normalize source containers into the independent Book/Manga stores.
+//! Normalize source containers into the independent book store.
 use crate::{
     app::{
-        contracts::{
-            AppError, AssetId, BookBlockContent, BookBlockView, ChapterId, PageId, ProjectKind,
-            Revision, VolumeId,
-        },
-        requests::{ChapterSummary, PageSummary},
+        contracts::{AppError, BookBlockContent, BookBlockView, ChapterId, ProjectKind, Revision},
+        requests::ChapterSummary,
     },
     assets::store::AssetStore,
     storage::repository::{storage_error, ProjectRepository},
@@ -19,11 +16,10 @@ pub(super) fn normalize(
     path: &Path,
     directory: &Path,
     db: &mut Connection,
-    progress: &mut dyn FnMut(crate::app::requests::ImportProgress),
+    _progress: &mut dyn FnMut(crate::app::requests::ImportProgress),
 ) -> Result<(Option<String>, Vec<String>), AppError> {
     match kind {
         ProjectKind::Book => book(path, directory, db),
-        ProjectKind::Manga => comic(path, directory, db, progress).map(|_| (None, vec![])),
     }
 }
 fn fail(_: impl std::fmt::Display) -> AppError {
@@ -210,291 +206,6 @@ fn book(
     Ok((language, warnings))
 }
 
-fn is_image(name: &str) -> bool {
-    Path::new(name)
-        .extension()
-        .and_then(|x| x.to_str())
-        .is_some_and(|x| {
-            ["png", "jpg", "jpeg", "gif", "webp"].contains(&x.to_ascii_lowercase().as_str())
-        })
-}
-
-/// Compare digit runs numerically without integer overflow, then use the original name as a tie-break.
-pub(super) fn natural_cmp(left: &str, right: &str) -> std::cmp::Ordering {
-    use std::cmp::Ordering;
-    let a = left.as_bytes();
-    let b = right.as_bytes();
-    let (mut i, mut j) = (0, 0);
-    while i < a.len() && j < b.len() {
-        if a[i].is_ascii_digit() && b[j].is_ascii_digit() {
-            let (start_a, start_b) = (i, j);
-            while i < a.len() && a[i].is_ascii_digit() {
-                i += 1;
-            }
-            while j < b.len() && b[j].is_ascii_digit() {
-                j += 1;
-            }
-            let sa = left[start_a..i].trim_start_matches('0');
-            let sb = right[start_b..j].trim_start_matches('0');
-            let order = sa.len().cmp(&sb.len()).then_with(|| sa.cmp(sb));
-            if order != Ordering::Equal {
-                return order;
-            }
-        } else {
-            let order = a[i].cmp(&b[j]);
-            if order != Ordering::Equal {
-                return order;
-            }
-            i += 1;
-            j += 1;
-        }
-    }
-    (a.len() - i)
-        .cmp(&(b.len() - j))
-        .then_with(|| left.cmp(right))
-}
-
-fn comic(
-    path: &Path,
-    directory: &Path,
-    db: &mut Connection,
-    progress: &mut dyn FnMut(crate::app::requests::ImportProgress),
-) -> Result<(), AppError> {
-    if path.is_dir() {
-        return comic_folder(path, directory, db, progress);
-    }
-    let extension = path
-        .extension()
-        .and_then(|s| s.to_str())
-        .unwrap_or("")
-        .to_ascii_lowercase();
-    if !["zip", "cbz"].contains(&extension.as_str()) {
-        return Err(AppError::invalid("comicFormat"));
-    }
-    let mut archive =
-        zip::ZipArchive::new(std::fs::File::open(path).map_err(fail)?).map_err(fail)?;
-    if archive.len() > 100_000 {
-        return Err(AppError::invalid("archiveEntries"));
-    }
-    let mut entries = Vec::new();
-    for index in 0..archive.len() {
-        let entry = archive.by_index(index).map_err(fail)?;
-        if entry.is_dir() || !is_image(entry.name()) {
-            continue;
-        }
-        if entry.enclosed_name().is_none()
-            || entry.name().contains('\\')
-            || entry
-                .unix_mode()
-                .is_some_and(|mode| mode & 0o170000 == 0o120000)
-        {
-            return Err(AppError::invalid("archivePath"));
-        }
-        entries.push((entry.name().to_string(), index));
-    }
-    if entries.is_empty() {
-        return Err(AppError::invalid("emptyComic"));
-    }
-    entries.sort_by(|a, b| natural_cmp(&a.0, &b.0));
-    let mut volumes = HashMap::new();
-    let total = entries.len() as u32;
-    report(progress, 0, total);
-    for (done, (name, index)) in entries.into_iter().enumerate() {
-        let bytes = read_image(archive.by_index(index).map_err(fail)?)?;
-        insert_comic_page(db, directory, &mut volumes, &name, &bytes)?;
-        report(progress, done as u32 + 1, total);
-    }
-    Ok(())
-}
-fn insert_comic_page(
-    db: &mut Connection,
-    directory: &Path,
-    volumes: &mut HashMap<String, (String, u32)>,
-    name: &str,
-    bytes: &[u8],
-) -> Result<(), AppError> {
-    let store = AssetStore::new(directory).map_err(fail)?;
-    let parent = Path::new(&name)
-        .parent()
-        .unwrap_or(Path::new(""))
-        .to_string_lossy()
-        .into_owned();
-    if !volumes.contains_key(&parent) {
-        let id = uuid();
-        ProjectRepository::new(db, ProjectKind::Manga)?.insert_volume(
-            &id,
-            volumes.len() as u32,
-            &parent,
-            true,
-        )?;
-        volumes.insert(parent.clone(), (id, 0));
-    }
-    let (volume, position) = volumes.get_mut(&parent).expect("inserted volume");
-    let prepared = crate::assets::manga_images::prepare(bytes).map_err(fail)?;
-    let asset = store
-        .publish(db, &prepared.original, prepared.extension)
-        .map_err(fail)?;
-    let thumbnail = store
-        .publish(db, &prepared.thumbnail, "png")
-        .map_err(fail)?;
-    let (width, height) = (prepared.width, prepared.height);
-    ProjectRepository::new(db, ProjectKind::Manga)?.insert_page(&PageSummary {
-        id: PageId(uuid()),
-        volume_id: VolumeId(volume.clone()),
-        position: *position,
-        original_asset_id: AssetId(asset),
-        thumbnail_asset_id: Some(AssetId(thumbnail)),
-        width,
-        height,
-        revision: Revision("0".into()),
-    })?;
-    *position += 1;
-    Ok(())
-}
-
-fn comic_folder(
-    path: &Path,
-    directory: &Path,
-    db: &mut Connection,
-    progress: &mut dyn FnMut(crate::app::requests::ImportProgress),
-) -> Result<(), AppError> {
-    fn collect(
-        root: &Path,
-        current: &Path,
-        depth: usize,
-        visited: &mut usize,
-        files: &mut Vec<String>,
-    ) -> Result<(), AppError> {
-        if depth > 32 {
-            return Err(AppError::invalid("sourceDepth"));
-        }
-        let meta = std::fs::symlink_metadata(current).map_err(fail)?;
-        if meta.file_type().is_symlink() {
-            return Err(AppError::invalid("sourceSymlink"));
-        }
-        for entry in std::fs::read_dir(current).map_err(fail)? {
-            let entry = entry.map_err(fail)?;
-            *visited += 1;
-            if *visited > 100_000 {
-                return Err(AppError::invalid("archiveEntries"));
-            }
-            let kind = entry.file_type().map_err(fail)?;
-            if kind.is_symlink() {
-                return Err(AppError::invalid("sourceSymlink"));
-            }
-            if kind.is_dir() {
-                collect(root, &entry.path(), depth + 1, visited, files)?;
-            } else if kind.is_file() {
-                let relative = entry
-                    .path()
-                    .strip_prefix(root)
-                    .map_err(fail)?
-                    .to_str()
-                    .ok_or_else(|| AppError::invalid("sourcePath"))?
-                    .to_string();
-                if is_image(&relative) {
-                    files.push(relative);
-                }
-            }
-        }
-        Ok(())
-    }
-    let mut files = Vec::new();
-    collect(path, path, 0, &mut 0, &mut files)?;
-    if files.is_empty() {
-        return Err(AppError::invalid("emptyComic"));
-    }
-    files.sort_by(|a, b| natural_cmp(a, b));
-    let mut volumes = HashMap::new();
-    let total = files.len() as u32;
-    report(progress, 0, total);
-    for (done, name) in files.into_iter().enumerate() {
-        let source = path.join(&name);
-        if std::fs::symlink_metadata(&source)
-            .map_err(fail)?
-            .file_type()
-            .is_symlink()
-        {
-            return Err(AppError::invalid("sourceSymlink"));
-        }
-        let bytes = read_image(std::fs::File::open(source).map_err(fail)?)?;
-        insert_comic_page(db, directory, &mut volumes, &name, &bytes)?;
-        report(progress, done as u32 + 1, total);
-    }
-    Ok(())
-}
-
-
-fn report(
-    progress: &mut dyn FnMut(crate::app::requests::ImportProgress),
-    completed: u32,
-    total: u32,
-) {
-    progress(crate::app::requests::ImportProgress {
-        stage: "pages".into(),
-        completed,
-        total: Some(total),
-    });
-}
-
-#[cfg(test)]
-mod folder_tests {
-    use super::*;
-    #[test]
-    fn folders_are_naturally_ordered_self_contained_and_reject_symlinks() {
-        let root = std::env::temp_dir().join(format!("comic-folder-{}", uuid()));
-        let source = root.join("source.v1");
-        let target = root.join("project");
-        std::fs::create_dir_all(&target).unwrap();
-        for (volume, page, width) in [
-            ("vol10", "page1.png", 10),
-            ("vol2", "page10.png", 20),
-            ("vol2", "page2.png", 30),
-        ] {
-            std::fs::create_dir_all(source.join(volume)).unwrap();
-            image::RgbImage::new(width, 2)
-                .save(source.join(volume).join(page))
-                .unwrap();
-        }
-        let mut db =
-            crate::storage::create(&target.join("project.db"), ProjectKind::Manga, "ru").unwrap();
-        {
-            let mut updates = Vec::new();
-            comic(&source, &target, &mut db, &mut |value| updates.push(value)).unwrap();
-            assert_eq!(updates.first().unwrap().completed, 0);
-            let last = updates.last().unwrap();
-            assert_eq!(last.total, Some(last.completed));
-            assert!(last.completed > 0);
-            assert!(updates
-                .windows(2)
-                .all(|pair| pair[0].completed <= pair[1].completed));
-        }
-        let widths=db.prepare("SELECT p.width FROM manga_pages p JOIN manga_volumes v ON v.id=p.volume_id ORDER BY v.position,p.position").unwrap().query_map([],|r|r.get::<_,u32>(0)).unwrap().collect::<Result<Vec<_>,_>>().unwrap();
-        assert_eq!(widths, [30, 20, 10]);
-        std::fs::remove_dir_all(&source).unwrap();
-        let paths = db
-            .prepare("SELECT relative_path FROM assets")
-            .unwrap()
-            .query_map([], |r| r.get::<_, String>(0))
-            .unwrap()
-            .collect::<Result<Vec<_>, _>>()
-            .unwrap();
-        for path in paths {
-            assert!(!AssetStore::read_path(&target.join(path))
-                .unwrap()
-                .is_empty());
-        }
-        #[cfg(unix)]
-        {
-            std::fs::create_dir_all(&source).unwrap();
-            std::os::unix::fs::symlink(&target, source.join("outside")).unwrap();
-            assert!(comic(&source, &target, &mut db, &mut |_| {}).is_err());
-        }
-        drop(db);
-        std::fs::remove_dir_all(root).unwrap();
-    }
-}
-
 #[cfg(test)]
 mod volume_import_tests {
     use super::*;
@@ -503,12 +214,21 @@ mod volume_import_tests {
         let root = std::env::temp_dir().join(format!("volume-import-{}", uuid()));
         std::fs::create_dir_all(&root).unwrap();
         let source = root.join("book.txt");
-        std::fs::write(&source, "书名\n作者：作者\n第01集 第一章 开始\n正文一\n第02集 第一章 继续\n正文二").unwrap();
+        std::fs::write(
+            &source,
+            "书名\n作者：作者\n第01集 第一章 开始\n正文一\n第02集 第一章 继续\n正文二",
+        )
+        .unwrap();
         let mut db = crate::storage::tests::database(ProjectKind::Book);
         let (_, warnings) = book(&source, &root, &mut db).unwrap();
         assert!(!warnings.iter().any(|w| w == "import.singleChapter"));
-        let ids = db.prepare("SELECT id FROM book_chapters ORDER BY position").unwrap()
-            .query_map([], |r| r.get::<_,String>(0)).unwrap().collect::<Result<Vec<_>,_>>().unwrap();
+        let ids = db
+            .prepare("SELECT id FROM book_chapters ORDER BY position")
+            .unwrap()
+            .query_map([], |r| r.get::<_, String>(0))
+            .unwrap()
+            .collect::<Result<Vec<_>, _>>()
+            .unwrap();
         assert_eq!(ids.len(), 2);
         let mut repository = ProjectRepository::new(&mut db, ProjectKind::Book).unwrap();
         for (id, volume) in ids.iter().zip(["第1集", "第2集"]) {

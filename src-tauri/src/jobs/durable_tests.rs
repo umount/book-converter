@@ -65,8 +65,8 @@ impl Fixture {
                     db,
                     "run",
                     "test",
-                    &runs::RunSnapshot { manga: None,
-            retarget: None,
+                    &runs::RunSnapshot {
+                        retarget: None,
                         settings: settings.choices,
                         settings_revision: settings.revision,
                         glossary_revision: shared::glossary_revision(db)?,

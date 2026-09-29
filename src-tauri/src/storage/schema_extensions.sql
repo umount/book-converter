@@ -8,10 +8,6 @@ CREATE TABLE IF NOT EXISTS book_presentation (
 CREATE TRIGGER IF NOT EXISTS book_presentation_kind_guard BEFORE INSERT ON book_presentation
 WHEN (SELECT kind FROM project_settings WHERE singleton=1)!='book'
 BEGIN SELECT RAISE(ABORT, 'Book presentation requires book project'); END;
-CREATE TABLE IF NOT EXISTS manga_page_previews (
-    page_id TEXT PRIMARY KEY NOT NULL REFERENCES manga_pages(id) ON DELETE CASCADE,
-    asset_id TEXT NOT NULL REFERENCES assets(id)
-);
 CREATE INDEX IF NOT EXISTS job_steps_chapter_lookup ON job_steps(entity_kind,entity_id);
 CREATE VIEW IF NOT EXISTS book_chapter_states AS
 SELECT c.id,c.position,c.source_title,c.revision,

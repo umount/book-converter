@@ -209,102 +209,6 @@ pub struct BookExportArgs {
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct ListMangaPagesArgs {
-    pub project_id: ProjectId,
-    pub volume_id: Option<VolumeId>,
-    pub cursor: Option<String>,
-    pub limit: u32,
-}
-
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct MangaVolumeSummary {
-    pub id: VolumeId,
-    pub title: String,
-    pub reading_direction: String,
-    pub page_count: u32,
-}
-
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct GetMangaPageArgs {
-    pub project_id: ProjectId,
-    pub page_id: PageId,
-}
-
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct UpdateMangaRegionArgs {
-    pub project_id: ProjectId,
-    pub region_id: RegionId,
-    pub patch: RegionPatch,
-    pub expected_revision: Revision,
-}
-
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct UpdateMangaMaskArgs {
-    pub project_id: ProjectId,
-    pub page_id: PageId,
-    pub region_id: Option<RegionId>,
-    pub asset_id: AssetId,
-    pub expected_revision: Revision,
-}
-
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct UpdateMangaOrderArgs {
-    pub project_id: ProjectId,
-    pub page_id: PageId,
-    pub region_ids: Vec<RegionId>,
-    pub expected_revision: Revision,
-}
-
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct MangaStageOptions {
-    pub max_pages: u32,
-    pub force: bool,
-}
-
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct StartMangaStageArgs {
-    pub project_id: ProjectId,
-    pub selection: EntitySelection,
-    pub stage: MangaStage,
-    pub options: MangaStageOptions,
-}
-
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct StartMangaRunArgs {
-    pub project_id: ProjectId,
-    pub selection: EntitySelection,
-    pub options: MangaStageOptions,
-}
-
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct ReviewMangaPageArgs {
-    pub project_id: ProjectId,
-    pub page_id: PageId,
-    pub result_revision: Revision,
-    pub decision: ReviewDecision,
-}
-
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct MangaExportArgs {
-    pub project_id: ProjectId,
-    pub selection: EntitySelection,
-    pub destination: String,
-    pub format: MangaExportFormat,
-    pub incomplete_policy: IncompletePolicy,
-}
-
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct JobArgs {
     pub project_id: ProjectId,
     pub job_id: JobId,
@@ -329,36 +233,10 @@ pub enum BookExportFormat {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
 #[serde(rename_all = "snake_case")]
-pub enum MangaExportFormat {
-    Cbz,
-    Pdf,
-    Images,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
-#[serde(rename_all = "snake_case")]
 pub enum IncompletePolicy {
     TranslatedOnly,
     Reject,
     Originals,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
-#[serde(rename_all = "snake_case")]
-pub enum ReviewDecision {
-    Unreviewed,
-    NeedsReview,
-    Approved,
-}
-
-/// Each edit targets one revision domain, avoiding ambiguous partial updates.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
-#[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
-pub enum RegionPatch {
-    SourceText { text: String },
-    TranslatedText { text: String },
-    Bounds { bounds: PixelBounds },
-    Direction { vertical: bool },
 }
 
 impl Revision {
@@ -422,8 +300,6 @@ pub struct GlossaryListArgs {
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ProcessingChoices {
     pub book_translation_profile: Option<String>,
-    pub manga_recognition_profile: Option<String>,
-    pub manga_translation_profile: Option<String>,
     pub assistant_profile: Option<String>,
 }
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
@@ -552,58 +428,6 @@ pub struct BookChapterView {
     pub translation: Option<TranslationSummary>,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct PageSummary {
-    pub id: PageId,
-    pub volume_id: VolumeId,
-    pub position: u32,
-    pub original_asset_id: AssetId,
-    pub thumbnail_asset_id: Option<AssetId>,
-    pub width: u32,
-    pub height: u32,
-    pub revision: Revision,
-}
-
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct PageSummaryPage {
-    pub items: Vec<PageSummary>,
-    pub next_cursor: Option<String>,
-}
-
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct MangaRegionView {
-    pub vertical: bool,
-    pub id: RegionId,
-    pub page_id: PageId,
-    pub reading_order: u32,
-    pub bounds: PixelBounds,
-    pub source_text: String,
-    pub translated_text: Option<String>,
-    pub source_manual: bool,
-    pub translation_manual: bool,
-    pub revision: Revision,
-}
-
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct MangaRecognitionSummary {
-    pub revision: Revision,
-    pub current: bool,
-    pub needs_review: bool,
-}
-
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct MangaPageView {
-    pub rendered_asset_id: Option<AssetId>,
-    pub page: PageSummary,
-    pub regions: Vec<MangaRegionView>,
-    pub recognition: Option<MangaRecognitionSummary>,
-}
-
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
 #[serde(rename_all = "camelCase")]
 pub struct ImportProgress {
@@ -633,15 +457,7 @@ pub struct ProjectSummary {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum DomainProgress {
-    Book {
-        chapters: u32,
-        translated: u32,
-    },
-    Manga {
-        pages: u32,
-        lettered: u32,
-        approved: u32,
-    },
+    Book { chapters: u32, translated: u32 },
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
@@ -663,11 +479,6 @@ pub struct JobView {
     pub revision: Revision,
     pub total_steps: u32,
     pub completed_steps: u32,
-    pub total_pages: Option<u32>,
-    pub completed_pages: Option<u32>,
-    pub current_page_number: Option<u32>,
-    pub current_page_id: Option<String>,
-    pub current_volume_title: Option<String>,
     pub total_chapters: Option<u32>,
     pub completed_chapters: Option<u32>,
     pub current_chapter_number: Option<u32>,
@@ -739,12 +550,6 @@ pub fn typescript() -> String {
         SaveBookVolumeArgs::decl(&config),
         ChapterPage::decl(&config),
         BookChapterView::decl(&config),
-        MangaVolumeSummary::decl(&config),
-        PageSummary::decl(&config),
-        PageSummaryPage::decl(&config),
-        MangaRegionView::decl(&config),
-        MangaPageView::decl(&config),
-        MangaRecognitionSummary::decl(&config),
         ImportProgress::decl(&config),
         ImportPreview::decl(&config),
         ProjectSummary::decl(&config),
@@ -779,23 +584,10 @@ pub fn typescript() -> String {
         BookReplaceChange::decl(&config),
         BookReplacePreview::decl(&config),
         BookExportArgs::decl(&config),
-        ListMangaPagesArgs::decl(&config),
-        GetMangaPageArgs::decl(&config),
-        UpdateMangaRegionArgs::decl(&config),
-        UpdateMangaMaskArgs::decl(&config),
-        UpdateMangaOrderArgs::decl(&config),
-        MangaStageOptions::decl(&config),
-        StartMangaStageArgs::decl(&config),
-        StartMangaRunArgs::decl(&config),
-        ReviewMangaPageArgs::decl(&config),
-        MangaExportArgs::decl(&config),
         JobArgs::decl(&config),
         ListJobsArgs::decl(&config),
         BookExportFormat::decl(&config),
-        MangaExportFormat::decl(&config),
         IncompletePolicy::decl(&config),
-        ReviewDecision::decl(&config),
-        RegionPatch::decl(&config),
     ];
     declarations
         .into_iter()
@@ -893,43 +685,84 @@ pub struct SetBookCoverArgs {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
-#[serde(rename_all="camelCase")]
-pub struct AssistantMessage {pub id:String,pub role:String,pub text:String}
+#[serde(rename_all = "camelCase")]
+pub struct AssistantMessage {
+    pub id: String,
+    pub role: String,
+    pub text: String,
+}
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
-#[serde(rename_all="camelCase")]
-pub struct AssistantProposal {pub id:String,pub kind:String,pub before:String,pub after:String}
+#[serde(rename_all = "camelCase")]
+pub struct AssistantProposal {
+    pub id: String,
+    pub kind: String,
+    pub before: String,
+    pub after: String,
+}
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
-#[serde(rename_all="camelCase")]
-pub struct AssistantView {pub messages:Vec<AssistantMessage>,pub proposals:Vec<AssistantProposal>}
+#[serde(rename_all = "camelCase")]
+pub struct AssistantView {
+    pub messages: Vec<AssistantMessage>,
+    pub proposals: Vec<AssistantProposal>,
+}
 
 #[derive(Clone, Serialize, Deserialize, TS)]
-#[serde(rename_all="camelCase",deny_unknown_fields)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ProviderEntry {
-    pub id:String, pub name:String, pub base_url:String, pub model:String,
+    pub id: String,
+    pub name: String,
+    pub base_url: String,
+    pub model: String,
     #[serde(default = "crate::ai::default_context_window_tokens")]
-    pub context_window_tokens:u32,
-    pub temperature:f32, pub max_output_tokens:u32, pub timeout_seconds:u32,
-    pub network_retries:u32, pub has_key:bool, pub revision:Revision,
+    pub context_window_tokens: u32,
+    pub temperature: f32,
+    pub max_output_tokens: u32,
+    pub timeout_seconds: u32,
+    pub network_retries: u32,
+    pub has_key: bool,
+    pub revision: Revision,
 }
 #[derive(Clone, Serialize, Deserialize, TS)]
-#[serde(rename_all="camelCase",deny_unknown_fields)]
-pub struct SaveProviderArgs {pub profile:ProviderEntry,pub credential:Option<String>,pub expected_revision:Option<Revision>}
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct SaveProviderArgs {
+    pub profile: ProviderEntry,
+    pub credential: Option<String>,
+    pub expected_revision: Option<Revision>,
+}
 
 #[derive(Clone, Copy, Serialize, Deserialize, TS)]
-#[serde(rename_all="snake_case")]
-pub enum BookSearchSide {Source,Translation}
+#[serde(rename_all = "snake_case")]
+pub enum BookSearchSide {
+    Source,
+    Translation,
+}
 #[derive(Clone, Serialize, Deserialize, TS)]
-#[serde(rename_all="camelCase",deny_unknown_fields)]
-pub struct BookSearchArgs {pub project_id:ProjectId,pub query:String,pub side:BookSearchSide,pub case_sensitive:bool,pub cursor:Option<String>,pub limit:u32}
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct BookSearchArgs {
+    pub project_id: ProjectId,
+    pub query: String,
+    pub side: BookSearchSide,
+    pub case_sensitive: bool,
+    pub cursor: Option<String>,
+    pub limit: u32,
+}
 #[derive(Clone, Serialize, Deserialize, TS)]
-#[serde(rename_all="camelCase")]
-pub struct BookSearchMatch {pub chapter_id:ChapterId,pub block_id:BlockId,pub title:String,pub snippet:String}
+#[serde(rename_all = "camelCase")]
+pub struct BookSearchMatch {
+    pub chapter_id: ChapterId,
+    pub block_id: BlockId,
+    pub title: String,
+    pub snippet: String,
+}
 #[derive(Clone, Serialize, Deserialize, TS)]
-#[serde(rename_all="camelCase")]
-pub struct BookSearchPage {pub matches:Vec<BookSearchMatch>,pub next_cursor:Option<String>}
+#[serde(rename_all = "camelCase")]
+pub struct BookSearchPage {
+    pub matches: Vec<BookSearchMatch>,
+    pub next_cursor: Option<String>,
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
-#[serde(rename_all="camelCase", deny_unknown_fields)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct StartBookRetargetArgs {
     pub project_id: ProjectId,
     pub term_id: String,
@@ -939,8 +772,11 @@ pub struct StartBookRetargetArgs {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
-#[serde(rename_all="camelCase")]
-pub struct BookRetargetPreview { pub chapters: u32, pub fragments: u32 }
+#[serde(rename_all = "camelCase")]
+pub struct BookRetargetPreview {
+    pub chapters: u32,
+    pub fragments: u32,
+}
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -951,11 +787,23 @@ pub struct StartBookMetadataArgs {
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, ts_rs::TS)]
-#[serde(rename_all="camelCase")]
-pub struct BookVolumeTitle { pub source: String, pub title: String, pub revision: Revision }
+#[serde(rename_all = "camelCase")]
+pub struct BookVolumeTitle {
+    pub source: String,
+    pub title: String,
+    pub revision: Revision,
+}
 #[derive(Debug, Clone, serde::Deserialize, ts_rs::TS)]
-#[serde(rename_all="camelCase", deny_unknown_fields)]
-pub struct BookVolumeArgs { pub project_id: ProjectId, pub source: String }
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct BookVolumeArgs {
+    pub project_id: ProjectId,
+    pub source: String,
+}
 #[derive(Debug, Clone, serde::Deserialize, ts_rs::TS)]
-#[serde(rename_all="camelCase", deny_unknown_fields)]
-pub struct SaveBookVolumeArgs { pub project_id: ProjectId, pub source: String, pub title: String, pub expected_revision: Revision }
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct SaveBookVolumeArgs {
+    pub project_id: ProjectId,
+    pub source: String,
+    pub title: String,
+    pub expected_revision: Revision,
+}

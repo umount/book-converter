@@ -3,15 +3,7 @@ import { ResizablePanel } from "../shared/ui/ResizablePanel";
 import { ToolbarIcon } from "../shared/ui/ToolbarIcon";
 import { BookSearch } from "../features/book/BookSearch";
 import { Assistant } from "../features/assistant/Assistant";
-import {
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-  useSyncExternalStore,
-  type CSSProperties,
-} from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore, type CSSProperties, } from "react";
 import { isTauri } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { open } from "@tauri-apps/plugin-dialog";
@@ -27,13 +19,8 @@ import { chapterRows } from "../shared/state/chapterGroups";
 import { BookReader } from "../features/book/BookReader";
 import { BookTools, type BookTool } from "../features/book/BookTools";
 import { Glossary } from "../features/glossary/Glossary";
-import { MangaWorkspace } from "../features/manga/MangaWorkspace";
 import { ProjectLibrary } from "../features/projects/ProjectLibrary";
-import {
-  ExportMenu,
-  ProjectExport,
-  type ExportFormat,
-} from "../features/projects/ProjectExport";
+import { ExportMenu, ProjectExport, type ExportFormat, } from "../features/projects/ProjectExport";
 import { ChapterInstructions } from "../features/book/ChapterInstructions";
 import { Menu, closeMenus } from "../shared/ui/Menu";
 import { About } from "./About";
@@ -44,751 +31,567 @@ import { previewMode } from "../shared/api/desktop";
 import { translator, errorText, languageName } from "./strings";
 import { LS_LANG, normalizeLang } from "../i18n";
 const activeProjectKey = previewMode
-  ? "bc.preview.activeProject"
-  : "bc.activeProject";
+    ? "bc.preview.activeProject"
+    : "bc.activeProject";
 const lastChaptersKey = previewMode
-  ? "bc.preview.lastChapters"
-  : "bc.lastChapters";
+    ? "bc.preview.lastChapters"
+    : "bc.lastChapters";
 type Runtime = {
-  workspace: WorkspaceStore;
-  jobs: JobStore;
+    workspace: WorkspaceStore;
+    jobs: JobStore;
 };
 export default function AppShell() {
-  const [runtime, setRuntime] = useState<Runtime | null>(null),
-    [error, setError] = useState<unknown>(null);
-  useEffect(() => {
-    const value = {
-      workspace: new WorkspaceStore(api),
-      jobs: new JobStore(api, setError),
-    };
-    setRuntime(value);
-    return () => {
-      value.workspace.dispose();
-      value.jobs.dispose();
-    };
-  }, []);
-  return runtime ? (
-    <Shell
-      runtime={runtime}
-      initialError={error}
-      dismissInitialError={() => setError(null)}
-    />
-  ) : null;
+    const [runtime, setRuntime] = useState<Runtime | null>(null), [error, setError] = useState<unknown>(null);
+    useEffect(() => {
+        const value = {
+            workspace: new WorkspaceStore(api),
+            jobs: new JobStore(api, setError),
+        };
+        setRuntime(value);
+        return () => {
+            value.workspace.dispose();
+            value.jobs.dispose();
+        };
+    }, []);
+    return runtime ? (<Shell runtime={runtime} initialError={error} dismissInitialError={() => setError(null)}/>) : null;
 }
-function Shell({
-  runtime: { workspace, jobs },
-  initialError,
-  dismissInitialError,
-}: {
-  runtime: Runtime;
-  initialError: unknown;
-  dismissInitialError: () => void;
+function Shell({ runtime: { workspace, jobs }, initialError, dismissInitialError, }: {
+    runtime: Runtime;
+    initialError: unknown;
+    dismissInitialError: () => void;
 }) {
-  const state = useSyncExternalStore(workspace.subscribe, workspace.snapshot);
-  const [lang, setLang] = useState(() =>
-      normalizeLang(previewMode ? "ru" : localStorage.getItem(LS_LANG)),
-    ),
-    t = translator(lang);
-  const confirmation = useConfirm(t);
-  const [catalog, setCatalog] = useState<ProjectSummary[]>([]),
-    [library, setLibrary] = useState(true),
-    [create, setCreate] = useState(false),
-    [settings, setSettings] = useState(false);
-  const [panel, setPanel] = useState<"reader" | "glossary" | BookTool>(
-      "reader",
-    ),
-    [filter, setFilter] = useState(""),
-    [showJobs, setShowJobs] = useState(false),
-    [force, setForce] = useState(false),
-    [batchSizes, setBatchSizes] = useState<Record<string, string>>(() => {
-      try {
-        return JSON.parse(localStorage.getItem("bc.batchSizes") || "{}") || {};
-      } catch {
-        return {};
-      }
-    });
-  const batchSize = state.project
-    ? (batchSizes[state.project.id] ?? "10")
-    : "10";
-  const validBatchSize =
-    /^\d+$/.test(batchSize) &&
-    Number(batchSize) > 0 &&
-    Number(batchSize) <= 4294967295;
-  const [chapterState, setChapterState] = useState("all");
-  const [focusBlock, setFocusBlock] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false),
-    [error, setError] = useState<unknown>(initialError),
-    [, redraw] = useState(0);
-  const editor = useMemo(
-    () =>
-      state.project && state.chapter
-        ? new BookEditorSession(api, state.project.id, state.chapter)
-        : null,
-    [state.project, state.chapter],
-  );
-  const editorRef = useRef<BookEditorSession | null>(null);
-  const [palette, setPalette] = useState(false);
-  const lock = useRef(false);
-  const toolFlush = useRef<(() => Promise<void>) | null>(null);
-  const [showSearch, setShowSearch] = useState(false);
-  const [searchMode, setSearchMode] = useState<"find" | "replace">("find");
-  const [exportFormat, setExportFormat] = useState<ExportFormat | null>(null);
-  const [showInstructions, setShowInstructions] = useState(false);
-  const [about, setAbout] = useState(false);
-  const searchFlush = useRef<(() => Promise<void>) | null>(null);
-  const registerSearchFlush = useCallback(
-    (flush: (() => Promise<void>) | null) => {
-      searchFlush.current = flush;
-    },
-    [],
-  );
-  const [toolsVersion, setToolsVersion] = useState(0);
-  const [showAssistant, setShowAssistant] = useState(
-    () => window.innerWidth > 1000,
-  );
-  const assistantFlush = useRef<(() => Promise<void>) | null>(null);
-  const registerAssistantFlush = useCallback(
-    (flush: (() => Promise<void>) | null) => {
-      assistantFlush.current = flush;
-    },
-    [],
-  );
-  const registerFlush = useCallback((flush: (() => Promise<void>) | null) => {
-    toolFlush.current = flush;
-  }, []);
-  useEffect(() => {
-    if (!isTauri()) return;
-    let disposed = false,
-      stop: (() => void) | undefined;
-    void getCurrentWindow()
-      .onCloseRequested((event) => {
-        event.preventDefault();
-        void (async () => {
-          await editorRef.current?.flush();
-          await toolFlush.current?.();
-          await searchFlush.current?.();
-          await assistantFlush.current?.();
-          await getCurrentWindow().destroy();
-        })().catch(setError);
-      })
-      .then((unlisten) => {
-        if (disposed) unlisten();
-        else stop = unlisten;
-      })
-      .catch(setError);
-    return () => {
-      disposed = true;
-      stop?.();
-    };
-  }, []);
-  async function reload() {
-    const next = await api.list();
-    setCatalog(next);
-    await Promise.all(next.map((p) => jobs.watch(p.descriptor.id)));
-  }
-  useEffect(() => {
-    let alive = true;
-    void api
-      .list()
-      .then((next) => {
-        if (alive) {
-          setCatalog(next);
-          for (const p of next) void jobs.watch(p.descriptor.id);
-          const last = localStorage.getItem(activeProjectKey);
-          if (last && next.some((p) => p.descriptor.id === last))
-            void activate(last).catch(setError);
-        }
-      })
-      .catch(setError);
-    return () => {
-      alive = false;
-    };
-  }, [jobs]);
-  useEffect(() => {
-    editorRef.current = editor;
-    return () => {
-      editor?.dispose();
-    };
-  }, [editor]);
-  useEffect(() => {
-    if (!editor) return;
-    return editor.subscribe(() =>
-      workspace.updateChapter(editor.snapshot().view.chapter),
-    );
-  }, [editor, workspace]);
-  useEffect(() => {
-    const states = new Map<string, string>();
-    let timer: ReturnType<typeof setTimeout> | undefined;
-    const stop = jobs.subscribe(() => {
-      redraw((v) => v + 1);
-      void editorRef.current?.refresh().catch(setError);
-      const id = workspace.snapshot().project?.id;
-      let changed = false;
-      for (const job of jobs.list(id ?? "")) {
-        const key = `${job.job.projectId}/${job.job.jobId}`;
-        if (
-          states.get(key) !== `${job.state}/${job.revision}` &&
-          job.job.projectId === id
-        )
-          changed = true;
-        states.set(key, `${job.state}/${job.revision}`);
-      }
-      if (changed) {
-        clearTimeout(timer);
-        timer = setTimeout(
-          () => void workspace.refreshChapters().catch(setError),
-          200,
-        );
-      }
-    });
-    return () => {
-      stop();
-      clearTimeout(timer);
-    };
-  }, [jobs, workspace]);
-  useEffect(() => {
-    const handler = (e: BeforeUnloadEvent) => {
-      if (editorRef.current?.snapshot().drafts.size) {
-        e.preventDefault();
-        e.returnValue = "";
-      }
-    };
-    window.addEventListener("beforeunload", handler);
-    return () => window.removeEventListener("beforeunload", handler);
-  }, []);
-  useEffect(() => {
-    const handler = (e: KeyboardEvent) => {
-      if (!(e.ctrlKey || e.metaKey)) return;
-      if (document.querySelector("dialog[open]")) {
-        if (["s", "k"].includes(e.key.toLowerCase())) e.preventDefault();
-        return;
-      }
-      if (
-        ["f", "h"].includes(e.key.toLowerCase()) &&
-        !library &&
-        state.project?.kind === "book"
-      ) {
-        e.preventDefault();
-        setShowSearch(true);
-        setSearchMode(e.key.toLowerCase() === "h" ? "replace" : "find");
-        requestAnimationFrame(() =>
-          document
-            .querySelector<HTMLInputElement>(".bc-book-search input")
-            ?.focus(),
-        );
-      }
-      if (e.key.toLowerCase() === "s") {
-        e.preventDefault();
-        void act(async () => {}).catch(setError);
-      }
-      if (e.key.toLowerCase() === "k") {
-        e.preventDefault();
-        setPalette(true);
-      }
-    };
-    window.addEventListener("keydown", handler);
-    return () => window.removeEventListener("keydown", handler);
-  });
-  async function act(work: () => Promise<void>) {
-    if (lock.current) return;
-    lock.current = true;
-    setBusy(true);
-    setError(null);
-    try {
-      await editorRef.current?.flush();
-      await toolFlush.current?.();
-      await searchFlush.current?.();
-      await assistantFlush.current?.();
-      await work();
-    } catch (e) {
-      setError(e);
-    } finally {
-      lock.current = false;
-      setBusy(false);
-    }
-  }
-  async function importProject() {
-    await act(async () => {
-      const path = await open({
-        multiple: false,
-        filters: [{ name: t("importArchive"), extensions: ["bcproj"] }],
-      });
-      if (typeof path === "string") {
-        const p = await api.importArchive({ path });
-        await reload();
-        await activate(p.id);
-      }
-    });
-  }
-  const rememberedChapters = useRef(
-    new Map<string, string>(
-      (() => {
+    const state = useSyncExternalStore(workspace.subscribe, workspace.snapshot);
+    const [lang, setLang] = useState(() => normalizeLang(previewMode ? "ru" : localStorage.getItem(LS_LANG))), t = translator(lang);
+    const confirmation = useConfirm(t);
+    const [catalog, setCatalog] = useState<ProjectSummary[]>([]), [library, setLibrary] = useState(true), [create, setCreate] = useState(false), [settings, setSettings] = useState(false);
+    const [panel, setPanel] = useState<"reader" | "glossary" | BookTool>("reader"), [filter, setFilter] = useState(""), [showJobs, setShowJobs] = useState(false), [force, setForce] = useState(false), [batchSizes, setBatchSizes] = useState<Record<string, string>>(() => {
         try {
-          const value = JSON.parse(
-            localStorage.getItem(lastChaptersKey) || "{}",
-          );
-          return Object.entries(value).filter(
-            (entry): entry is [string, string] => typeof entry[1] === "string",
-          );
-        } catch {
-          return [];
+            return JSON.parse(localStorage.getItem("bc.batchSizes") || "{}") || {};
         }
-      })(),
-    ),
-  );
-  useEffect(() => {
-    if (!state.project || !state.chapter) return;
-    rememberedChapters.current.set(state.project.id, state.chapter.chapter.id);
-    localStorage.setItem(
-      lastChaptersKey,
-      JSON.stringify(Object.fromEntries(rememberedChapters.current)),
-    );
-  }, [state.project?.id, state.chapter?.chapter.id]);
-  async function removeProject(id: string) {
-    await act(async () => {
-      const item = catalog.find((p) => p.descriptor.id === id)?.descriptor;
-      if (
-        !item ||
-        !(await confirmation.confirm({
-          message: `${item.name}\n\n${t("deleteConfirm")}`,
-          title: t("delete"),
-          action: t("delete"),
-          danger: true,
+        catch {
+            return {};
+        }
+    });
+    const batchSize = state.project
+        ? (batchSizes[state.project.id] ?? "10")
+        : "10";
+    const validBatchSize = /^\d+$/.test(batchSize) &&
+        Number(batchSize) > 0 &&
+        Number(batchSize) <= 4294967295;
+    const [chapterState, setChapterState] = useState("all");
+    const [focusBlock, setFocusBlock] = useState<string | null>(null);
+    const [busy, setBusy] = useState(false), [error, setError] = useState<unknown>(initialError), [, redraw] = useState(0);
+    const editor = useMemo(() => state.project && state.chapter
+        ? new BookEditorSession(api, state.project.id, state.chapter)
+        : null, [state.project, state.chapter]);
+    const editorRef = useRef<BookEditorSession | null>(null);
+    const [palette, setPalette] = useState(false);
+    const lock = useRef(false);
+    const toolFlush = useRef<(() => Promise<void>) | null>(null);
+    const [showSearch, setShowSearch] = useState(false);
+    const [searchMode, setSearchMode] = useState<"find" | "replace">("find");
+    const [exportFormat, setExportFormat] = useState<ExportFormat | null>(null);
+    const [showInstructions, setShowInstructions] = useState(false);
+    const [about, setAbout] = useState(false);
+    const searchFlush = useRef<(() => Promise<void>) | null>(null);
+    const registerSearchFlush = useCallback((flush: (() => Promise<void>) | null) => {
+        searchFlush.current = flush;
+    }, []);
+    const [toolsVersion, setToolsVersion] = useState(0);
+    const [showAssistant, setShowAssistant] = useState(() => window.innerWidth > 1000);
+    const assistantFlush = useRef<(() => Promise<void>) | null>(null);
+    const registerAssistantFlush = useCallback((flush: (() => Promise<void>) | null) => {
+        assistantFlush.current = flush;
+    }, []);
+    const registerFlush = useCallback((flush: (() => Promise<void>) | null) => {
+        toolFlush.current = flush;
+    }, []);
+    useEffect(() => {
+        if (!isTauri())
+            return;
+        let disposed = false, stop: (() => void) | undefined;
+        void getCurrentWindow()
+            .onCloseRequested((event) => {
+            event.preventDefault();
+            void (async () => {
+                await editorRef.current?.flush();
+                await toolFlush.current?.();
+                await searchFlush.current?.();
+                await assistantFlush.current?.();
+                await getCurrentWindow().destroy();
+            })().catch(setError);
+        })
+            .then((unlisten) => {
+            if (disposed)
+                unlisten();
+            else
+                stop = unlisten;
+        })
+            .catch(setError);
+        return () => {
+            disposed = true;
+            stop?.();
+        };
+    }, []);
+    async function reload() {
+        const next = await api.list();
+        setCatalog(next);
+        await Promise.all(next.map((p) => jobs.watch(p.descriptor.id)));
+    }
+    useEffect(() => {
+        let alive = true;
+        void api
+            .list()
+            .then((next) => {
+            if (alive) {
+                setCatalog(next);
+                for (const p of next)
+                    void jobs.watch(p.descriptor.id);
+                const last = localStorage.getItem(activeProjectKey);
+                if (last && next.some((p) => p.descriptor.id === last))
+                    void activate(last).catch(setError);
+            }
+        })
+            .catch(setError);
+        return () => {
+            alive = false;
+        };
+    }, [jobs]);
+    useEffect(() => {
+        editorRef.current = editor;
+        return () => {
+            editor?.dispose();
+        };
+    }, [editor]);
+    useEffect(() => {
+        if (!editor)
+            return;
+        return editor.subscribe(() => workspace.updateChapter(editor.snapshot().view.chapter));
+    }, [editor, workspace]);
+    useEffect(() => {
+        const states = new Map<string, string>();
+        let timer: ReturnType<typeof setTimeout> | undefined;
+        const stop = jobs.subscribe(() => {
+            redraw((v) => v + 1);
+            void editorRef.current?.refresh().catch(setError);
+            const id = workspace.snapshot().project?.id;
+            let changed = false;
+            for (const job of jobs.list(id ?? "")) {
+                const key = `${job.job.projectId}/${job.job.jobId}`;
+                if (states.get(key) !== `${job.state}/${job.revision}` &&
+                    job.job.projectId === id)
+                    changed = true;
+                states.set(key, `${job.state}/${job.revision}`);
+            }
+            if (changed) {
+                clearTimeout(timer);
+                timer = setTimeout(() => void workspace.refreshChapters().catch(setError), 200);
+            }
+        });
+        return () => {
+            stop();
+            clearTimeout(timer);
+        };
+    }, [jobs, workspace]);
+    useEffect(() => {
+        const handler = (e: BeforeUnloadEvent) => {
+            if (editorRef.current?.snapshot().drafts.size) {
+                e.preventDefault();
+                e.returnValue = "";
+            }
+        };
+        window.addEventListener("beforeunload", handler);
+        return () => window.removeEventListener("beforeunload", handler);
+    }, []);
+    useEffect(() => {
+        const handler = (e: KeyboardEvent) => {
+            if (!(e.ctrlKey || e.metaKey))
+                return;
+            if (document.querySelector("dialog[open]")) {
+                if (["s", "k"].includes(e.key.toLowerCase()))
+                    e.preventDefault();
+                return;
+            }
+            if (["f", "h"].includes(e.key.toLowerCase()) &&
+                !library) {
+                e.preventDefault();
+                setShowSearch(true);
+                setSearchMode(e.key.toLowerCase() === "h" ? "replace" : "find");
+                requestAnimationFrame(() => document
+                    .querySelector<HTMLInputElement>(".bc-book-search input")
+                    ?.focus());
+            }
+            if (e.key.toLowerCase() === "s") {
+                e.preventDefault();
+                void act(async () => { }).catch(setError);
+            }
+            if (e.key.toLowerCase() === "k") {
+                e.preventDefault();
+                setPalette(true);
+            }
+        };
+        window.addEventListener("keydown", handler);
+        return () => window.removeEventListener("keydown", handler);
+    });
+    async function act(work: () => Promise<void>) {
+        if (lock.current)
+            return;
+        lock.current = true;
+        setBusy(true);
+        setError(null);
+        try {
+            await editorRef.current?.flush();
+            await toolFlush.current?.();
+            await searchFlush.current?.();
+            await assistantFlush.current?.();
+            await work();
+        }
+        catch (e) {
+            setError(e);
+        }
+        finally {
+            lock.current = false;
+            setBusy(false);
+        }
+    }
+    async function importProject() {
+        await act(async () => {
+            const path = await open({
+                multiple: false,
+                filters: [{ name: t("importArchive"), extensions: ["bcproj"] }],
+            });
+            if (typeof path === "string") {
+                const p = await api.importArchive({ path });
+                await reload();
+                await activate(p.id);
+            }
+        });
+    }
+    const rememberedChapters = useRef(new Map<string, string>((() => {
+        try {
+            const value = JSON.parse(localStorage.getItem(lastChaptersKey) || "{}");
+            return Object.entries(value).filter((entry): entry is [
+                string,
+                string
+            ] => typeof entry[1] === "string");
+        }
+        catch {
+            return [];
+        }
+    })()));
+    useEffect(() => {
+        if (!state.project || !state.chapter)
+            return;
+        rememberedChapters.current.set(state.project.id, state.chapter.chapter.id);
+        localStorage.setItem(lastChaptersKey, JSON.stringify(Object.fromEntries(rememberedChapters.current)));
+    }, [state.project?.id, state.chapter?.chapter.id]);
+    async function removeProject(id: string) {
+        await act(async () => {
+            const item = catalog.find((p) => p.descriptor.id === id)?.descriptor;
+            if (!item ||
+                !(await confirmation.confirm({
+                    message: `${item.name}\n\n${t("deleteConfirm")}`,
+                    title: t("delete"),
+                    action: t("delete"),
+                    danger: true,
+                })))
+                return;
+            await api.delete({ projectId: id });
+            rememberedChapters.current.delete(id);
+            {
+                localStorage.setItem(lastChaptersKey, JSON.stringify(Object.fromEntries(rememberedChapters.current)));
+                if (localStorage.getItem(activeProjectKey) === id)
+                    localStorage.removeItem(activeProjectKey);
+            }
+            if (workspace.snapshot().project?.id === id) {
+                workspace.close();
+                setLibrary(true);
+            }
+            await reload();
+        });
+    }
+    async function activate(id: string) {
+        const previous = workspace.snapshot();
+        if (previous.project && previous.chapter)
+            rememberedChapters.current.set(previous.project.id, previous.chapter.chapter.id);
+        const chapter = rememberedChapters.current.get(id);
+        await workspace.open(id);
+        const opened = workspace.snapshot();
+        if (opened.error || opened.project?.id !== id)
+            return;
+        if (chapter &&
+            opened.chapters.some((c) => c.id === chapter) &&
+            opened.chapter?.chapter.id !== chapter)
+            await workspace.selectChapter(chapter);
+        localStorage.setItem(activeProjectKey, id);
+        setLibrary(false);
+        setPanel("reader");
+        setFilter("");
+        setChapterState("all");
+        await jobs.watch(id);
+    }
+    async function run(kind: "metadata" | "summary" | "glossary", batch?: {
+        maxChapters: number;
+        force: boolean;
+    }) {
+        if (!state.project)
+            return;
+        await editorRef.current?.flush();
+        const projectId = state.project.id;
+        if (kind === "glossary" && !batch)
+            throw new Error(t("batchCount"));
+        const job = await (kind !== "glossary"
+            ? api.startMetadata({ projectId, summaryOnly: kind === "summary" })
+            : api.extractGlossary({
+                projectId,
+                selection: { kind: "all" },
+                maxChapters: batch!.maxChapters,
+                force: batch!.force,
+            }));
+        await jobs.refresh(job);
+        setShowJobs(true);
+    }
+    async function updateReferenceGlossary(ids: string[]) {
+        if (!state.project || !ids.length)
+            return;
+        const job = await api.extractGlossary({
+            projectId: state.project.id,
+            selection: { kind: "explicit_ids", ids },
+            maxChapters: ids.length,
+            force: true,
+        });
+        await jobs.refresh(job);
+        setShowJobs(true);
+    }
+    async function deleteCurrentChapter() {
+        if (!state.project || !editorRef.current)
+            return;
+        const projectId = state.project.id;
+        const chapterId = editorRef.current.snapshot().view.chapter.id;
+        const current = await api.chapter({ projectId, chapterId });
+        if (!await confirmation.confirm({
+            title: t("deleteChapter"),
+            message: t("deleteChapterConfirm").replace("{title}", current.chapter.title),
+            action: t("deleteChapter"), danger: true,
         }))
-      )
-        return;
-      await api.delete({ projectId: id });
-      rememberedChapters.current.delete(id);
-      {
-        localStorage.setItem(
-          lastChaptersKey,
-          JSON.stringify(Object.fromEntries(rememberedChapters.current)),
-        );
-        if (localStorage.getItem(activeProjectKey) === id)
-          localStorage.removeItem(activeProjectKey);
-      }
-      if (workspace.snapshot().project?.id === id) {
-        workspace.close();
-        setLibrary(true);
-      }
-      await reload();
-    });
-  }
-  async function activate(id: string) {
-    const previous = workspace.snapshot();
-    if (previous.project && previous.chapter)
-      rememberedChapters.current.set(
-        previous.project.id,
-        previous.chapter.chapter.id,
-      );
-    const chapter = rememberedChapters.current.get(id);
-    await workspace.open(id);
-    const opened = workspace.snapshot();
-    if (opened.error || opened.project?.id !== id) return;
-    if (
-      chapter &&
-      opened.chapters.some((c) => c.id === chapter) &&
-      opened.chapter?.chapter.id !== chapter
-    )
-      await workspace.selectChapter(chapter);
-    localStorage.setItem(activeProjectKey, id);
-    setLibrary(false);
-    setPanel("reader");
-    setFilter("");
-    setChapterState("all");
-    await jobs.watch(id);
-  }
-  async function run(
-    kind: "metadata" | "summary" | "glossary",
-    batch?: { maxChapters: number; force: boolean },
-  ) {
-    if (!state.project) return;
-    await editorRef.current?.flush();
-    const projectId = state.project.id;
-    if (kind === "glossary" && !batch) throw new Error(t("batchCount"));
-    const job = await (kind !== "glossary"
-      ? api.startMetadata({ projectId, summaryOnly: kind === "summary" })
-      : api.extractGlossary({
-          projectId,
-          selection: { kind: "all" },
-          maxChapters: batch!.maxChapters,
-          force: batch!.force,
-        }));
-    await jobs.refresh(job);
-    setShowJobs(true);
-  }
-  async function updateReferenceGlossary(ids: string[]) {
-    if (!state.project || !ids.length) return;
-    const job = await api.extractGlossary({
-      projectId: state.project.id,
-      selection: { kind: "explicit_ids", ids },
-      maxChapters: ids.length,
-      force: true,
-    });
-    await jobs.refresh(job);
-    setShowJobs(true);
-  }
-  async function deleteCurrentChapter() {
-    if (!state.project || !editorRef.current) return;
-    const projectId = state.project.id;
-    const chapterId = editorRef.current.snapshot().view.chapter.id;
-    const current = await api.chapter({ projectId, chapterId });
-    if (!await confirmation.confirm({
-      title: t("deleteChapter"),
-      message: t("deleteChapterConfirm").replace("{title}", current.chapter.title),
-      action: t("deleteChapter"), danger: true,
-    })) return;
-    await api.deleteChapter({ projectId, chapterId,
-      expectedRevision: current.chapter.revision,
-      expectedTranslationRevision: current.translation?.revision ?? null,
-    });
-    rememberedChapters.current.delete(projectId);
-    await workspace.refreshChapters();
-    await reload();
-  }
-  async function translate(all: boolean) {
-    if (!state.project) return;
-    if (all && !validBatchSize) return;
-    const job = await api.translate({
-      projectId: state.project.id,
-      selection: all
-        ? { kind: "all" }
-        : {
-            kind: "explicit_ids",
-            ids: editor ? [editor.snapshot().view.chapter.id] : [],
-          },
-      options: {
-        force,
-        instructions: null,
-        maxChapters: all ? Number(batchSize) : 1,
-        extractGlossary: true,
-      },
-    });
-    await jobs.refresh(job);
-    setShowJobs(true);
-  }
-  const project = state.project,
-    jobList = project && !library ? jobs.list(project.id) : [];
-  const translationRunning = jobList.some(
-    (job) =>
-      job.job.projectId === project?.id &&
-      job.kind === "book_translation" &&
-      ["queued", "running", "cancelling"].includes(job.state),
-  );
-  const translatedCount = state.chapters.filter(
-    (c) => c.origin !== null,
-  ).length;
-  const reviewedCount = state.chapters.filter((c) => c.needsReview).length;
-  const failedCount = state.chapters.filter(
-    (c) => c.status === "failed",
-  ).length;
-  const [volumeTitleSource, setVolumeTitleSource] = useState<string|null>(null);
-  const [collapsedVolumes, setCollapsedVolumes] = useState<Set<string>>(() => new Set());
-  const visibleChapters = state.chapters.filter(
-    (c) =>
-      `${c.title} ${c.translatedTitle ?? ""} ${c.volume ?? ""} ${c.translatedVolume ?? ""}`
+            return;
+        await api.deleteChapter({ projectId, chapterId,
+            expectedRevision: current.chapter.revision,
+            expectedTranslationRevision: current.translation?.revision ?? null,
+        });
+        rememberedChapters.current.delete(projectId);
+        await workspace.refreshChapters();
+        await reload();
+    }
+    async function translate(all: boolean) {
+        if (!state.project)
+            return;
+        if (all && !validBatchSize)
+            return;
+        const job = await api.translate({
+            projectId: state.project.id,
+            selection: all
+                ? { kind: "all" }
+                : {
+                    kind: "explicit_ids",
+                    ids: editor ? [editor.snapshot().view.chapter.id] : [],
+                },
+            options: {
+                force,
+                instructions: null,
+                maxChapters: all ? Number(batchSize) : 1,
+                extractGlossary: true,
+            },
+        });
+        await jobs.refresh(job);
+        setShowJobs(true);
+    }
+    const project = state.project, jobList = project && !library ? jobs.list(project.id) : [];
+    const translationRunning = jobList.some((job) => job.job.projectId === project?.id &&
+        job.kind === "book_translation" &&
+        ["queued", "running", "cancelling"].includes(job.state));
+    const translatedCount = state.chapters.filter((c) => c.origin !== null).length;
+    const reviewedCount = state.chapters.filter((c) => c.needsReview).length;
+    const failedCount = state.chapters.filter((c) => c.status === "failed").length;
+    const [volumeTitleSource, setVolumeTitleSource] = useState<string | null>(null);
+    const [collapsedVolumes, setCollapsedVolumes] = useState<Set<string>>(() => new Set());
+    const visibleChapters = state.chapters.filter((c) => `${c.title} ${c.translatedTitle ?? ""} ${c.volume ?? ""} ${c.translatedVolume ?? ""}`
         .toLocaleLowerCase()
         .includes(filter.toLocaleLowerCase()) &&
-      (chapterState === "all" ||
-        (chapterState === "review"
-          ? c.needsReview
-          : chapterState === "reference"
-            ? c.origin === "reference"
-            : c.status === chapterState)),
-  );
-  const tabs =
-    project?.kind === "book"
-      ? (["reader", "overview", "glossary", "reference"] as const)
-      : (["reader", "overview", "glossary"] as const);
-  const commands: Command[] = [
-    {
-      id: "library",
-      label: t("library"),
-      run: () =>
-        void act(async () => {
-          setLibrary(true);
-          await reload();
-        }),
-    },
-    { id: "create", label: t("newProject"), run: () => setCreate(true) },
-    { id: "settings", label: t("settings"), run: () => setSettings(true) },
-    { id: "jobs", label: t("jobs"), run: () => setShowJobs(true) },
-    ...(project
-      ? [
-          {
-            id: "export",
-            label: t("export"),
-            run: () =>
-              void act(async () => {
-                setLibrary(false);
-                setExportFormat(project.kind === "book" ? "epub" : "bcproj");
-              }),
-          },
-        ]
-      : []),
-    ...catalog.map((p) => ({
-      id: p.descriptor.id,
-      label: `${t("open")}: ${p.descriptor.name}`,
-      run: () => void act(() => activate(p.descriptor.id)),
-    })),
-    ...(project
-      ? tabs.map((tab) => ({
-          id: tab,
-          label: t(
-            tab === "reader" && project.kind === "manga" ? "pages" : tab,
-          ),
-          run: () =>
-            void act(async () => {
-              setLibrary(false);
-              setPanel(tab);
+        (chapterState === "all" ||
+            (chapterState === "review"
+                ? c.needsReview
+                : chapterState === "reference"
+                    ? c.origin === "reference"
+                    : c.status === chapterState)));
+    const tabs = (["reader", "overview", "glossary", "reference"] as const);
+    const commands: Command[] = [
+        {
+            id: "library",
+            label: t("library"),
+            run: () => void act(async () => {
+                setLibrary(true);
+                await reload();
             }),
-        }))
-      : []),
-  ];
-  return (
-    <div className="bc-app">
-      {previewMode && (
-        <div className="bc-preview-banner">{t("previewMode")}</div>
-      )}
+        },
+        { id: "create", label: t("chooseBook"), run: () => setCreate(true) },
+        { id: "settings", label: t("settings"), run: () => setSettings(true) },
+        { id: "jobs", label: t("jobs"), run: () => setShowJobs(true) },
+        ...(project
+            ? [
+                {
+                    id: "export",
+                    label: t("export"),
+                    run: () => void act(async () => {
+                        setLibrary(false);
+                        setExportFormat("epub");
+                    }),
+                },
+            ]
+            : []),
+        ...catalog.map((p) => ({
+            id: p.descriptor.id,
+            label: `${t("open")}: ${p.descriptor.name}`,
+            run: () => void act(() => activate(p.descriptor.id)),
+        })),
+        ...(project
+            ? tabs.map((tab) => ({
+                id: tab,
+                label: t(tab),
+                run: () => void act(async () => {
+                    setLibrary(false);
+                    setPanel(tab);
+                }),
+            }))
+            : []),
+    ];
+    return (<div className="bc-app">
+      {previewMode && (<div className="bc-preview-banner">{t("previewMode")}</div>)}
       <header className="bc-topbar">
         <span className="bc-brand">
-          <img src="/logo.svg" alt="" width="22" height="22" />
+          <img src="/logo.svg" alt="" width="22" height="22"/>
           <strong>Book Converter</strong>
         </span>
         <Menu label={t("fileMenu")}>
-          <button
-            disabled={busy}
-            onClick={() => {
-              closeMenus();
-              void act(async () => {
+          <button disabled={busy} onClick={() => {
+            closeMenus();
+            void act(async () => {
                 setLibrary(true);
                 await reload();
-              });
-            }}
-          >
+            });
+        }}>
             {t("library")}
           </button>
-          <button
-            onClick={() => {
-              closeMenus();
-              setCreate(true);
-            }}
-          >
-            {t("newProject")}
+          <button onClick={() => {
+            closeMenus();
+            setCreate(true);
+        }}>
+            {t("chooseBook")}
           </button>
-          <button
-            disabled={busy}
-            onClick={() => {
-              closeMenus();
-              void importProject();
-            }}
-          >
+          <button disabled={busy} onClick={() => {
+            closeMenus();
+            void importProject();
+        }}>
             {t("importArchive")}
           </button>
-          {!library && project && (
-            <ExportMenu
-              project={project}
-              disabled={busy}
-              t={t}
-              choose={(format) => {
+          {!library && project && (<ExportMenu project={project} disabled={busy} t={t} choose={(format) => {
                 closeMenus();
                 void act(async () => setExportFormat(format));
-              }}
-            />
-          )}
+            }}/>)}
         </Menu>
         <button onClick={() => setSettings(true)}>{t("settings")}</button>
-        <button
-          className="bc-jobs-toggle"
-          disabled={library || !project}
-          onClick={() => setShowJobs(!showJobs)}
-          aria-pressed={showJobs}
-        >
+        <button className="bc-jobs-toggle" disabled={library || !project} onClick={() => setShowJobs(!showJobs)} aria-pressed={showJobs}>
           {t("jobs")}
-          {jobList.some((j) => j.state === "running") && (
-            <span className="bc-activity-dot" />
-          )}
+          {jobList.some((j) => j.state === "running") && (<span className="bc-activity-dot"/>)}
         </button>
-        {!library && project?.kind === "book" && (
-          <button
-            aria-pressed={showAssistant}
-            onClick={() => setShowAssistant((v) => !v)}
-          >
+        {!library && (<button aria-pressed={showAssistant} onClick={() => setShowAssistant((v) => !v)}>
             {t("assistant")}
-          </button>
-        )}
+          </button>)}
         <Menu label={t("helpMenu")}>
-          <button
-            onClick={() => {
-              closeMenus();
-              setAbout(true);
-            }}
-          >
+          <button onClick={() => {
+            closeMenus();
+            setAbout(true);
+        }}>
             {t("about")}
           </button>
         </Menu>
       </header>
-      {(error ?? state.error ?? initialError) != null && (
-        <div className="bc-error" role="alert">
+      {(error ?? state.error ?? initialError) != null && (<div className="bc-error" role="alert">
           {errorText(error ?? state.error ?? initialError, t)}
-          <button
-            aria-label={t("close")}
-            onClick={() => {
-              setError(null);
-              dismissInitialError();
-              workspace.clearError();
-            }}
-          >
+          <button aria-label={t("close")} onClick={() => {
+                setError(null);
+                dismissInitialError();
+                workspace.clearError();
+            }}>
             ×
           </button>
-        </div>
-      )}
-      {(library && !state.loading) || (!project && !state.loading) ? (
-        <ProjectLibrary
-          catalog={catalog}
-          busy={busy}
-          t={t}
-          create={() => setCreate(true)}
-          open={(id) => void act(() => activate(id))}
-          importArchive={() => void importProject()}
-          remove={(id) => void removeProject(id)}
-        />
-      ) : (
-        <div className="bc-workspace">
-          {project && (
-            <ResizablePanel
-              className="bc-sidebar"
-              label={t("chapters")}
-              edge="right"
-            >
+        </div>)}
+      {(library && !state.loading) || (!project && !state.loading) ? (<ProjectLibrary catalog={catalog} busy={busy} t={t} create={() => setCreate(true)} open={(id) => void act(() => activate(id))} importArchive={() => void importProject()} remove={(id) => void removeProject(id)}/>) : (<div className="bc-workspace">
+          {project && (<ResizablePanel className="bc-sidebar" label={t("chapters")} edge="right">
               <nav className="bc-project-tree" aria-label={t("library")}>
                 <div className="bc-project-tree-heading">{t("library")}</div>
-                {catalog.map(({ descriptor: item }) => (
-                  <div className="bc-project-node" key={item.id}>
-                    <button
-                      disabled={busy}
-                      aria-current={item.id === project.id ? "page" : undefined}
-                      title={item.name}
-                      onClick={() => {
+                {catalog.map(({ descriptor: item }) => (<div className="bc-project-node" key={item.id}>
+                    <button disabled={busy} aria-current={item.id === project.id ? "page" : undefined} title={item.name} onClick={() => {
                         if (item.id !== project.id)
-                          void act(() => activate(item.id));
-                      }}
-                    >
-                      <span
-                        className={
-                          jobs
-                            .list(item.id)
-                            .some((j) =>
-                              ["running", "queued"].includes(j.state),
-                            )
-                            ? "bc-project-dot running"
-                            : "bc-project-dot"
-                        }
-                      />
+                            void act(() => activate(item.id));
+                    }}>
+                      <span className={jobs
+                        .list(item.id)
+                        .some((j) => ["running", "queued"].includes(j.state))
+                        ? "bc-project-dot running"
+                        : "bc-project-dot"}/>
                       <span>{item.name}</span>
                     </button>
-                    <button
-                      className="bc-project-remove"
-                      disabled={busy}
-                      aria-label={`${t("delete")}: ${item.name}`}
-                      title={t("delete")}
-                      onClick={() => void removeProject(item.id)}
-                    >
+                    <button className="bc-project-remove" disabled={busy} aria-label={`${t("delete")}: ${item.name}`} title={t("delete")} onClick={() => void removeProject(item.id)}>
                       ×
                     </button>
-                  </div>
-                ))}
+                  </div>))}
               </nav>
-              {project.kind === "book" && (
-                <>
+              {(<>
                   <div className="bc-sidebar-heading">
                     <h2>{project.name}</h2>
-                    <button
-                      className="bc-icon-button"
-                      aria-label={t("bookSearch")}
-                      title={`${t("bookSearch")} (Ctrl+F)`}
-                      aria-pressed={showSearch}
-                      onClick={() => setShowSearch((v) => !v)}
-                    >
-                      <ToolbarIcon name="search" />
+                    <button className="bc-icon-button" aria-label={t("bookSearch")} title={`${t("bookSearch")} (Ctrl+F)`} aria-pressed={showSearch} onClick={() => setShowSearch((v) => !v)}>
+                      <ToolbarIcon name="search"/>
                     </button>
                   </div>
                   <p className="bc-hint">
                     {state.settings &&
-                      `${languageName(state.settings.languages.source ?? "und", lang)} → ${languageName(state.settings.languages.target, lang)}`}
+                        `${languageName(state.settings.languages.source ?? "und", lang)} → ${languageName(state.settings.languages.target, lang)}`}
                   </p>
-                  <BookSearch
-                    key={project.id}
-                    projectId={project.id}
-                    t={t}
-                    active={showSearch}
-                    mode={searchMode}
-                    setMode={setSearchMode}
-                    chapters={state.chapters}
-                    chapterId={state.chapter?.chapter.id ?? null}
-                    registerFlush={registerSearchFlush}
-                    beforeWork={async () => {
-                      await editorRef.current?.flush();
-                      await toolFlush.current?.();
-                      await assistantFlush.current?.();
-                    }}
-                    refresh={async () => {
-                      await editorRef.current?.refresh();
-                      await workspace.refreshChapters();
-                    }}
-                    close={() => setShowSearch(false)}
-                    open={(chapter, block) =>
-                      void act(async () => {
+                  <BookSearch key={project.id} projectId={project.id} t={t} active={showSearch} mode={searchMode} setMode={setSearchMode} chapters={state.chapters} chapterId={state.chapter?.chapter.id ?? null} registerFlush={registerSearchFlush} beforeWork={async () => {
+                        await editorRef.current?.flush();
+                        await toolFlush.current?.();
+                        await assistantFlush.current?.();
+                    }} refresh={async () => {
+                        await editorRef.current?.refresh();
+                        await workspace.refreshChapters();
+                    }} close={() => setShowSearch(false)} open={(chapter, block) => void act(async () => {
                         setFocusBlock(block);
                         await workspace.selectChapter(chapter);
                         setPanel("reader");
-                      })
-                    }
-                  />
-                  <div
-                    style={
-                      {
+                    })}/>
+                  <div style={{
                         "--chapter-digits": `${Math.max(1, String(state.chapters.reduce((max, c) => Math.max(max, c.position + 1), 0)).length)}ch`,
-                      } as CSSProperties
-                    }
-                    className="bc-chapter-navigation"
-                    hidden={showSearch}
-                  >
+                    } as CSSProperties} className="bc-chapter-navigation" hidden={showSearch}>
                     <details className="bc-chapter-filters" key={project.id}>
                       <summary title={t("chapterFilter")}>
                         <span>
                           {t("chapters")} ·{" "}
                           {filter || chapterState !== "all"
-                            ? `${visibleChapters.length} / ${state.chapters.length} ●`
-                            : state.chapters.length}
+                        ? `${visibleChapters.length} / ${state.chapters.length} ●`
+                        : state.chapters.length}
                         </span>
-                        <svg
-                          aria-hidden="true"
-                          width="16"
-                          height="16"
-                          viewBox="0 0 24 24"
-                          fill="none"
-                          stroke="currentColor"
-                          strokeWidth="1.6"
-                        >
-                          <path d="M4 5h16M7 12h10M10 19h4" />
+                        <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6">
+                          <path d="M4 5h16M7 12h10M10 19h4"/>
                         </svg>
                       </summary>
                       <label className="bc-chapter-search">
                         <span className="bc-sr-only">{t("chapterFilter")}</span>
-                        <input
-                          aria-label={t("chapterFilter")}
-                          placeholder={t("chapterFilter")}
-                          value={filter}
-                          onChange={(e) => setFilter(e.target.value)}
-                        />
+                        <input aria-label={t("chapterFilter")} placeholder={t("chapterFilter")} value={filter} onChange={(e) => setFilter(e.target.value)}/>
                       </label>
                       <label className="bc-chapter-search">
                         {t("chapterStatusFilter")}
-                        <select
-                          value={chapterState}
-                          onChange={(e) => setChapterState(e.target.value)}
-                        >
+                        <select value={chapterState} onChange={(e) => setChapterState(e.target.value)}>
                           <option value="all">{t("allChapters")}</option>
                           <option value="pending">{t("chapterPending")}</option>
                           <option value="failed">{t("chapterFailed")}</option>
@@ -800,442 +603,208 @@ function Shell({
                         </select>
                       </label>
                     </details>
-                    {volumeTitleSource && <VolumeTitle key={`${project.id}/${volumeTitleSource}`} projectId={project.id} source={volumeTitleSource} t={t} onClose={()=>setVolumeTitleSource(null)} onSaved={()=>workspace.refreshChapters()} />}
-                    <VirtualList
-                      key={`${project.id}/${filter}/${chapterState}`}
-                      items={chapterRows(visibleChapters, collapsedVolumes, project.id, !!filter || chapterState !== "all")}
-                      rowHeight={30}
-                      className="bc-chapters"
-                      renderRow={(row) => {
-                        if (row.kind === "volume") return (
-                          <div key={row.key} className="bc-volume-group"><button className="bc-volume-row" aria-expanded={!row.collapsed}
-                            onClick={() => setCollapsedVolumes(current => {
-                              const next = new Set(current);
-                              if (next.has(row.key)) next.delete(row.key); else next.add(row.key);
-                              return next;
-                            })}>
+                    {volumeTitleSource && <VolumeTitle key={`${project.id}/${volumeTitleSource}`} projectId={project.id} source={volumeTitleSource} t={t} onClose={() => setVolumeTitleSource(null)} onSaved={() => workspace.refreshChapters()}/>}
+                    <VirtualList key={`${project.id}/${filter}/${chapterState}`} items={chapterRows(visibleChapters, collapsedVolumes, project.id, !!filter || chapterState !== "all")} rowHeight={30} className="bc-chapters" renderRow={(row) => {
+                        if (row.kind === "volume")
+                            return (<div key={row.key} className="bc-volume-group"><button className="bc-volume-row" aria-expanded={!row.collapsed} onClick={() => setCollapsedVolumes(current => {
+                                    const next = new Set(current);
+                                    if (next.has(row.key))
+                                        next.delete(row.key);
+                                    else
+                                        next.add(row.key);
+                                    return next;
+                                })}>
                             <span aria-hidden="true">{row.collapsed ? "▸" : "▾"}</span>
                             <strong title={row.label}>{row.label}</strong>
                             <small>{row.count}</small>
-                          </button><button className="bc-volume-edit bc-icon-button" title={t("volumeTitle")} aria-label={`${t("volumeTitle")}: ${row.label}`} onClick={()=>setVolumeTitleSource(row.source)}><ToolbarIcon name="manual" /></button></div>
-                        );
+                          </button><button className="bc-volume-edit bc-icon-button" title={t("volumeTitle")} aria-label={`${t("volumeTitle")}: ${row.label}`} onClick={() => setVolumeTitleSource(row.source)}><ToolbarIcon name="manual"/></button></div>);
                         const c = row.chapter;
-                        return (
-                        <button
-                          key={c.id}
-                          disabled={busy}
-                          aria-current={
-                            editor?.snapshot().view.chapter.id === c.id
-                              ? "page"
-                              : undefined
-                          }
-                          onClick={() =>
-                            void act(() => workspace.selectChapter(c.id))
-                          }
-                        >
+                        return (<button key={c.id} disabled={busy} aria-current={editor?.snapshot().view.chapter.id === c.id
+                                ? "page"
+                                : undefined} onClick={() => void act(() => workspace.selectChapter(c.id))}>
                           <span>{c.position + 1}</span>
                           <strong title={c.title}>
                             {c.translatedTitle || c.title}
                           </strong>
-                          <small
-                            data-state={c.status}
-                            data-problem={
-                              c.status === "failed" && !c.origin
+                          <small data-state={c.status} data-problem={c.status === "failed" && !c.origin
                                 ? "error"
                                 : c.needsReview || c.status === "failed"
-                                  ? "warning"
-                                  : undefined
-                            }
-                            title={`${t(c.needsReview ? "review" : c.status === "failed" ? "chapterFailed" : c.status === "in_progress" ? "chapterInProgress" : c.status === "done" ? "chapterDone" : "chapterPending")}${c.origin ? ` · ${t(c.origin === "reference" ? "originReference" : c.origin === "manual" ? "originManual" : "originModel")}` : ""}`}
-                          >
-                            {c.status === "in_progress" ? (
-                              <span className="bc-chapter-spinner" aria-hidden="true" />
-                            ) : c.origin ? (
-                              <ToolbarIcon name={c.origin === "reference" ? "reference" : c.origin === "manual" ? "manual" : "model"} />
-                            ) : c.status === "failed" || c.needsReview ? (
-                              <ToolbarIcon name="warning" />
-                            ) : null}
+                                    ? "warning"
+                                    : undefined} title={`${t(c.needsReview ? "review" : c.status === "failed" ? "chapterFailed" : c.status === "in_progress" ? "chapterInProgress" : c.status === "done" ? "chapterDone" : "chapterPending")}${c.origin ? ` · ${t(c.origin === "reference" ? "originReference" : c.origin === "manual" ? "originManual" : "originModel")}` : ""}`}>
+                            {c.status === "in_progress" ? (<span className="bc-chapter-spinner" aria-hidden="true"/>) : c.origin ? (<ToolbarIcon name={c.origin === "reference" ? "reference" : c.origin === "manual" ? "manual" : "model"}/>) : c.status === "failed" || c.needsReview ? (<ToolbarIcon name="warning"/>) : null}
                             <span className="bc-chapter-status-label">
-                            {t(
-                              c.status === "failed"
+                            {t(c.status === "failed"
                                 ? "chapterFailed"
                                 : c.status === "in_progress"
-                                  ? "chapterInProgress"
-                                  : c.status === "done"
-                                    ? "chapterDone"
-                                    : c.status === "skipped"
-                                      ? "chapterSkipped"
-                                      : "chapterPending",
-                            )}
+                                    ? "chapterInProgress"
+                                    : c.status === "done"
+                                        ? "chapterDone"
+                                        : c.status === "skipped"
+                                            ? "chapterSkipped"
+                                            : "chapterPending")}
                             {c.origin
-                              ? ` · ${t(c.origin === "reference" ? "originReference" : c.origin === "manual" ? "originManual" : "originModel")}`
-                              : ""}
+                                ? ` · ${t(c.origin === "reference" ? "originReference" : c.origin === "manual" ? "originManual" : "originModel")}`
+                                : ""}
                             {c.needsReview ? ` · ${t("review")}` : ""}
                             </span>
                           </small>
-                        </button>
-                        );
-                      }}
-                    />
+                        </button>);
+                    }}/>
                   </div>
-                </>
-              )}
-            </ResizablePanel>
-          )}
+                </>)}
+            </ResizablePanel>)}
           <main className="bc-main">
             <nav className="bc-tabs">
-              {tabs.map((tab) => (
-                <button
-                  key={tab}
-                  aria-pressed={panel === tab}
-                  disabled={busy}
-                  onClick={() => void act(async () => setPanel(tab))}
-                >
-                  {t(
-                    tab === "reader" && project?.kind === "manga"
-                      ? "pages"
-                      : tab === "overview" && project?.kind === "manga" ? "batchTranslation" : tab,
-                  )}
-                </button>
-              ))}
+              {tabs.map((tab) => (<button key={tab} aria-pressed={panel === tab} disabled={busy} onClick={() => void act(async () => setPanel(tab))}>
+                  {t(tab)}
+                </button>))}
             </nav>
-            {project?.kind === "book" && panel === "reader" && (
-              <div className="bc-toolbar">
-                <button
-                  className="primary"
-                  disabled={busy || translationRunning || !editor}
-                  onClick={() => void act(() => translate(false))}
-                >
+            {panel === "reader" && (<div className="bc-toolbar">
+                <button className="primary" disabled={busy || translationRunning || !editor} onClick={() => void act(() => translate(false))}>
                   {t("translateChapter")}
                 </button>
-                <button
-                  disabled={busy || !editor}
-                  onClick={() =>
-                    void act(async () => setShowInstructions(true))
-                  }
-                >
+                <button disabled={busy || !editor} onClick={() => void act(async () => setShowInstructions(true))}>
                   {t("instructions")}
                 </button>
-                <button
-                  className="bc-icon-button danger"
-                  title={t("deleteChapter")}
-                  aria-label={t("deleteChapter")}
-                  disabled={busy || !editor || jobList.some(j => ["queued", "running", "cancelling"].includes(j.state))}
-                  onClick={() => void act(deleteCurrentChapter)}
-                >
-                  <ToolbarIcon name="clear" />
+                <button className="bc-icon-button danger" title={t("deleteChapter")} aria-label={t("deleteChapter")} disabled={busy || !editor || jobList.some(j => ["queued", "running", "cancelling"].includes(j.state))} onClick={() => void act(deleteCurrentChapter)}>
+                  <ToolbarIcon name="clear"/>
                 </button>
                 <details className="bc-translation-options">
                   <summary>{t("translationOptions")}</summary>
                   <label className="bc-check">
-                    <input
-                      type="checkbox"
-                      checked={force}
-                      onChange={(e) => setForce(e.target.checked)}
-                    />
+                    <input type="checkbox" checked={force} onChange={(e) => setForce(e.target.checked)}/>
                     {t("force")}
                   </label>
                   <span className="bc-hint">{t("automaticGlossary")}</span>
                 </details>
-              </div>
-            )}
+              </div>)}
             <div className="bc-content">
-              {state.loading ? (
-                <div className="bc-empty" role="status" aria-live="polite">
+              {state.loading ? (<div className="bc-empty" role="status" aria-live="polite">
                   <p>{t("loading")}</p>
-                  <progress aria-label={t("loading")} />
-                </div>
-              ) : (
-                project &&
-                (panel === "glossary" ? (
-                  <Glossary
-                    revision={jobList
-                      .filter((job) => job.state === "succeeded")
-                      .map((job) => `${job.job.jobId}:${job.revision}`)
-                      .join("|")}
-                    key={project.id}
-                    projectId={project.id}
-                    t={t}
-                    canExtract={project.kind === "book"}
-                    onJob={async (job) => {
-                      await jobs.refresh(job);
-                      setShowJobs(true);
-                    }}
-                    extract={(maxChapters, force) =>
-                      run("glossary", { maxChapters, force })
-                    }
-                  />
-                ) : project.kind === "manga" ? (
-                  <MangaWorkspace
-                    batch={panel === "overview"}
-                    jobs={jobList}
-                    onJob={(job) => jobs.refresh(job)}
-                    onSettings={()=>setSettings(true)}
-                    setupVersion={Number(settings)}
-                    key={project.id}
-                    projectId={project.id}
-                    t={t}
-                  />
-                ) : panel === "reader" ? (
-                  editor ? (
-                    <BookReader
-                      editingLocked={jobList.some(j => j.job.projectId === project.id && ["running", "cancelling"].includes(j.state) && j.editingLockedChapters?.includes(editor.snapshot().view.chapter.id))}
-                      session={editor}
-                      t={t}
-                      focusBlock={focusBlock}
-                      busy={
-                        busy ||
-                        jobList.some(
-                          (j) =>
-                            j.job.projectId === project.id &&
-                            ["queued", "running", "cancelling"].includes(
-                              j.state,
-                            ),
-                        )
-                      }
-                      onTranslateTitle={() =>
-                        void act(async () => {
-                          const view = editor.snapshot().view;
-                          if (!view.translation) return;
-                          const job = await api.translateTitle({
-                            projectId: project.id,
-                            chapterId: view.chapter.id,
-                            expectedRevision: view.translation.revision,
-                          });
-                          await jobs.refresh(job);
-                          setShowJobs(true);
-                        })
-                      }
-                    />
-                  ) : (
-                    <p className="bc-empty">{t("noChapter")}</p>
-                  )
-                ) : (
-                  <BookTools
-                    key={`${project.id}/${state.chapter?.chapter.id}/${panel}/${toolsVersion}`}
-                    translationControls={
-                      <section
-                        className="bc-book-progress"
-                        aria-label={t("translateBatch")}
-                      >
+                  <progress aria-label={t("loading")}/>
+                </div>) : (project &&
+                (panel === "glossary" ? (<Glossary revision={jobList
+                        .filter((job) => job.state === "succeeded")
+                        .map((job) => `${job.job.jobId}:${job.revision}`)
+                        .join("|")} key={project.id} projectId={project.id} t={t} canExtract={true} onJob={async (job) => {
+                        await jobs.refresh(job);
+                        setShowJobs(true);
+                    }} extract={(maxChapters, force) => run("glossary", { maxChapters, force })}/>) :
+                    panel === "reader" ? (editor ? (<BookReader editingLocked={jobList.some(j => j.job.projectId === project.id && ["running", "cancelling"].includes(j.state) && j.editingLockedChapters?.includes(editor.snapshot().view.chapter.id))} session={editor} t={t} focusBlock={focusBlock} busy={busy ||
+                            jobList.some((j) => j.job.projectId === project.id &&
+                                ["queued", "running", "cancelling"].includes(j.state))} onTranslateTitle={() => void act(async () => {
+                            const view = editor.snapshot().view;
+                            if (!view.translation)
+                                return;
+                            const job = await api.translateTitle({
+                                projectId: project.id,
+                                chapterId: view.chapter.id,
+                                expectedRevision: view.translation.revision,
+                            });
+                            await jobs.refresh(job);
+                            setShowJobs(true);
+                        })}/>) : (<p className="bc-empty">{t("noChapter")}</p>)) : (<BookTools key={`${project.id}/${state.chapter?.chapter.id}/${panel}/${toolsVersion}`} translationControls={<section className="bc-book-progress" aria-label={t("translateBatch")}>
                         <h3>{t("translationProgress")}</h3>
-                        <progress
-                          aria-label={t("translationProgress")}
-                          value={translatedCount}
-                          max={Math.max(1, state.chapters.length)}
-                        />
+                        <progress aria-label={t("translationProgress")} value={translatedCount} max={Math.max(1, state.chapters.length)}/>
                         <p>
                           {t("chapterDone")}: {translatedCount} /{" "}
                           {state.chapters.length} (
                           {state.chapters.length
-                            ? Math.round(
-                                (translatedCount / state.chapters.length) * 100,
-                              )
-                            : 0}
+                                ? Math.round((translatedCount / state.chapters.length) * 100)
+                                : 0}
                           %)
                         </p>
-                        {(reviewedCount > 0 || failedCount > 0) && (
-                          <p className="bc-hint">
+                        {(reviewedCount > 0 || failedCount > 0) && (<p className="bc-hint">
                             {t("review")}: {reviewedCount} ·{" "}
                             {t("chapterFailed")}: {failedCount}
-                          </p>
-                        )}
+                          </p>)}
                         <div className="bc-toolbar">
                           <label className="bc-batch-count">
                             {t("batchCount")}
-                            <input
-                              type="number"
-                              min="1"
-                              max="4294967295"
-                              step="1"
-                              value={batchSize}
-                              style={{ width: "6rem" }}
-                              onChange={(e) => {
+                            <input type="number" min="1" max="4294967295" step="1" value={batchSize} style={{ width: "6rem" }} onChange={(e) => {
                                 const next = {
-                                  ...batchSizes,
-                                  [project.id]: e.target.value,
+                                    ...batchSizes,
+                                    [project.id]: e.target.value,
                                 };
                                 setBatchSizes(next);
-                                localStorage.setItem(
-                                  "bc.batchSizes",
-                                  JSON.stringify(next),
-                                );
-                              }}
-                            />
+                                localStorage.setItem("bc.batchSizes", JSON.stringify(next));
+                            }}/>
                           </label>
-                          <button
-                            disabled={
-                              busy ||
-                              translationRunning ||
-                              !state.chapters.length ||
-                              !validBatchSize
-                            }
-                            onClick={() => void act(() => translate(true))}
-                          >
+                          <button disabled={busy ||
+                                translationRunning ||
+                                !state.chapters.length ||
+                                !validBatchSize} onClick={() => void act(() => translate(true))}>
                             {t("translateBatch")}
                           </button>
                           <label className="bc-check">
-                            <input
-                              type="checkbox"
-                              checked={force}
-                              onChange={(e) => setForce(e.target.checked)}
-                            />
+                            <input type="checkbox" checked={force} onChange={(e) => setForce(e.target.checked)}/>
                             {t("force")}
                           </label>
                           <span className="bc-hint">{t("automaticGlossary")}</span>
                           <span className="bc-hint">{t("batchHint")}</span>
                         </div>
-                      </section>
-                    }
-                    tool={panel}
-                    updateReferenceGlossary={updateReferenceGlossary}
-                    registerFlush={registerFlush}
-                    project={project}
-                    chapters={state.chapters}
-                    session={editor}
-                    t={t}
-                    run={run}
-                    metadataRevision={jobList
-                      .filter(
-                        (j) =>
-                          j.kind === "book_metadata" && j.state === "succeeded",
-                      )
-                      .map((j) => `${j.job.jobId}/${j.revision}`)
-                      .join(",")}
-                    refresh={async () => {
-                      await editor?.refresh();
-                    }}
-                  />
-                ))
-              )}
+                      </section>} tool={panel} updateReferenceGlossary={updateReferenceGlossary} registerFlush={registerFlush} project={project} chapters={state.chapters} session={editor} t={t} run={run} metadataRevision={jobList
+                            .filter((j) => j.kind === "book_metadata" && j.state === "succeeded")
+                            .map((j) => `${j.job.jobId}/${j.revision}`)
+                            .join(",")} refresh={async () => {
+                            await editor?.refresh();
+                        }}/>)))}
             </div>
           </main>
-          {project?.kind === "book" && (
-            <ResizablePanel
-              edge="left"
-              minWidth={240}
-              className="bc-assistant-panel"
-              hidden={!showAssistant}
-              label={t("assistant")}
-            >
-              <Assistant
-                key={project.id}
-                projectId={project.id}
-                chapterId={state.chapter?.chapter.id ?? null}
-                t={t}
-                registerFlush={registerAssistantFlush}
-                onClose={() => setShowAssistant(false)}
-                beforeWork={async () => {
-                  await editorRef.current?.flush();
-                  await toolFlush.current?.();
-                  await searchFlush.current?.();
-                }}
-                refresh={async () => {
-                  await editor?.refresh();
-                  await workspace.refreshChapters();
-                  setToolsVersion((v) => v + 1);
-                }}
-                onJob={async (job) => {
-                  await jobs.refresh(job);
-                  setShowJobs(true);
-                }}
-              />
-            </ResizablePanel>
-          )}
-        </div>
-      )}
-      {showJobs && !library && project && (
-        <JobPanel
-          jobs={jobList}
-          catalog={catalog}
-          t={t}
-          busy={busy}
-          close={() => setShowJobs(false)}
-          clear={() => jobs.clearFinished(project.id)}
-          cancel={(job) =>
-            void api
-              .cancelJob(job)
-              .then(() => jobs.refresh(job))
-              .catch(setError)
-          }
-          resume={(job) =>
-            void api
-              .resumeJob(job)
-              .then(() => jobs.refresh(job))
-              .catch(setError)
-          }
-        />
-      )}
+          {project && (<ResizablePanel edge="left" minWidth={240} className="bc-assistant-panel" hidden={!showAssistant} label={t("assistant")}>
+              <Assistant key={project.id} projectId={project.id} chapterId={state.chapter?.chapter.id ?? null} t={t} registerFlush={registerAssistantFlush} onClose={() => setShowAssistant(false)} beforeWork={async () => {
+                    await editorRef.current?.flush();
+                    await toolFlush.current?.();
+                    await searchFlush.current?.();
+                }} refresh={async () => {
+                    await editor?.refresh();
+                    await workspace.refreshChapters();
+                    setToolsVersion((v) => v + 1);
+                }} onJob={async (job) => {
+                    await jobs.refresh(job);
+                    setShowJobs(true);
+                }}/>
+            </ResizablePanel>)}
+        </div>)}
+      {showJobs && !library && project && (<JobPanel jobs={jobList} catalog={catalog} t={t} busy={busy} close={() => setShowJobs(false)} clear={() => jobs.clearFinished(project.id)} cancel={(job) => void api
+                .cancelJob(job)
+                .then(() => jobs.refresh(job))
+                .catch(setError)} resume={(job) => void api
+                .resumeJob(job)
+                .then(() => jobs.refresh(job))
+                .catch(setError)}/>)}
       <footer className="bc-statusbar">
         <span>{project?.name ?? t("library")}</span>
         <span>{t("keyboard")}</span>
       </footer>
-      {create && (
-        <CreateProject
-          t={t}
-          lang={lang}
-          onClose={() => setCreate(false)}
-          onCreated={async (p, metadata) => {
-            setCreate(false);
-            await act(async () => {
-              await reload();
-              await activate(p.id);
-              if (metadata) {
-                const job = await api.startMetadata({
-                  projectId: p.id,
-                  summaryOnly: false,
+      {create && (<CreateProject t={t} lang={lang} onClose={() => setCreate(false)} onCreated={async (p, metadata) => {
+                setCreate(false);
+                await act(async () => {
+                    await reload();
+                    await activate(p.id);
+                    if (metadata) {
+                        const job = await api.startMetadata({
+                            projectId: p.id,
+                            summaryOnly: false,
+                        });
+                        await jobs.refresh(job);
+                        setShowJobs(true);
+                    }
                 });
-                await jobs.refresh(job);
-                setShowJobs(true);
-              }
-            });
-          }}
-        />
-      )}
-      {palette && (
-        <CommandPalette
-          commands={commands}
-          close={() => setPalette(false)}
-          t={t}
-        />
-      )}
+            }}/>)}
+      {palette && (<CommandPalette commands={commands} close={() => setPalette(false)} t={t}/>)}
       {confirmation.dialog}
-      {about && <About t={t} close={() => setAbout(false)} />}
-      {showInstructions && editor && (
-        <ChapterInstructions
-          session={editor}
-          t={t}
-          close={() => setShowInstructions(false)}
-          registerFlush={registerFlush}
-        />
-      )}
-      {exportFormat && project && (
-        <ProjectExport
-          project={project}
-          format={exportFormat}
-          chapterId={state.chapter?.chapter.id ?? null}
-          t={t}
-          close={() => setExportFormat(null)}
-          beforeExport={async () => {
-            await editorRef.current?.flush();
-            await toolFlush.current?.();
-            await searchFlush.current?.();
-            await assistantFlush.current?.();
-          }}
-        />
-      )}
-      {settings && (
-        <Settings
-          project={project}
-          t={t}
-          lang={lang}
-          setLang={(value) => {
-            setLang(value);
-            localStorage.setItem(LS_LANG, value);
-          }}
-          onClose={() => setSettings(false)}
-        />
-      )}
-    </div>
-  );
+      {about && <About t={t} close={() => setAbout(false)}/>}
+      {showInstructions && editor && (<ChapterInstructions session={editor} t={t} close={() => setShowInstructions(false)} registerFlush={registerFlush}/>)}
+      {exportFormat && project && (<ProjectExport project={project} format={exportFormat} chapterId={state.chapter?.chapter.id ?? null} t={t} close={() => setExportFormat(null)} beforeExport={async () => {
+                await editorRef.current?.flush();
+                await toolFlush.current?.();
+                await searchFlush.current?.();
+                await assistantFlush.current?.();
+            }}/>)}
+      {settings && (<Settings project={project} t={t} lang={lang} setLang={(value) => {
+                setLang(value);
+                localStorage.setItem(LS_LANG, value);
+            }} onClose={() => setSettings(false)}/>)}
+    </div>);
 }

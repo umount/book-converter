@@ -3,7 +3,7 @@ use super::{
     repository::{conflict, not_found, storage_error},
     shared::{glossary_revision, next, settings},
 };
-use crate::app::contracts::{AppError, MangaStage, Revision};
+use crate::app::contracts::{AppError, Revision};
 use rusqlite::{params, Connection, OptionalExtension};
 
 #[derive(Debug, Clone)]
@@ -125,136 +125,22 @@ pub fn save_context(db: &Connection, value: &BookContext) -> Result<(), AppError
     Ok(())
 }
 
-#[derive(Debug, Clone)]
-pub enum MangaOutput {
-    Structured(serde_json::Value),
-    Image(String),
-}
-#[derive(Debug, Clone)]
-pub struct MangaResult {
-    pub id: String,
-    pub page_id: String,
-    pub stage: MangaStage,
-    pub inputs: InputVersions,
-    pub expected_result: Option<Revision>,
-    pub fingerprint: String,
-    pub provider_version: String,
-    pub output: MangaOutput,
-}
-
-pub fn save_manga_result(db: &mut Connection, value: &MangaResult) -> Result<Revision, AppError> {
-    let tx = db.transaction().map_err(storage_error)?;
-    let revision = save_manga_result_in(&tx, value)?;
-    tx.commit().map_err(storage_error)?;
-    Ok(revision)
-}
-
-pub fn save_manga_result_in(
-    tx: &rusqlite::Transaction<'_>,
-    value: &MangaResult,
-) -> Result<Revision, AppError> {
-    if value.id.is_empty() || value.fingerprint.is_empty() || value.provider_version.is_empty() {
-        return Err(AppError::invalid("result"));
-    }
-    let needs_image = matches!(
-        value.stage,
-        MangaStage::Inpainting | MangaStage::Lettering | MangaStage::Masks
-    );
-    if needs_image != matches!(&value.output, MangaOutput::Image(_)) {
-        return Err(AppError::invalid("stageOutput"));
-    }
-    check_inputs(tx, &value.inputs)?;
-    let source = tx
-        .query_row(
-            "SELECT revision FROM manga_pages WHERE id=?1",
-            [&value.page_id],
-            |r| r.get::<_, i64>(0),
-        )
-        .optional()
-        .map_err(storage_error)?
-        .ok_or_else(not_found)?;
-    if source != value.inputs.source.value()? {
-        return Err(conflict());
-    }
-    let stage = serde_json::to_value(&value.stage).map_err(|_| AppError::invalid("stage"))?;
-    let stage = stage.as_str().ok_or_else(|| AppError::invalid("stage"))?;
-    let latest: Option<i64> = tx
-        .query_row(
-            "SELECT MAX(revision) FROM manga_results WHERE page_id=?1 AND stage=?2",
-            params![value.page_id, stage],
-            |r| r.get(0),
-        )
-        .map_err(storage_error)?;
-    if latest
-        != value
-            .expected_result
-            .as_ref()
-            .map(Revision::value)
-            .transpose()?
-    {
-        return Err(conflict());
-    }
-    let revision = match latest {
-        Some(v) => next(v)?,
-        None => 0,
-    };
-    let (asset, payload) = match &value.output {
-        MangaOutput::Image(id) => (Some(id.clone()), None),
-        MangaOutput::Structured(json) => {
-            if !json.is_object() && !json.is_array() {
-                return Err(AppError::invalid("stagePayload"));
-            }
-            (
-                None,
-                Some(serde_json::to_string(json).map_err(|_| AppError::invalid("stagePayload"))?),
-            )
-        }
-    };
-    if let Some(asset_id) = &asset {
-        let valid:i64=tx.query_row("SELECT COUNT(*) FROM assets JOIN manga_pages ON assets.width=manga_pages.width AND assets.height=manga_pages.height WHERE assets.id=?1 AND manga_pages.id=?2",params![asset_id,value.page_id],|r|r.get(0)).map_err(storage_error)?;
-        if valid != 1 {
-            return Err(AppError::invalid("resultDimensions"));
-        }
-    }
-    let affected: &[&str] = match value.stage {
-        MangaStage::Detection => &[
-            "detection",
-            "recognition",
-            "translation",
-            "masks",
-            "inpainting",
-            "lettering",
-        ],
-        MangaStage::Recognition => &["recognition", "translation", "lettering"],
-        MangaStage::Translation => &["translation", "lettering"],
-        MangaStage::Masks => &["masks", "inpainting", "lettering"],
-        MangaStage::Inpainting => &["inpainting", "lettering"],
-        MangaStage::Lettering => &["lettering"],
-    };
-    for affected_stage in affected {
-        tx.execute(
-            "UPDATE manga_results SET validity='stale' WHERE page_id=?1 AND stage=?2",
-            params![value.page_id, affected_stage],
-        )
-        .map_err(storage_error)?;
-    }
-    tx.execute("INSERT INTO manga_results(id,page_id,stage,input_fingerprint,revision,page_revision,settings_revision,glossary_revision,output_asset_id,payload_json,provider_version,validity) VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,'current')",params![value.id,value.page_id,stage,value.fingerprint,revision,source,value.inputs.settings.value()?,value.inputs.glossary.value()?,asset,payload,value.provider_version]).map_err(storage_error)?;
-    tx.execute(
-        "INSERT INTO manga_reviews(result_id,state) VALUES(?1,'unreviewed')",
-        [&value.id],
-    )
-    .map_err(storage_error)?;
-    Ok(Revision(revision.to_string()))
-}
-
 pub fn editing_locked_chapters(db: &Connection) -> Result<Vec<String>, AppError> {
     let mut query = db.prepare("SELECT DISTINCT c.id FROM book_chapters c JOIN job_steps s ON (c.id=s.entity_id OR c.position=(SELECT MAX(p.position) FROM book_chapters p WHERE p.position<(SELECT position FROM book_chapters WHERE id=s.entity_id) AND EXISTS(SELECT 1 FROM book_source_blocks b WHERE b.chapter_id=p.id AND b.kind IN ('text','caption') AND trim(b.text)!=''))) JOIN job_runs j ON j.id=s.run_id WHERE j.state IN ('running','cancelling') AND s.entity_kind='chapter' AND s.rowid=(SELECT MAX(last.rowid) FROM job_steps last WHERE last.run_id=j.id)").map_err(storage_error)?;
     let rows = query.query_map([], |r| r.get(0)).map_err(storage_error)?;
     rows.collect::<Result<Vec<_>, _>>().map_err(storage_error)
 }
 fn check_manual_edit_allowed(db: &Connection, translation: &str) -> Result<(), AppError> {
-    let chapter: String = db.query_row("SELECT chapter_id FROM book_translations WHERE id=?1", [translation], |r| r.get(0)).map_err(storage_error)?;
-    if editing_locked_chapters(db)?.contains(&chapter) { return Err(AppError::invalid("chapterEditBusy")); }
+    let chapter: String = db
+        .query_row(
+            "SELECT chapter_id FROM book_translations WHERE id=?1",
+            [translation],
+            |r| r.get(0),
+        )
+        .map_err(storage_error)?;
+    if editing_locked_chapters(db)?.contains(&chapter) {
+        return Err(AppError::invalid("chapterEditBusy"));
+    }
     Ok(())
 }
 
@@ -329,27 +215,46 @@ pub fn edit_translation_block(
 }
 
 /// Title-only revisions preserve the body's origin, review state and continuity.
-pub fn edit_translation_title(db: &mut Connection, id: &str, expected: &Revision, title: &str) -> Result<Revision, AppError> {
-    let tx=db.transaction().map_err(storage_error)?;
+pub fn edit_translation_title(
+    db: &mut Connection,
+    id: &str,
+    expected: &Revision,
+    title: &str,
+) -> Result<Revision, AppError> {
+    let tx = db.transaction().map_err(storage_error)?;
     check_manual_edit_allowed(&tx, id)?;
-    let (_,revision)=edit_translation_title_in(&tx,id,expected,title,None)?;
+    let (_, revision) = edit_translation_title_in(&tx, id, expected, title, None)?;
     tx.commit().map_err(storage_error)?;
     Ok(revision)
 }
 
-pub fn edit_translation_title_in(tx: &rusqlite::Transaction<'_>, id: &str, expected: &Revision, title: &str, inputs:Option<&InputVersions>) -> Result<(String,Revision),AppError> {
-    if let Some(inputs)=inputs {
-        check_inputs(tx,inputs)?;
+pub fn edit_translation_title_in(
+    tx: &rusqlite::Transaction<'_>,
+    id: &str,
+    expected: &Revision,
+    title: &str,
+    inputs: Option<&InputVersions>,
+) -> Result<(String, Revision), AppError> {
+    if let Some(inputs) = inputs {
+        check_inputs(tx, inputs)?;
         let source:i64=tx.query_row("SELECT c.revision FROM book_chapters c JOIN book_translations t ON t.chapter_id=c.id WHERE t.id=?1",[id],|r|r.get(0)).map_err(storage_error)?;
-        if source!=inputs.source.value()? {return Err(conflict())}
+        if source != inputs.source.value()? {
+            return Err(conflict());
+        }
     }
     let (revision,status):(i64,String)=tx.query_row("SELECT revision,status FROM book_translations t WHERE id=?1 AND revision=(SELECT MAX(revision) FROM book_translations WHERE chapter_id=t.chapter_id AND target_language=t.target_language)",[id],|r|Ok((r.get(0)?,r.get(1)?))).optional().map_err(storage_error)?.ok_or_else(conflict)?;
-    if revision!=expected.value()? {return Err(conflict())}
-    let revision=next(revision)?;
-    let new_id=uuid::Uuid::new_v4().to_string();
-    tx.execute("UPDATE book_translations SET status='stale' WHERE id=?1",[id]).map_err(storage_error)?;
+    if revision != expected.value()? {
+        return Err(conflict());
+    }
+    let revision = next(revision)?;
+    let new_id = uuid::Uuid::new_v4().to_string();
+    tx.execute(
+        "UPDATE book_translations SET status='stale' WHERE id=?1",
+        [id],
+    )
+    .map_err(storage_error)?;
     tx.execute("INSERT INTO book_translations(id,chapter_id,source_revision,settings_revision,status,provenance,target_language,translated_title,context_fingerprint,glossary_revision,revision) SELECT ?2,chapter_id,source_revision,settings_revision,?3,provenance,target_language,?4,context_fingerprint,glossary_revision,?5 FROM book_translations WHERE id=?1",params![id,new_id,status,title,revision]).map_err(storage_error)?;
     tx.execute("INSERT INTO book_translation_blocks(translation_id,chapter_id,source_block_id,translated_text) SELECT ?2,chapter_id,source_block_id,translated_text FROM book_translation_blocks WHERE translation_id=?1",params![id,new_id]).map_err(storage_error)?;
     tx.execute("INSERT INTO book_contexts(id,translation_id,summary,previous_tail,translation_revision,predecessor_id) SELECT ?3,?2,summary,previous_tail,?4,predecessor_id FROM book_contexts WHERE translation_id=?1",params![id,new_id,uuid::Uuid::new_v4().to_string(),revision]).map_err(storage_error)?;
-    Ok((new_id,Revision(revision.to_string())))
+    Ok((new_id, Revision(revision.to_string())))
 }

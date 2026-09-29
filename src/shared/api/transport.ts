@@ -40,22 +40,6 @@ export function createProjectApi(transport: Transport) {
       call<void>("project_archive_export", args),
     importArchive: (args: C.ArchiveImportArgs) =>
       call<C.ProjectDescriptor>("project_archive_import", args),
-    startMangaStage: (args: C.StartMangaStageArgs) =>
-      call<C.JobRef>("manga_start_stage", args),
-    startMangaAutomatic: (args: C.StartMangaRunArgs) =>
-      call<C.JobRef>("manga_start_automatic", args),
-    updateMangaRegion: (args: C.UpdateMangaRegionArgs) =>
-      call<C.MangaPageView>("manga_update_region", args),
-    rebuildMangaPage: (args: C.GetMangaPageArgs) =>
-      call<C.JobRef>("manga_rebuild_page", args),
-    mangaPreflight: (args: C.ProjectArgs) =>
-      call<C.MangaPreflight>("manga_preflight", args),
-    mangaPage: (args: C.GetMangaPageArgs) =>
-      call<C.MangaPageView>("manga_get_page", args),
-    mangaVolumes: (args: C.ProjectArgs) =>
-      call<C.MangaVolumeSummary[]>("manga_list_volumes", args),
-    mangaPages: (args: C.ListMangaPagesArgs) =>
-      call<C.PageSummaryPage>("manga_list_pages", args),
     chapters: (args: C.ListChaptersArgs) =>
       call<C.ChapterPage>("book_list_chapters", args),
     chapter: (args: C.GetChapterArgs) =>

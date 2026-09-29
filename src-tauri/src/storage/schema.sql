@@ -1,7 +1,7 @@
--- Version 1: independent book and manga domains with shared execution metadata.
+-- Version 1: book domain with shared execution metadata.
 CREATE TABLE project_settings (
     singleton INTEGER PRIMARY KEY CHECK(singleton = 1),
-    kind TEXT NOT NULL CHECK(kind IN ('book', 'manga')),
+    kind TEXT NOT NULL CHECK(kind IN ('book')),
     source_language TEXT,
     languages_locked INTEGER NOT NULL DEFAULT 1 CHECK(languages_locked IN (0,1)),
     target_language TEXT NOT NULL CHECK(length(target_language) > 0),
@@ -82,55 +82,8 @@ CREATE TABLE book_reference_mappings (
     chapter_id TEXT PRIMARY KEY NOT NULL REFERENCES book_chapters(id) ON DELETE CASCADE,
     reference_id TEXT NOT NULL REFERENCES book_reference_chapters(id) ON DELETE CASCADE
 );
-CREATE TABLE manga_volumes (
-    id TEXT PRIMARY KEY NOT NULL, position INTEGER NOT NULL UNIQUE CHECK(position >= 0), title TEXT NOT NULL,
-    reading_direction TEXT NOT NULL CHECK(reading_direction IN ('rtl','ltr'))
-);
-CREATE TABLE manga_pages (
-    id TEXT PRIMARY KEY NOT NULL, volume_id TEXT NOT NULL REFERENCES manga_volumes(id) ON DELETE CASCADE,
-    position INTEGER NOT NULL CHECK(position >= 0),
-    original_asset_id TEXT NOT NULL REFERENCES assets(id) ON DELETE RESTRICT,
-    width INTEGER NOT NULL CHECK(width > 0), height INTEGER NOT NULL CHECK(height > 0),
-    revision INTEGER NOT NULL DEFAULT 0 CHECK(typeof(revision) = 'integer' AND revision >= 0), UNIQUE(volume_id,position)
-);
-CREATE TABLE manga_regions (
-    id TEXT PRIMARY KEY NOT NULL, page_id TEXT NOT NULL REFERENCES manga_pages(id) ON DELETE CASCADE,
-    reading_order INTEGER NOT NULL CHECK(reading_order >= 0),
-    category TEXT NOT NULL CHECK(category IN ('dialogue','narration','sfx')),
-    geometry_json TEXT NOT NULL CHECK(json_valid(geometry_json)),
-    source_text TEXT NOT NULL DEFAULT '', translated_text TEXT,
-    text_revision INTEGER NOT NULL DEFAULT 0 CHECK(typeof(text_revision) = 'integer' AND text_revision >= 0), style_revision INTEGER NOT NULL DEFAULT 0 CHECK(typeof(style_revision) = 'integer' AND style_revision >= 0),
-    style_json TEXT NOT NULL DEFAULT '{}' CHECK(json_valid(style_json)),
-    revision INTEGER NOT NULL DEFAULT 0 CHECK(typeof(revision) = 'integer' AND revision >= 0), geometry_revision INTEGER NOT NULL DEFAULT 0 CHECK(typeof(geometry_revision) = 'integer' AND geometry_revision >= 0),
-    source_manual INTEGER NOT NULL DEFAULT 0 CHECK(source_manual IN (0,1)),
-    translation_manual INTEGER NOT NULL DEFAULT 0 CHECK(translation_manual IN (0,1)),
-    UNIQUE(page_id,reading_order), UNIQUE(id,page_id)
-);
-CREATE TABLE manga_masks (
-    id TEXT PRIMARY KEY NOT NULL, page_id TEXT NOT NULL REFERENCES manga_pages(id) ON DELETE CASCADE,
-    region_id TEXT, asset_id TEXT NOT NULL REFERENCES assets(id) ON DELETE RESTRICT,
-    geometry_revision INTEGER NOT NULL CHECK(typeof(geometry_revision) = 'integer' AND geometry_revision >= 0),
-    FOREIGN KEY(region_id,page_id) REFERENCES manga_regions(id,page_id) ON DELETE CASCADE
-);
-CREATE TABLE manga_results (
-    id TEXT PRIMARY KEY NOT NULL, page_id TEXT NOT NULL REFERENCES manga_pages(id) ON DELETE CASCADE,
-    stage TEXT NOT NULL CHECK(stage IN ('detection','recognition','translation','masks','inpainting','lettering')),
-    input_fingerprint TEXT NOT NULL CHECK(length(input_fingerprint) > 0), revision INTEGER NOT NULL CHECK(typeof(revision) = 'integer' AND revision >= 0),
-    page_revision INTEGER NOT NULL CHECK(typeof(page_revision) = 'integer' AND page_revision >= 0), settings_revision INTEGER NOT NULL CHECK(typeof(settings_revision) = 'integer' AND settings_revision >= 0), glossary_revision INTEGER NOT NULL CHECK(typeof(glossary_revision) = 'integer' AND glossary_revision >= 0),
-    output_asset_id TEXT REFERENCES assets(id) ON DELETE RESTRICT, payload_json TEXT CHECK(json_valid(payload_json)),
-    provider_version TEXT NOT NULL, validity TEXT NOT NULL CHECK(validity IN ('current','stale')),
-    CHECK(output_asset_id IS NOT NULL OR payload_json IS NOT NULL), UNIQUE(page_id,stage,revision)
-);
-CREATE TABLE manga_reviews (
-    result_id TEXT PRIMARY KEY NOT NULL REFERENCES manga_results(id) ON DELETE CASCADE,
-    state TEXT NOT NULL CHECK(state IN ('unreviewed','needs_review','approved')),
-    issues_json TEXT NOT NULL DEFAULT '[]' CHECK(json_valid(issues_json))
-);
 CREATE TRIGGER book_kind_guard BEFORE INSERT ON book_chapters
 WHEN COALESCE((SELECT kind FROM project_settings WHERE singleton = 1),'') != 'book'
-BEGIN SELECT RAISE(ABORT, 'wrong_project_kind'); END;
-CREATE TRIGGER manga_kind_guard BEFORE INSERT ON manga_volumes
-WHEN COALESCE((SELECT kind FROM project_settings WHERE singleton = 1),'') != 'manga'
 BEGIN SELECT RAISE(ABORT, 'wrong_project_kind'); END;
 -- Project domain and immutable pixel identities cannot change after publication.
 CREATE TRIGGER immutable_project_kind BEFORE UPDATE OF kind ON project_settings
@@ -138,9 +91,6 @@ WHEN NEW.kind != OLD.kind
 BEGIN SELECT RAISE(ABORT, 'immutable_project_kind'); END;
 CREATE TRIGGER immutable_asset_metadata BEFORE UPDATE ON assets
 BEGIN SELECT RAISE(ABORT, 'immutable_asset_metadata'); END;
-CREATE TRIGGER immutable_page_original BEFORE UPDATE OF original_asset_id,width,height ON manga_pages
-WHEN NEW.original_asset_id != OLD.original_asset_id OR NEW.width != OLD.width OR NEW.height != OLD.height
-BEGIN SELECT RAISE(ABORT, 'immutable_page_original'); END;
 CREATE TRIGGER reference_kind_guard BEFORE INSERT ON book_reference_chapters
 WHEN COALESCE((SELECT kind FROM project_settings WHERE singleton = 1),'') != 'book'
 BEGIN SELECT RAISE(ABORT, 'wrong_project_kind'); END;
@@ -151,7 +101,6 @@ CREATE TRIGGER translation_block_update_guard BEFORE UPDATE ON book_translation_
 WHEN COALESCE((SELECT kind FROM book_source_blocks WHERE id=NEW.source_block_id),'') NOT IN ('text','caption')
 BEGIN SELECT RAISE(ABORT, 'not_a_text_block'); END;
 CREATE INDEX translation_chapter ON book_translations(chapter_id, target_language, revision DESC);
-CREATE INDEX result_page ON manga_results(page_id, stage, revision DESC);
 PRAGMA user_version = 1;
 
 -- Independent metadata results; historical jobs keep their immutable output reference.
@@ -161,7 +110,7 @@ CREATE TABLE book_metadata (
 );
 CREATE TRIGGER metadata_kind_guard BEFORE INSERT ON book_metadata
 WHEN (SELECT kind FROM project_settings WHERE singleton=1)!='book'
-BEGIN SELECT RAISE(ABORT, 'book metadata in manga project'); END;
+BEGIN SELECT RAISE(ABORT, 'book metadata in non-book project'); END;
 
 CREATE TRIGGER project_languages_immutable BEFORE UPDATE OF source_language,target_language ON project_settings
 WHEN OLD.languages_locked=1 AND (NEW.source_language IS NOT OLD.source_language OR NEW.target_language IS NOT OLD.target_language)
@@ -176,7 +125,7 @@ CREATE TABLE book_glossary_results (
 );
 CREATE TRIGGER glossary_result_kind_guard BEFORE INSERT ON book_glossary_results
 WHEN (SELECT kind FROM project_settings WHERE singleton=1)!='book'
-BEGIN SELECT RAISE(ABORT, 'book glossary result in manga project'); END;
+BEGIN SELECT RAISE(ABORT, 'book glossary result in non-book project'); END;
 CREATE TABLE book_term_occurrences (
     chapter_id TEXT NOT NULL REFERENCES book_chapters(id) ON DELETE CASCADE,
     source TEXT NOT NULL, frequency INTEGER NOT NULL CHECK(frequency > 0),

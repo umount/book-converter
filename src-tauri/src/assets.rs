@@ -1,6 +1,6 @@
 //! Serving a project's extracted images to the webview over `bookasset://`.
 //!
-//! A manga page is megabytes; sending it through the IPC bridge as a `data:`
+//! An illustration can be megabytes; sending it through the IPC bridge as a `data:`
 //! URL (the way the book cover travels) would JSON-encode every page the reader
 //! scrolls past. A URI scheme lets the webview fetch and cache the file itself.
 //!
@@ -184,5 +184,3 @@ mod tests {
         assert_eq!(not_found().status(), StatusCode::NOT_FOUND);
     }
 }
-
-pub mod manga_images;

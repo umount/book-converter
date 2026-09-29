@@ -5,7 +5,7 @@
 //! order, with a small HTML-to-blocks walk (no extra crate).
 //!
 //! A page is read as [`Block`]s rather than a string, because an EPUB page can be
-//! a whole image: manga, illustrated editions, and comic-style web novels all
+//! a whole image: illustrated editions and graphic novels all
 //! ship spine items whose entire content is `<img>` or an `<svg><image/>`
 //! wrapper. Flattening those to text produced an empty chapter, which the reader
 //! then showed as a blank pane.
@@ -70,7 +70,8 @@ fn load_archive<R: Read + Seek>(mut zip: ZipArchive<R>) -> Result<LoadedBook> {
                     let id = match by_entry.get(&entry) {
                         Some(cached) => cached.clone(),
                         None => {
-                            let made = register_asset(&mut zip, &entry, &mut assets, &mut seen_assets);
+                            let made =
+                                register_asset(&mut zip, &entry, &mut assets, &mut seen_assets);
                             by_entry.insert(entry, made.clone());
                             made
                         }
@@ -463,7 +464,7 @@ fn html_to_blocks(html: &str) -> (String, Vec<RawBlock>) {
     let mut heading_buf = String::new();
     let mut blocks: Vec<RawBlock> = Vec::new();
     let mut skip: Option<&'static str> = None;
-    // `<svg>` wrappers are how fixed-layout EPUBs (manga) reference a page
+    // `<svg>` wrappers are how fixed-layout EPUBs (illustrated editions) reference a page
     // image, so the element is walked for its `<image>` and only its text dropped.
     let mut svg_depth = 0usize;
     let mut in_caption = false;
@@ -624,11 +625,7 @@ fn tag_attr(tag: &str, want: &str) -> Option<String> {
             i += 1;
         }
         let start = i;
-        while i < chars.len()
-            && !chars[i].is_whitespace()
-            && chars[i] != '='
-            && chars[i] != '/'
-        {
+        while i < chars.len() && !chars[i].is_whitespace() && chars[i] != '=' && chars[i] != '/' {
             i += 1;
         }
         if start == i {
@@ -1004,7 +1001,8 @@ mod tests {
         )
         .unwrap();
         zip.start_file("OEBPS/pages/img/page01.jpg", opt).unwrap();
-        zip.write_all(&[0xFF, 0xD8, 0x01, 0x02, 0xFF, 0xD9]).unwrap();
+        zip.write_all(&[0xFF, 0xD8, 0x01, 0x02, 0xFF, 0xD9])
+            .unwrap();
         zip.start_file("OEBPS/img/plate.png", opt).unwrap();
         zip.write_all(&[0x89, b'P', b'N', b'G', 0x03]).unwrap();
         zip.start_file("OEBPS/cover.jpg", opt).unwrap();
@@ -1096,7 +1094,12 @@ mod tests {
         let body = &book.chapters[3].body;
         assert!(body.starts_with("Before the plate."));
         assert!(body.ends_with("After the plate."));
-        assert_eq!(body.lines().filter(|line| line.starts_with("[[img:")).count(), 1);
+        assert_eq!(
+            body.lines()
+                .filter(|line| line.starts_with("[[img:"))
+                .count(),
+            1
+        );
     }
 
     /// Prose chapters cost no block rows: their only block is the body itself.
@@ -1108,12 +1111,11 @@ mod tests {
     }
 
     /// Two references to the same bytes are one asset, which is what keeps a
-    /// manga volume from being unpacked twice.
+    /// illustrated volume from being unpacked twice.
     #[test]
     fn identical_images_collapse_into_one_asset() {
-        let (_, raw) = html_to_blocks(
-            r#"<body><img src="a.png"/><p>x</p><img src="a.png"/></body>"#,
-        );
+        let (_, raw) =
+            html_to_blocks(r#"<body><img src="a.png"/><p>x</p><img src="a.png"/></body>"#);
         let images: Vec<&RawBlock> = raw
             .iter()
             .filter(|b| matches!(b, RawBlock::Image(_)))
@@ -1164,7 +1166,8 @@ mod tests {
     /// killer.
     #[test]
     fn unusable_image_references_are_dropped() {
-        let (_, raw) = html_to_blocks(r#"<body><img src="data:image/png;base64,AA"/><p>x</p></body>"#);
+        let (_, raw) =
+            html_to_blocks(r#"<body><img src="data:image/png;base64,AA"/><p>x</p></body>"#);
         assert!(!raw.iter().any(|b| matches!(b, RawBlock::Image(_))));
 
         let mut zip = ZipArchive::new(Cursor::new(sample_epub_bytes())).unwrap();

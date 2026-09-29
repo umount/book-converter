@@ -6,7 +6,6 @@ use ts_rs::TS;
 #[serde(rename_all = "snake_case")]
 pub enum ProjectKind {
     Book,
-    Manga,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
@@ -45,9 +44,6 @@ macro_rules! entity_id {
 }
 entity_id!(ChapterId);
 entity_id!(BlockId);
-entity_id!(VolumeId);
-entity_id!(PageId);
-entity_id!(RegionId);
 entity_id!(AssetId);
 entity_id!(JobId);
 entity_id!(ImportId);
@@ -177,9 +173,6 @@ pub fn typescript() -> String {
         ProjectKind::decl(&config),
         ChapterId::decl(&config),
         BlockId::decl(&config),
-        VolumeId::decl(&config),
-        PageId::decl(&config),
-        RegionId::decl(&config),
         AssetId::decl(&config),
         JobId::decl(&config),
         ImportId::decl(&config),
@@ -195,12 +188,8 @@ pub fn typescript() -> String {
         JobRef::decl(&config),
         EventPayload::decl(&config),
         ProjectEvent::decl(&config),
-        PixelBounds::decl(&config),
         BookBlockContent::decl(&config),
         BookBlockView::decl(&config),
-        MangaStage::decl(&config),
-        CapabilityRequirement::decl(&config),
-        MangaPreflight::decl(&config),
     ];
     let mut output =
         String::from("// Generated from Rust. Run npm run contracts:generate; do not edit.\n");
@@ -210,35 +199,8 @@ pub fn typescript() -> String {
         output.push('\n');
     }
     output.push_str(&super::requests::typescript());
-    output.push_str(&crate::models::typescript());
+
     output
-}
-
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
-#[serde(rename_all = "camelCase")]
-pub struct PixelBounds {
-    pub x: f64,
-    pub y: f64,
-    pub width: f64,
-    pub height: f64,
-}
-
-impl PixelBounds {
-    pub fn validate(&self, page_width: u32, page_height: u32) -> Result<(), AppError> {
-        if ![self.x, self.y, self.width, self.height]
-            .iter()
-            .all(|v| v.is_finite())
-            || self.x < 0.0
-            || self.y < 0.0
-            || self.width <= 0.0
-            || self.height <= 0.0
-            || self.x + self.width > f64::from(page_width)
-            || self.y + self.height > f64::from(page_height)
-        {
-            return Err(AppError::invalid("bounds"));
-        }
-        Ok(())
-    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
@@ -260,100 +222,6 @@ pub struct BookBlockView {
     pub translated_text: Option<String>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
-#[serde(rename_all = "snake_case")]
-pub enum MangaStage {
-    Detection,
-    Recognition,
-    Translation,
-    Masks,
-    Inpainting,
-    Lettering,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
-#[serde(rename_all = "camelCase")]
-pub struct CapabilityRequirement {
-    pub stage: MangaStage,
-    pub available: bool,
-    pub reason_key: Option<String>,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
-#[serde(rename_all = "camelCase")]
-pub struct MangaPreflight {
-    pub requirements: Vec<CapabilityRequirement>,
-}
-
-impl MangaPreflight {
-    pub fn ready(&self) -> bool {
-        let stages = [
-            MangaStage::Detection,
-            MangaStage::Recognition,
-            MangaStage::Translation,
-            MangaStage::Masks,
-            MangaStage::Inpainting,
-            MangaStage::Lettering,
-        ];
-        stages.iter().all(|stage| {
-            let matches: Vec<_> = self
-                .requirements
-                .iter()
-                .filter(|r| &r.stage == stage)
-                .collect();
-            matches.len() == 1 && matches[0].available
-        })
-    }
-}
-
-#[cfg(test)]
-mod pipeline_tests {
-    use super::*;
-
-    #[test]
-    fn incomplete_capabilities_cannot_enable_automatic_processing() {
-        assert!(!MangaPreflight {
-            requirements: vec![]
-        }
-        .ready());
-        let mut preflight = MangaPreflight {
-            requirements: [
-                MangaStage::Detection,
-                MangaStage::Recognition,
-                MangaStage::Translation,
-                MangaStage::Masks,
-                MangaStage::Inpainting,
-                MangaStage::Lettering,
-            ]
-            .into_iter()
-            .map(|stage| CapabilityRequirement {
-                stage,
-                available: true,
-                reason_key: None,
-            })
-            .collect(),
-        };
-        assert!(preflight.ready());
-        preflight.requirements[4].available = false;
-        assert!(!preflight.ready());
-    }
-
-    #[test]
-    fn geometry_must_fit_canonical_pixels() {
-        let mut bounds = PixelBounds {
-            x: 10.0,
-            y: 20.0,
-            width: 30.0,
-            height: 40.0,
-        };
-        assert!(bounds.validate(100, 100).is_ok());
-        bounds.x = 90.0;
-        assert!(bounds.validate(100, 100).is_err());
-        bounds.x = f64::NAN;
-        assert!(bounds.validate(100, 100).is_err());
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -365,15 +233,6 @@ mod tests {
             assert!(id.validate().is_err());
         }
         assert!(ProjectId::new().validate().is_ok());
-    }
-
-    #[test]
-    fn unknown_kind_is_not_assumed_to_be_a_book() {
-        assert!(serde_json::from_str::<ProjectKind>("\"comic\"").is_err());
-        assert_eq!(
-            serde_json::to_string(&ProjectKind::Manga).unwrap(),
-            "\"manga\""
-        );
     }
 
     #[test]

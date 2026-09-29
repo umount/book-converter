@@ -10,8 +10,6 @@ pub struct ProcessingSettings {
     pub target_language: String,
     /// Profile IDs only. Credentials belong to app settings, never a project archive.
     pub book_translation_profile: Option<String>,
-    pub manga_recognition_profile: Option<String>,
-    pub manga_translation_profile: Option<String>,
     pub assistant_profile: Option<String>,
 }
 
@@ -43,8 +41,6 @@ pub fn settings(db: &Connection) -> Result<SettingsSnapshot, AppError> {
             source_language: source,
             target_language: target,
             book_translation_profile: profiles.get("book_translation").cloned(),
-            manga_recognition_profile: profiles.get("manga_recognition").cloned(),
-            manga_translation_profile: profiles.get("manga_translation").cloned(),
             assistant_profile: profiles.get("assistant").cloned(),
         },
         revision: Revision(revision.to_string()),
@@ -68,8 +64,6 @@ pub fn update_settings(
     let revision = next(expected)?;
     let profiles: std::collections::BTreeMap<_, _> = [
         ("book_translation", &choices.book_translation_profile),
-        ("manga_recognition", &choices.manga_recognition_profile),
-        ("manga_translation", &choices.manga_translation_profile),
         ("assistant", &choices.assistant_profile),
     ]
     .into_iter()
@@ -133,8 +127,6 @@ pub(crate) fn finalize_import_settings(
     }
     let profiles: std::collections::BTreeMap<_, _> = [
         ("book_translation", &choices.book_translation_profile),
-        ("manga_recognition", &choices.manga_recognition_profile),
-        ("manga_translation", &choices.manga_translation_profile),
         ("assistant", &choices.assistant_profile),
     ]
     .into_iter()
@@ -164,11 +156,6 @@ pub(super) fn next(value: i64) -> Result<i64, AppError> {
 pub(super) fn invalidate(tx: &Transaction<'_>) -> Result<(), AppError> {
     tx.execute(
         "UPDATE book_translations SET status='needs_review' WHERE status='ready' AND provenance!='reference'",
-        [],
-    )
-    .map_err(storage_error)?;
-    tx.execute(
-        "UPDATE manga_results SET validity='stale' WHERE validity='current'",
         [],
     )
     .map_err(storage_error)?;
@@ -205,10 +192,14 @@ pub fn put_term_in(
     if term.id.is_empty() || term.source.trim().is_empty() || term.target.trim().is_empty() {
         return Err(AppError::invalid("term"));
     }
-    let previous: Option<(String, String)> = tx.query_row(
-        "SELECT source,target FROM glossary_terms WHERE id=?1", [&term.id],
-        |r| Ok((r.get(0)?, r.get(1)?)),
-    ).optional().map_err(storage_error)?;
+    let previous: Option<(String, String)> = tx
+        .query_row(
+            "SELECT source,target FROM glossary_terms WHERE id=?1",
+            [&term.id],
+            |r| Ok((r.get(0)?, r.get(1)?)),
+        )
+        .optional()
+        .map_err(storage_error)?;
     let revision = if let Some(expected) = expected {
         let expected = expected.value()?;
         let revision = next(expected)?;
@@ -226,9 +217,14 @@ pub fn put_term_in(
         0
     };
     bump_glossary(tx)?;
-    if previous.as_ref().is_none_or(|(source, target)| source != &term.source || target != &term.target) {
+    if previous
+        .as_ref()
+        .is_none_or(|(source, target)| source != &term.source || target != &term.target)
+    {
         invalidate_term(tx, &term.source)?;
-        if let Some((source, _)) = previous { invalidate_term(tx, &source)?; }
+        if let Some((source, _)) = previous {
+            invalidate_term(tx, &source)?;
+        }
     }
     Ok(Revision(revision.to_string()))
 }
@@ -240,7 +236,12 @@ pub fn delete_term(db: &mut Connection, id: &str, expected: &Revision) -> Result
 }
 
 pub fn delete_term_in(tx: &Transaction<'_>, id: &str, expected: &Revision) -> Result<(), AppError> {
-    let source: Option<String> = tx.query_row("SELECT source FROM glossary_terms WHERE id=?1", [id], |r| r.get(0)).optional().map_err(storage_error)?;
+    let source: Option<String> = tx
+        .query_row("SELECT source FROM glossary_terms WHERE id=?1", [id], |r| {
+            r.get(0)
+        })
+        .optional()
+        .map_err(storage_error)?;
     if tx
         .execute(
             "DELETE FROM glossary_terms WHERE id=?1 AND revision=?2",
@@ -256,7 +257,9 @@ pub fn delete_term_in(tx: &Transaction<'_>, id: &str, expected: &Revision) -> Re
         )?);
     }
     bump_glossary(tx)?;
-    if let Some(source) = source { invalidate_term(tx, &source)?; }
+    if let Some(source) = source {
+        invalidate_term(tx, &source)?;
+    }
     Ok(())
 }
 
@@ -271,7 +274,7 @@ pub(crate) fn bump_glossary(tx: &Transaction<'_>) -> Result<(), AppError> {
         [],
     )
     .map_err(storage_error)?;
-    tx.execute("UPDATE manga_results SET validity='stale' WHERE validity='current'", []).map_err(storage_error)?;
+
     Ok(())
 }
 

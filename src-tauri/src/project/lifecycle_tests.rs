@@ -1,7 +1,7 @@
 use super::lifecycle::ProjectManager;
 use crate::app::{
     contracts::{BookBlockContent, ProjectKind},
-    requests::{DomainProgress, LanguagePair, ProjectChoices},
+    requests::{LanguagePair, ProjectChoices},
 };
 use std::{path::PathBuf, sync::Arc};
 struct Fixture {
@@ -106,53 +106,6 @@ fn staged_book_import_is_atomic_idempotent_and_independent_of_source() {
     assert!(zip
         .file_names()
         .all(|name| name == "project.json" || name == "project.db" || name.starts_with("assets/")));
-}
-
-#[test]
-fn comic_catalog_has_pages_without_fake_chapters_and_cancel_leaves_no_project() {
-    let f = Fixture::new();
-    let preview = f
-        .manager
-        .inspect_source(ProjectKind::Manga, &source("two-volumes.cbz"))
-        .unwrap();
-    f.manager.cancel_import(&preview.import_id.0).unwrap();
-    f.manager.cancel_import(&preview.import_id.0).unwrap();
-    assert!(f.manager.catalog().unwrap().is_empty());
-    let preview = f
-        .manager
-        .inspect_source(ProjectKind::Manga, &source("two-volumes.cbz"))
-        .unwrap();
-    let project = f.manager.create(&preview.import_id.0, &choices()).unwrap();
-    assert_eq!(
-        f.manager.catalog().unwrap()[0].progress,
-        DomainProgress::Manga {
-            pages: 6,
-            lettered: 0,
-            approved: 0
-        }
-    );
-    f.manager
-        .lease(&project.id)
-        .unwrap()
-        .with_connection(|db, _| {
-            assert_eq!(
-                db.query_row("SELECT COUNT(*) FROM manga_volumes", [], |r| r
-                    .get::<_, i64>(0))
-                    .unwrap(),
-                2
-            );
-            assert_eq!(
-                db.query_row("SELECT COUNT(*) FROM book_chapters", [], |r| r
-                    .get::<_, i64>(0))
-                    .unwrap(),
-                0
-            );
-            Ok(())
-        })
-        .unwrap();
-    let mut names = vec!["v10/p1", "v2/p10", "v2/p2", "v2/p1"];
-    names.sort_by(|a, b| super::import::natural_cmp(a, b));
-    assert_eq!(names, vec!["v2/p1", "v2/p2", "v2/p10", "v10/p1"]);
 }
 
 #[test]
@@ -264,30 +217,4 @@ fn reset_requires_quiescence_preserves_settings_and_runs_once() {
             .already_completed
     );
     assert!(old.exists());
-}
-
-#[test]
-fn manga_import_reports_real_page_progress_and_finalization() {
-    let f = Fixture::new();
-    let mut events = Vec::new();
-    f.manager
-        .inspect_source_with_progress(
-            ProjectKind::Manga,
-            &source("two-volumes.cbz"),
-            &mut |event| events.push(event),
-        )
-        .unwrap();
-    assert_eq!(events.first().unwrap().stage, "scanning");
-    assert_eq!(events.last().unwrap().stage, "finalizing");
-    let pages: Vec<_> = events
-        .iter()
-        .filter(|event| event.stage == "pages")
-        .collect();
-    assert_eq!(pages.first().unwrap().completed, 0);
-    let last = pages.last().unwrap();
-    assert!(last.completed > 0);
-    assert_eq!(last.total, Some(last.completed));
-    assert!(pages
-        .windows(2)
-        .all(|pair| pair[1].completed == pair[0].completed + 1));
 }

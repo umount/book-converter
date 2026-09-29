@@ -7,21 +7,20 @@
 //! Architecture and component interactions: see `docs/ARCHITECTURE.md`.
 //! The modules below are UI-agnostic; the frontend calls them via `commands`.
 
-mod diagnostics;
 pub mod ai;
 pub mod app;
 pub mod application;
-pub mod project;
 pub mod assets;
 mod book;
 mod commands;
 mod config;
+mod diagnostics;
 mod export;
 mod i18n;
 pub mod jobs;
-pub mod models;
 mod language;
 mod paths;
+pub mod project;
 mod retarget;
 mod settings;
 pub mod storage;
@@ -48,8 +47,9 @@ pub fn run() {
             // `cargo`/`target/release` runs). Falls back to env / system pdfium.
             use tauri::Manager;
             let context = app.state::<app::services::AppContext>();
-            application::runtime::recover_interrupted(&context.manager)
-                .map_err(|error| std::io::Error::other(format!("Job recovery failed: {error:?}")))?;
+            application::runtime::recover_interrupted(&context.manager).map_err(|error| {
+                std::io::Error::other(format!("Job recovery failed: {error:?}"))
+            })?;
             let name = pdfium_render::prelude::Pdfium::pdfium_platform_library_name_at_path;
             let mut dirs: Vec<std::path::PathBuf> = Vec::new();
             if let Ok(d) = app.path().resource_dir() {
@@ -68,10 +68,6 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             commands::export_diagnostics,
             commands::diagnostic_event,
-            commands::model_list,
-            commands::model_download,
-            commands::model_pause,
-            commands::model_remove,
             commands::project_inspect_manifest,
             commands::project_settings_get,
             commands::project_settings_update,
@@ -109,15 +105,6 @@ pub fn run() {
             commands::book_translate_volume,
             commands::book_start_retarget,
             commands::book_retarget_preview,
-
-            commands::manga_list_pages,
-            commands::manga_list_volumes,
-            commands::manga_start_stage,
-            commands::manga_start_automatic,
-            commands::manga_get_page,
-            commands::manga_update_region,
-            commands::manga_rebuild_page,
-            commands::manga_preflight,
             commands::project_list,
             commands::project_inspect_source,
             commands::project_create,
@@ -126,7 +113,6 @@ pub fn run() {
             commands::project_delete,
             commands::project_archive_export,
             commands::project_archive_import,
-
             commands::get_setting,
             commands::set_setting,
             commands::set_api_key,

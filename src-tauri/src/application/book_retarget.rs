@@ -132,7 +132,6 @@ pub fn prepare_run(
             super::runtime::provider_profile(settings.choices.book_translation_profile.as_deref())?;
         ChatCompletions::new(profile.clone(), key)?;
         let snapshot = runs::RunSnapshot {
-                        manga: None,
             selected_ids: plan
                 .translations
                 .iter()
@@ -506,7 +505,6 @@ mod tests {
                     "job",
                     "book_retarget",
                     &runs::RunSnapshot {
-                        manga: None,
                         selected_ids: plan
                             .translations
                             .iter()
@@ -608,11 +606,7 @@ mod tests {
                     let translation = chapter.translation.unwrap();
                     assert_eq!(
                         translation.status,
-                        if id == "c1" {
-                            "needs_review"
-                        } else {
-                            "stale"
-                        }
+                        if id == "c1" { "needs_review" } else { "stale" }
                     );
                     assert_eq!(
                         translation.origin,

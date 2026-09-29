@@ -278,10 +278,6 @@ impl ProjectManager {
             ProjectKind::Book => {
                 settings.book_translation_profile = choices.processing_profile_id.clone()
             }
-            ProjectKind::Manga => {
-                settings.manga_recognition_profile = choices.processing_profile_id.clone();
-                settings.manga_translation_profile = choices.processing_profile_id.clone();
-            }
         }
         let revision = storage::shared::settings(&db)?.revision;
         storage::shared::finalize_import_settings(&mut db, &revision, &settings)?;
@@ -349,7 +345,6 @@ impl ProjectManager {
                 let count=|sql:&str|db.query_row(sql,[],|r|r.get::<_,u32>(0)).map_err(storage_error);
                 Ok(match descriptor.kind {
                     ProjectKind::Book=>DomainProgress::Book{chapters:count("SELECT COUNT(*) FROM book_chapters")?,translated:count("SELECT COUNT(DISTINCT chapter_id) FROM book_translations WHERE status='ready'")?},
-                    ProjectKind::Manga=>DomainProgress::Manga{pages:count("SELECT COUNT(*) FROM manga_pages")?,lettered:count("SELECT COUNT(DISTINCT page_id) FROM manga_results WHERE stage='lettering' AND validity='current'")?,approved:count("SELECT COUNT(DISTINCT page_id) FROM manga_results JOIN manga_reviews ON manga_results.id=manga_reviews.result_id WHERE stage='lettering' AND validity='current' AND state='approved'")?},
                 })
             })?;
             result.push(ProjectSummary {

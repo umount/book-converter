@@ -102,7 +102,7 @@ pub fn prepare_book_run(
         let (profile, key) =
             provider_profile(settings.choices.book_translation_profile.as_deref())?;
         ChatCompletions::new(profile.clone(), key)?;
-        Ok(runs::RunSnapshot { manga: None,
+        Ok(runs::RunSnapshot {
             retarget: None,
             settings: settings.choices,
             settings_revision: settings.revision,
@@ -190,19 +190,32 @@ pub fn resume_provider(
     project: &ProjectId,
     job: &str,
 ) -> Result<super::book::BookPipeline, AppError> {
-    let run = manager
-        .lease(project)?
-        .with_connection(|db, _| {
-            let run = runs::get_run(db, job)?;
-            if run.kind != "book_metadata" {
-                for id in &run.snapshot.selected_ids {
-                    let exists: bool = db.query_row("SELECT EXISTS(SELECT 1 FROM book_chapters WHERE id=?1)", [id], |r|r.get(0)).map_err(storage_error)?;
-                    if !exists { return Err(AppError::invalid("chapterDeleted")); }
+    let run = manager.lease(project)?.with_connection(|db, _| {
+        let run = runs::get_run(db, job)?;
+        if run.kind != "book_metadata" {
+            for id in &run.snapshot.selected_ids {
+                let exists: bool = db
+                    .query_row(
+                        "SELECT EXISTS(SELECT 1 FROM book_chapters WHERE id=?1)",
+                        [id],
+                        |r| r.get(0),
+                    )
+                    .map_err(storage_error)?;
+                if !exists {
+                    return Err(AppError::invalid("chapterDeleted"));
                 }
             }
-            Ok(run)
-        })?;
-    if !["book_translation", "book_metadata", "book_glossary", "book_title", "book_retarget"].contains(&run.kind.as_str())
+        }
+        Ok(run)
+    })?;
+    if ![
+        "book_translation",
+        "book_metadata",
+        "book_glossary",
+        "book_title",
+        "book_retarget",
+    ]
+    .contains(&run.kind.as_str())
         || !matches!(
             run.state,
             JobState::Queued | JobState::Interrupted | JobState::Failed | JobState::Cancelled
@@ -275,9 +288,19 @@ pub fn prepare_metadata_run(
 ) -> Result<JobRef, AppError> {
     let descriptor = manager.open(project)?;
     let lease = manager.lease(project)?;
-    let missing = lease.with_connection(|db,_| db.query_row("SELECT COUNT(*)=0 FROM book_source_metadata",[],|r|r.get::<_,bool>(0)).map_err(storage_error))?;
+    let missing = lease.with_connection(|db, _| {
+        db.query_row("SELECT COUNT(*)=0 FROM book_source_metadata", [], |r| {
+            r.get::<_, bool>(0)
+        })
+        .map_err(storage_error)
+    })?;
     if missing {
-        let original = descriptor.source.original_path.as_ref().and_then(|p| crate::book::load_book(std::path::Path::new(p)).ok()).map(|b| b.meta);
+        let original = descriptor
+            .source
+            .original_path
+            .as_ref()
+            .and_then(|p| crate::book::load_book(std::path::Path::new(p)).ok())
+            .map(|b| b.meta);
         lease.with_connection(|db,_| {
             let title = original.as_ref().and_then(|m|m.title.clone()).unwrap_or(descriptor.name.clone());
             db.execute("INSERT OR IGNORE INTO book_source_metadata(singleton,title,author,summary) VALUES(1,?1,?2,?3)",rusqlite::params![title,original.as_ref().and_then(|m|m.author.as_ref()),original.as_ref().and_then(|m|m.summary.as_ref())]).map_err(storage_error)?;
@@ -298,7 +321,7 @@ pub fn prepare_metadata_run(
                 |r| r.get(0),
             )
             .map_err(storage_error)?;
-        let snapshot = runs::RunSnapshot { manga: None,
+        let snapshot = runs::RunSnapshot {
             retarget: None,
             settings: settings.choices,
             settings_revision: settings.revision,
@@ -326,17 +349,30 @@ pub fn prepare_glossary_run(
     force: bool,
 ) -> Result<JobRef, AppError> {
     let lease = manager.lease(project)?;
-    lease.with_connection(|db,_|{
-        ProjectRepository::new(db,crate::app::contracts::ProjectKind::Book)?;
+    lease.with_connection(|db, _| {
+        ProjectRepository::new(db, crate::app::contracts::ProjectKind::Book)?;
         let selected = select_glossary_batch(db, selection, max_chapters, force)?;
-        let settings=shared::settings(db)?;
-        let (profile,key)=provider_profile(settings.choices.book_translation_profile.as_deref())?;
-        ChatCompletions::new(profile.clone(),key)?;
-        let snapshot=runs::RunSnapshot{manga: None,
-            retarget:None,settings:settings.choices,settings_revision:settings.revision,glossary_revision:shared::glossary_revision(db)?,selected_ids:selected,prompt_version:"book-glossary-v1".into(),stages:vec!["glossary".into()],provider:Some(profile),instructions:None};
-        let job_id=uuid::Uuid::new_v4().to_string();
-        runs::create_run(db,&job_id,"book_glossary",&snapshot,&now())?;
-        Ok(JobRef{project_id:project.clone(),job_id})
+        let settings = shared::settings(db)?;
+        let (profile, key) =
+            provider_profile(settings.choices.book_translation_profile.as_deref())?;
+        ChatCompletions::new(profile.clone(), key)?;
+        let snapshot = runs::RunSnapshot {
+            retarget: None,
+            settings: settings.choices,
+            settings_revision: settings.revision,
+            glossary_revision: shared::glossary_revision(db)?,
+            selected_ids: selected,
+            prompt_version: "book-glossary-v1".into(),
+            stages: vec!["glossary".into()],
+            provider: Some(profile),
+            instructions: None,
+        };
+        let job_id = uuid::Uuid::new_v4().to_string();
+        runs::create_run(db, &job_id, "book_glossary", &snapshot, &now())?;
+        Ok(JobRef {
+            project_id: project.clone(),
+            job_id,
+        })
     })
 }
 
@@ -430,35 +466,82 @@ mod batch_tests {
     }
 }
 
-pub fn prepare_title_run(manager:&ProjectManager,args:&crate::app::requests::StartBookTitleArgs)->Result<JobRef,AppError> {
-    let lease=manager.lease(&args.project_id)?;
-    lease.with_connection(|db,_|{
-        let view=ProjectRepository::new(db,crate::app::contracts::ProjectKind::Book)?.chapter(&args.chapter_id.0)?;
-        let translation=view.translation.ok_or_else(||AppError::invalid("noTranslation"))?;
-        if translation.revision!=args.expected_revision {return Err(crate::storage::repository::conflict())}
-        let settings=shared::settings(db)?;
-        let (profile,key)=provider_profile(settings.choices.book_translation_profile.as_deref())?;
-        ChatCompletions::new(profile.clone(),key)?;
-        let snapshot=runs::RunSnapshot { manga: None,
+pub fn prepare_title_run(
+    manager: &ProjectManager,
+    args: &crate::app::requests::StartBookTitleArgs,
+) -> Result<JobRef, AppError> {
+    let lease = manager.lease(&args.project_id)?;
+    lease.with_connection(|db, _| {
+        let view = ProjectRepository::new(db, crate::app::contracts::ProjectKind::Book)?
+            .chapter(&args.chapter_id.0)?;
+        let translation = view
+            .translation
+            .ok_or_else(|| AppError::invalid("noTranslation"))?;
+        if translation.revision != args.expected_revision {
+            return Err(crate::storage::repository::conflict());
+        }
+        let settings = shared::settings(db)?;
+        let (profile, key) =
+            provider_profile(settings.choices.book_translation_profile.as_deref())?;
+        ChatCompletions::new(profile.clone(), key)?;
+        let snapshot = runs::RunSnapshot {
             retarget: None,
-            settings:settings.choices,settings_revision:settings.revision,glossary_revision:shared::glossary_revision(db)?,selected_ids:vec![args.chapter_id.0.clone()],prompt_version:"book-title-v2".into(),stages:vec!["title".into()],provider:Some(profile),instructions:Some(super::book_presentation::read(db)?.instructions),
+            settings: settings.choices,
+            settings_revision: settings.revision,
+            glossary_revision: shared::glossary_revision(db)?,
+            selected_ids: vec![args.chapter_id.0.clone()],
+            prompt_version: "book-title-v2".into(),
+            stages: vec!["title".into()],
+            provider: Some(profile),
+            instructions: Some(super::book_presentation::read(db)?.instructions),
         };
-        let job_id=uuid::Uuid::new_v4().to_string();
-        runs::create_run(db,&job_id,"book_title",&snapshot,&now())?;
-        Ok(JobRef {project_id:args.project_id.clone(),job_id})
+        let job_id = uuid::Uuid::new_v4().to_string();
+        runs::create_run(db, &job_id, "book_title", &snapshot, &now())?;
+        Ok(JobRef {
+            project_id: args.project_id.clone(),
+            job_id,
+        })
     })
 }
 
 /// Select eligible chapters before applying the cap; prior results remain historical.
-pub(crate) fn select_glossary_batch(db: &rusqlite::Connection, selection: &EntitySelection, max_chapters: u32, force: bool) -> Result<Vec<String>, AppError> {
-    if max_chapters == 0 { return Err(AppError::invalid("maxChapters")); }
+pub(crate) fn select_glossary_batch(
+    db: &rusqlite::Connection,
+    selection: &EntitySelection,
+    max_chapters: u32,
+    force: bool,
+) -> Result<Vec<String>, AppError> {
+    if max_chapters == 0 {
+        return Err(AppError::invalid("maxChapters"));
+    }
     let settings = shared::settings(db)?;
     let mut query = db.prepare("SELECT c.id, EXISTS(SELECT 1 FROM book_source_blocks b WHERE b.chapter_id=c.id AND b.kind IN ('text','caption') AND length(trim(b.text))>0), EXISTS(SELECT 1 FROM book_glossary_results g WHERE g.chapter_id=c.id AND g.source_revision=c.revision AND g.settings_revision=?1) FROM book_chapters c ORDER BY c.position").map_err(storage_error)?;
-    let rows = query.query_map([settings.revision.value()?], |r| Ok((r.get::<_,String>(0)?,r.get::<_,bool>(1)?,r.get::<_,bool>(2)?))).map_err(storage_error)?.collect::<Result<Vec<_>,_>>().map_err(storage_error)?;
-    let ordered = rows.iter().map(|r|r.0.clone()).collect::<Vec<_>>();
-    let eligible = rows.into_iter().filter(|r|r.1 && (force || !r.2)).map(|r|r.0).collect::<std::collections::HashSet<_>>();
-    let selected = selection.resolve(&ordered)?.into_iter().filter(|id|eligible.contains(id)).take(max_chapters as usize).collect::<Vec<_>>();
-    if selected.is_empty() { return Err(AppError::invalid("noEligibleChapters")); }
+    let rows = query
+        .query_map([settings.revision.value()?], |r| {
+            Ok((
+                r.get::<_, String>(0)?,
+                r.get::<_, bool>(1)?,
+                r.get::<_, bool>(2)?,
+            ))
+        })
+        .map_err(storage_error)?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(storage_error)?;
+    let ordered = rows.iter().map(|r| r.0.clone()).collect::<Vec<_>>();
+    let eligible = rows
+        .into_iter()
+        .filter(|r| r.1 && (force || !r.2))
+        .map(|r| r.0)
+        .collect::<std::collections::HashSet<_>>();
+    let selected = selection
+        .resolve(&ordered)?
+        .into_iter()
+        .filter(|id| eligible.contains(id))
+        .take(max_chapters as usize)
+        .collect::<Vec<_>>();
+    if selected.is_empty() {
+        return Err(AppError::invalid("noEligibleChapters"));
+    }
     Ok(selected)
 }
 
@@ -468,21 +551,61 @@ mod glossary_batch_tests {
     #[test]
     fn extraction_batches_skip_current_results_and_count_only_text_chapters() {
         let db = crate::storage::tests::database(crate::app::contracts::ProjectKind::Book);
-        for (position,id) in ["done","image","next","last"].iter().enumerate() {
-            db.execute("INSERT INTO book_chapters(id,position,source_title) VALUES(?1,?2,?1)",rusqlite::params![id,position]).unwrap();
-            if *id != "image" { db.execute("INSERT INTO book_source_blocks(id,chapter_id,position,kind,text) VALUES(?1,?1,0,'text','Source')",[id]).unwrap(); }
+        for (position, id) in ["done", "image", "next", "last"].iter().enumerate() {
+            db.execute(
+                "INSERT INTO book_chapters(id,position,source_title) VALUES(?1,?2,?1)",
+                rusqlite::params![id, position],
+            )
+            .unwrap();
+            if *id != "image" {
+                db.execute("INSERT INTO book_source_blocks(id,chapter_id,position,kind,text) VALUES(?1,?1,0,'text','Source')",[id]).unwrap();
+            }
         }
         db.execute("INSERT INTO book_glossary_results(id,chapter_id,source_revision,settings_revision,terms_json) VALUES('result','done',0,0,'[]')",[]).unwrap();
-        assert_eq!(select_glossary_batch(&db,&EntitySelection::All,1,false).unwrap(),vec!["next"]);
-        assert_eq!(select_glossary_batch(&db,&EntitySelection::All,2,false).unwrap(),vec!["next","last"]);
-        assert_eq!(select_glossary_batch(&db,&EntitySelection::All,1,true).unwrap(),vec!["done"]);
-        assert!(select_glossary_batch(&db,&EntitySelection::All,0,false).is_err());
-        assert!(select_glossary_batch(&db,&EntitySelection::ExplicitIds{ids:vec!["done".into(),"image".into()]},2,false).is_err());
-        assert!(select_glossary_batch(&db,&EntitySelection::ExplicitIds{ids:vec!["missing".into()]},2,false).is_err());
-        db.execute("UPDATE book_chapters SET revision=1 WHERE id='done'",[]).unwrap();
-        assert_eq!(select_glossary_batch(&db,&EntitySelection::All,1,false).unwrap(),vec!["done"]);
-        db.execute("UPDATE book_chapters SET revision=0 WHERE id='done'",[]).unwrap();
-        db.execute("UPDATE project_settings SET revision=1",[]).unwrap();
-        assert_eq!(select_glossary_batch(&db,&EntitySelection::All,1,false).unwrap(),vec!["done"]);
+        assert_eq!(
+            select_glossary_batch(&db, &EntitySelection::All, 1, false).unwrap(),
+            vec!["next"]
+        );
+        assert_eq!(
+            select_glossary_batch(&db, &EntitySelection::All, 2, false).unwrap(),
+            vec!["next", "last"]
+        );
+        assert_eq!(
+            select_glossary_batch(&db, &EntitySelection::All, 1, true).unwrap(),
+            vec!["done"]
+        );
+        assert!(select_glossary_batch(&db, &EntitySelection::All, 0, false).is_err());
+        assert!(select_glossary_batch(
+            &db,
+            &EntitySelection::ExplicitIds {
+                ids: vec!["done".into(), "image".into()]
+            },
+            2,
+            false
+        )
+        .is_err());
+        assert!(select_glossary_batch(
+            &db,
+            &EntitySelection::ExplicitIds {
+                ids: vec!["missing".into()]
+            },
+            2,
+            false
+        )
+        .is_err());
+        db.execute("UPDATE book_chapters SET revision=1 WHERE id='done'", [])
+            .unwrap();
+        assert_eq!(
+            select_glossary_batch(&db, &EntitySelection::All, 1, false).unwrap(),
+            vec!["done"]
+        );
+        db.execute("UPDATE book_chapters SET revision=0 WHERE id='done'", [])
+            .unwrap();
+        db.execute("UPDATE project_settings SET revision=1", [])
+            .unwrap();
+        assert_eq!(
+            select_glossary_batch(&db, &EntitySelection::All, 1, false).unwrap(),
+            vec!["done"]
+        );
     }
 }

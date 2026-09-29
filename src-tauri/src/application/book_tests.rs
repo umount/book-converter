@@ -27,7 +27,7 @@ impl Fake {
                 timeout_seconds: 1,
                 network_retries: 0,
             },
-            replies: Mutex::new(replies.into_iter().map(|s|Ok(s.to_owned())).collect()),
+            replies: Mutex::new(replies.into_iter().map(|s| Ok(s.to_owned())).collect()),
             requests: Mutex::new(vec![]),
         }
     }
@@ -41,12 +41,9 @@ impl Provider for Fake {
         request: Request,
     ) -> Pin<Box<dyn Future<Output = Result<Completion, AppError>> + Send + '_>> {
         if let Request::Structured { user, system } = request {
-            let mut payload:serde_json::Value=serde_json::from_str(&user).unwrap();
-            payload["system"]=system.into();
-            self.requests
-                .lock()
-                .unwrap()
-                .push(payload);
+            let mut payload: serde_json::Value = serde_json::from_str(&user).unwrap();
+            payload["system"] = system.into();
+            self.requests.lock().unwrap().push(payload);
         }
         Box::pin(async {
             Ok(Completion {
@@ -132,9 +129,22 @@ impl Provider for Echo {
             let text = if system.starts_with("Extract recurring names") {
                 let payload: serde_json::Value = serde_json::from_str(&user).unwrap();
                 assert_eq!(payload["bookInstructions"], "Keep the established names.");
-                assert!(payload["translatedChapter"].as_str().unwrap().contains("Translated"));
-                assert!(payload["referenceExcerpt"].as_str().unwrap().starts_with("Mapped reference"));
-                assert!(payload["referenceExcerpt"].as_str().unwrap().chars().count() <= 16000);
+                assert!(payload["translatedChapter"]
+                    .as_str()
+                    .unwrap()
+                    .contains("Translated"));
+                assert!(payload["referenceExcerpt"]
+                    .as_str()
+                    .unwrap()
+                    .starts_with("Mapped reference"));
+                assert!(
+                    payload["referenceExcerpt"]
+                        .as_str()
+                        .unwrap()
+                        .chars()
+                        .count()
+                        <= 16000
+                );
                 if payload["source"].as_str().unwrap().contains("Original") {
                     assert_eq!(payload["existingTerms"][0]["target"], "Canonical");
                     assert_eq!(payload["existingTerms"][0]["pinned"], true);
@@ -152,9 +162,15 @@ impl Provider for Echo {
                 // Leave the fake English output unchanged; language repair has its own tests.
                 r#"{"lines":[]}"#.into()
             } else if system.starts_with("Translate every") {
-                self.translation_calls.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                self.translation_calls
+                    .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
                 let mut payload: serde_json::Value = serde_json::from_str(&user).unwrap();
-                if payload["segments"].as_array().unwrap().iter().any(|s|s["text"].as_str().is_some_and(|t|t.contains("Before"))) {
+                if payload["segments"]
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .any(|s| s["text"].as_str().is_some_and(|t| t.contains("Before")))
+                {
                     assert!(system.contains("Continuity notes"));
                     assert!(system.contains("Translated Original text."));
                 }
@@ -171,9 +187,10 @@ impl Provider for Echo {
                 } else {
                     assert_eq!(payload["previousSummary"], "");
                 }
-                if chapter.contains("Before") && self
-                    .fail_context_once
-                    .swap(false, std::sync::atomic::Ordering::SeqCst)
+                if chapter.contains("Before")
+                    && self
+                        .fail_context_once
+                        .swap(false, std::sync::atomic::Ordering::SeqCst)
                 {
                     return Err(AppError::invalid("testContextFailure"));
                 }
@@ -232,7 +249,7 @@ async fn pipeline_updates_glossary_after_each_chapter_and_resumes_without_retran
             db.execute("INSERT INTO book_reference_mappings(chapter_id,reference_id) VALUES(?1,'mapped')",[chapter]).unwrap();
         }
         let settings=shared::settings(db)?;
-        runs::create_run(db,"run","book_translation",&runs::RunSnapshot{manga: None,
+        runs::create_run(db,"run","book_translation",&runs::RunSnapshot{
             retarget:None,settings:settings.choices,settings_revision:settings.revision,glossary_revision:shared::glossary_revision(db)?,selected_ids,prompt_version:"book-v1".into(),stages:vec!["glossary".into(),"translation".into(),"context".into()],provider:Some(profile.clone()),instructions:None},"now")
     }).unwrap();
     let provider = Arc::new(Echo {
@@ -255,19 +272,33 @@ async fn pipeline_updates_glossary_after_each_chapter_and_resumes_without_retran
     )
     .await
     .is_err());
-    manager.lease(&project.id).unwrap().with_connection(|db,_| {
-        let chapter: String=db.query_row("SELECT id FROM book_chapters ORDER BY position DESC LIMIT 1",[],|r|r.get(0)).unwrap();
-        let view=crate::storage::repository::ProjectRepository::new(db,ProjectKind::Book)?.chapter(&chapter)?;
-        assert_eq!(view.status,"failed"); assert!(view.translation_error.is_some());
-        Ok(())
-    }).unwrap();
+    manager
+        .lease(&project.id)
+        .unwrap()
+        .with_connection(|db, _| {
+            let chapter: String = db
+                .query_row(
+                    "SELECT id FROM book_chapters ORDER BY position DESC LIMIT 1",
+                    [],
+                    |r| r.get(0),
+                )
+                .unwrap();
+            let view = crate::storage::repository::ProjectRepository::new(db, ProjectKind::Book)?
+                .chapter(&chapter)?;
+            assert_eq!(view.status, "failed");
+            assert!(view.translation_error.is_some());
+            Ok(())
+        })
+        .unwrap();
     assert_eq!(
         provider
             .glossary_calls
             .load(std::sync::atomic::Ordering::SeqCst),
         1
     );
-    let translated_calls = provider.translation_calls.load(std::sync::atomic::Ordering::SeqCst);
+    let translated_calls = provider
+        .translation_calls
+        .load(std::sync::atomic::Ordering::SeqCst);
     durable::execute(
         &manager,
         &project.id,
@@ -278,7 +309,12 @@ async fn pipeline_updates_glossary_after_each_chapter_and_resumes_without_retran
     )
     .await
     .unwrap();
-    assert_eq!(provider.translation_calls.load(std::sync::atomic::Ordering::SeqCst), translated_calls);
+    assert_eq!(
+        provider
+            .translation_calls
+            .load(std::sync::atomic::Ordering::SeqCst),
+        translated_calls
+    );
     assert_eq!(
         provider
             .glossary_calls
@@ -340,19 +376,29 @@ async fn metadata_job_persists_independently_and_becomes_stale_after_source_edit
             &self,
             request: Request,
         ) -> Pin<Box<dyn Future<Output = Result<Completion, AppError>> + Send + '_>> {
-            let Request::Structured { user, system } = request else { panic!("metadata must be structured") };
+            let Request::Structured { user, system } = request else {
+                panic!("metadata must be structured")
+            };
             let supplied: serde_json::Value = serde_json::from_str(&user).unwrap();
             if system.starts_with("Repair only") {
-                assert!(supplied["lines"].as_array().unwrap().iter().any(|line| line["text"].as_str().unwrap().contains("中文")));
-                return Box::pin(async { Ok(Completion {
+                assert!(supplied["lines"]
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .any(|line| line["text"].as_str().unwrap().contains("中文")));
+                return Box::pin(async {
+                    Ok(Completion {
                     text: r#"{"lines":[{"n":0,"text":"Тестовое название"},{"n":2,"text":"Тестовое описание"}]}"#.into(),
                     finish_reason: "stop".into(), usage: Usage::default(), tool_calls: vec![],
-                }) });
+                })
+                });
             }
             assert!(supplied.get("title").is_some());
             assert!(supplied.get("author").is_some());
             assert!(supplied.get("annotation").is_some());
-            assert!(supplied["excerpt"].as_str().is_some_and(|text| !text.is_empty()));
+            assert!(supplied["excerpt"]
+                .as_str()
+                .is_some_and(|text| !text.is_empty()));
             assert!(system.contains("Translate the supplied source title and author"));
             Box::pin(async {
                 Ok(Completion {
@@ -371,7 +417,10 @@ async fn metadata_job_persists_independently_and_becomes_stale_after_source_edit
         .with_connection(|db, _| {
             assert!(super::book_metadata::read(db)?.is_none());
             let source = super::book_presentation::read(db)?;
-            assert!(source.source_title.as_ref().is_some_and(|title| !title.is_empty()));
+            assert!(source
+                .source_title
+                .as_ref()
+                .is_some_and(|title| !title.is_empty()));
             let chapter: String = db
                 .query_row(
                     "SELECT id FROM book_chapters ORDER BY position LIMIT 1",
@@ -384,8 +433,8 @@ async fn metadata_job_persists_independently_and_becomes_stale_after_source_edit
                 db,
                 "metadata",
                 "book_metadata",
-                &runs::RunSnapshot { manga: None,
-            retarget: None,
+                &runs::RunSnapshot {
+                    retarget: None,
                     settings: settings.choices,
                     settings_revision: settings.revision,
                     glossary_revision: shared::glossary_revision(db)?,
@@ -405,13 +454,20 @@ async fn metadata_job_persists_independently_and_becomes_stale_after_source_edit
         "invalid repair",
     ]);
     let lease = manager.lease(&project.id).unwrap();
-    let run = lease.with_connection(|db, _| runs::get_run(db, "metadata")).unwrap();
+    let run = lease
+        .with_connection(|db, _| runs::get_run(db, "metadata"))
+        .unwrap();
     let error = match super::book_metadata::compute(&lease, &run, &invalid_provider).await {
         Ok(_) => panic!("foreign-language metadata must not be accepted"),
         Err(error) => error,
     };
     assert_eq!(error.params["field"], "metadataLanguage");
-    lease.with_connection(|db, _| { assert!(super::book_metadata::read(db)?.is_none()); Ok(()) }).unwrap();
+    lease
+        .with_connection(|db, _| {
+            assert!(super::book_metadata::read(db)?.is_none());
+            Ok(())
+        })
+        .unwrap();
     drop(lease);
     let pipeline = BookPipeline {
         provider: Arc::new(MetadataProvider(profile)),
@@ -556,8 +612,8 @@ async fn glossary_run_resumes_without_repeating_published_chapters_or_overwritin
                 db,
                 "glossary",
                 "book_glossary",
-                &runs::RunSnapshot { manga: None,
-            retarget: None,
+                &runs::RunSnapshot {
+                    retarget: None,
                     settings: settings.choices,
                     settings_revision: settings.revision,
                     glossary_revision: shared::glossary_revision(db)?,
@@ -632,41 +688,104 @@ async fn glossary_run_resumes_without_repeating_published_chapters_or_overwritin
     std::fs::remove_dir_all(root).unwrap();
 }
 
-
 #[tokio::test]
 async fn wholly_invalid_translation_retries_the_complete_input_with_context() {
-    let segments=[Segment{id:"title".into(),text:"Source title".into()},Segment{id:"body".into(),text:"Source body".into()}];
-    for invalid in ["", "not JSON", r#"{"segments":[]}"#, r#"{"segments":[{"id":"other","text":"Wrong"}]}"#] {
-        let fake=Fake::new(vec![invalid,r#"{"segments":[{"id":"title","text":"Заголовок"},{"id":"body","text":"Перевод"}]}"#]);
-        let output=translate_segments(&fake,"Glossary and rolling context",&segments).await.unwrap();
-        assert_eq!(output.len(),2);
-        let requests=fake.requests.lock().unwrap();assert_eq!(requests.len(),2);assert_eq!(requests[0],requests[1]);
-        assert_eq!(requests[1]["segments"].as_array().unwrap().len(),2);
+    let segments = [
+        Segment {
+            id: "title".into(),
+            text: "Source title".into(),
+        },
+        Segment {
+            id: "body".into(),
+            text: "Source body".into(),
+        },
+    ];
+    for invalid in [
+        "",
+        "not JSON",
+        r#"{"segments":[]}"#,
+        r#"{"segments":[{"id":"other","text":"Wrong"}]}"#,
+    ] {
+        let fake = Fake::new(vec![
+            invalid,
+            r#"{"segments":[{"id":"title","text":"Заголовок"},{"id":"body","text":"Перевод"}]}"#,
+        ]);
+        let output = translate_segments(&fake, "Glossary and rolling context", &segments)
+            .await
+            .unwrap();
+        assert_eq!(output.len(), 2);
+        let requests = fake.requests.lock().unwrap();
+        assert_eq!(requests.len(), 2);
+        assert_eq!(requests[0], requests[1]);
+        assert_eq!(requests[1]["segments"].as_array().unwrap().len(), 2);
     }
 }
 
 #[tokio::test]
 async fn malformed_provider_envelope_retries_but_permanent_errors_do_not() {
-    let segment=Segment{id:"body".into(),text:"Source".into()};
-    let fake=Fake::new(vec![r#"{"segments":[{"id":"body","text":"Перевод"}]}"#]);
-    fake.replies.lock().unwrap().push_front(Err(AppError{code:crate::app::contracts::ErrorCode::InvalidOutput,message_key:"errors.providerResponse".into(),params:Default::default(),retryable:false}));
-    assert!(translate_segments(&fake,"Context",std::slice::from_ref(&segment)).await.is_ok());
-    assert_eq!(fake.requests.lock().unwrap().len(),2);
-    let fake=Fake::new(vec![]);
-    fake.replies.lock().unwrap().push_front(Err(AppError::invalid("credentials")));
-    assert!(translate_segments(&fake,"Context",&[segment]).await.is_err());
-    assert_eq!(fake.requests.lock().unwrap().len(),1);
+    let segment = Segment {
+        id: "body".into(),
+        text: "Source".into(),
+    };
+    let fake = Fake::new(vec![r#"{"segments":[{"id":"body","text":"Перевод"}]}"#]);
+    fake.replies.lock().unwrap().push_front(Err(AppError {
+        code: crate::app::contracts::ErrorCode::InvalidOutput,
+        message_key: "errors.providerResponse".into(),
+        params: Default::default(),
+        retryable: false,
+    }));
+    assert!(
+        translate_segments(&fake, "Context", std::slice::from_ref(&segment))
+            .await
+            .is_ok()
+    );
+    assert_eq!(fake.requests.lock().unwrap().len(), 2);
+    let fake = Fake::new(vec![]);
+    fake.replies
+        .lock()
+        .unwrap()
+        .push_front(Err(AppError::invalid("credentials")));
+    assert!(translate_segments(&fake, "Context", &[segment])
+        .await
+        .is_err());
+    assert_eq!(fake.requests.lock().unwrap().len(), 1);
 }
 
 #[tokio::test]
 async fn title_job_sends_only_title_and_glossary_and_rejects_late_edits() {
-    use crate::{app::{contracts::ProjectKind,requests::{ProjectChoices,LanguagePair}},project::lifecycle::ProjectManager,storage::{repository::ProjectRepository,results,runs,shared},jobs::{durable,durable::StepExecutor}};
-    use std::sync::{Arc,atomic::AtomicBool};
-    let root=std::env::temp_dir().join(format!("title-job-{}",uuid::Uuid::new_v4()));
-    let manager=ProjectManager::new(root.clone());
-    let preview=manager.inspect_source(ProjectKind::Book,&std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../tests/fixtures/structural.epub")).unwrap();
-    let project=manager.create(&preview.import_id.0,&ProjectChoices{name:"Title".into(),languages:LanguagePair{source:Some("en".into()),target:"ru".into()},processing_profile_id:None}).unwrap();
-    let lease=manager.lease(&project.id).unwrap();
+    use crate::{
+        app::{
+            contracts::ProjectKind,
+            requests::{LanguagePair, ProjectChoices},
+        },
+        jobs::{durable, durable::StepExecutor},
+        project::lifecycle::ProjectManager,
+        storage::{repository::ProjectRepository, results, runs, shared},
+    };
+    use std::sync::{atomic::AtomicBool, Arc};
+    let root = std::env::temp_dir().join(format!("title-job-{}", uuid::Uuid::new_v4()));
+    let manager = ProjectManager::new(root.clone());
+    let preview = manager
+        .inspect_source(
+            ProjectKind::Book,
+            &std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+                .join("../tests/fixtures/structural.epub"),
+        )
+        .unwrap();
+    let project = manager
+        .create(
+            &preview.import_id.0,
+            &ProjectChoices {
+                name: "Title".into(),
+                languages: LanguagePair {
+                    source: Some("en".into()),
+                    target: "ru".into(),
+                },
+                processing_profile_id: None,
+            },
+        )
+        .unwrap();
+    let lease = manager.lease(&project.id).unwrap();
     let chapter=lease.with_connection(|db,_|{
         let id:String=db.query_row("SELECT id FROM book_chapters ORDER BY position LIMIT 1",[],|r|r.get(0)).unwrap();
         let view=ProjectRepository::new(db,ProjectKind::Book)?.chapter(&id)?;
@@ -675,60 +794,181 @@ async fn title_job_sends_only_title_and_glossary_and_rejects_late_edits() {
         db.execute("INSERT INTO glossary_terms(id,source,target,kind,pinned) VALUES('body-term','Original','BODY ONLY TERM','term',1)",[]).unwrap();
         Ok(id)
     }).unwrap();
-    let reply=serde_json::json!({"segments":[{"id":format!("{chapter}:title:0"),"text":"Глава первая"}]}).to_string();
-    let provider=Arc::new(Fake::new(vec![&reply,&reply]));
-    lease.with_connection(|db,_|{
-        let settings=shared::settings(db)?;
-        runs::create_run(db,"title-run","book_title",&runs::RunSnapshot{manga: None,
-            retarget:None,settings:settings.choices,settings_revision:settings.revision,glossary_revision:shared::glossary_revision(db)?,selected_ids:vec![chapter.clone()],prompt_version:"book-title-v1".into(),stages:vec!["title".into()],provider:Some(provider.profile.clone()),instructions:Some("Keep chapter numbers".into())},"now")
-    }).unwrap();
-    let pipeline=BookPipeline{provider:provider.clone(),instructions:Some("Keep chapter numbers".into())};
-    durable::execute(&manager,&project.id,"title-run",&pipeline,Arc::new(AtomicBool::new(false)),|_|{}).await.unwrap();
-    lease.with_connection(|db,_|{
-        let view=ProjectRepository::new(db,ProjectKind::Book)?.chapter(&chapter)?;
-        assert_eq!(view.translation.as_ref().unwrap().title,"Глава первая");assert_eq!(view.translation.as_ref().unwrap().origin,"reference");assert_eq!(view.blocks[0].translated_text.as_deref(),Some("FULL REFERENCE BODY"));
-        // Simulate recovery after the completed step was committed.
-        db.execute("UPDATE job_runs SET state='interrupted' WHERE id='title-run'",[]).unwrap();Ok(())
-    }).unwrap();
-    durable::execute(&manager,&project.id,"title-run",&pipeline,Arc::new(AtomicBool::new(false)),|_|{}).await.unwrap();
+    let reply =
+        serde_json::json!({"segments":[{"id":format!("{chapter}:title:0"),"text":"Глава первая"}]})
+            .to_string();
+    let provider = Arc::new(Fake::new(vec![&reply, &reply]));
+    lease
+        .with_connection(|db, _| {
+            let settings = shared::settings(db)?;
+            runs::create_run(
+                db,
+                "title-run",
+                "book_title",
+                &runs::RunSnapshot {
+                    retarget: None,
+                    settings: settings.choices,
+                    settings_revision: settings.revision,
+                    glossary_revision: shared::glossary_revision(db)?,
+                    selected_ids: vec![chapter.clone()],
+                    prompt_version: "book-title-v1".into(),
+                    stages: vec!["title".into()],
+                    provider: Some(provider.profile.clone()),
+                    instructions: Some("Keep chapter numbers".into()),
+                },
+                "now",
+            )
+        })
+        .unwrap();
+    let pipeline = BookPipeline {
+        provider: provider.clone(),
+        instructions: Some("Keep chapter numbers".into()),
+    };
+    durable::execute(
+        &manager,
+        &project.id,
+        "title-run",
+        &pipeline,
+        Arc::new(AtomicBool::new(false)),
+        |_| {},
+    )
+    .await
+    .unwrap();
+    lease
+        .with_connection(|db, _| {
+            let view = ProjectRepository::new(db, ProjectKind::Book)?.chapter(&chapter)?;
+            assert_eq!(view.translation.as_ref().unwrap().title, "Глава первая");
+            assert_eq!(view.translation.as_ref().unwrap().origin, "reference");
+            assert_eq!(
+                view.blocks[0].translated_text.as_deref(),
+                Some("FULL REFERENCE BODY")
+            );
+            // Simulate recovery after the completed step was committed.
+            db.execute(
+                "UPDATE job_runs SET state='interrupted' WHERE id='title-run'",
+                [],
+            )
+            .unwrap();
+            Ok(())
+        })
+        .unwrap();
+    durable::execute(
+        &manager,
+        &project.id,
+        "title-run",
+        &pipeline,
+        Arc::new(AtomicBool::new(false)),
+        |_| {},
+    )
+    .await
+    .unwrap();
     {
-        let requests=provider.requests.lock().unwrap();assert_eq!(requests.len(),1);
-        assert_eq!(requests[0]["segments"].as_array().unwrap().len(),1);
-        let system=requests[0]["system"].as_str().unwrap();assert!(system.contains("Глава"));assert!(system.contains("Keep chapter numbers"));assert!(!system.contains("BODY ONLY TERM"));assert!(!requests[0].to_string().contains("FULL REFERENCE BODY"));assert!(!requests[0].to_string().contains("Original text."));
+        let requests = provider.requests.lock().unwrap();
+        assert_eq!(requests.len(), 1);
+        assert_eq!(requests[0]["segments"].as_array().unwrap().len(), 1);
+        let system = requests[0]["system"].as_str().unwrap();
+        assert!(system.contains("Глава"));
+        assert!(system.contains("Keep chapter numbers"));
+        assert!(!system.contains("BODY ONLY TERM"));
+        assert!(!requests[0].to_string().contains("FULL REFERENCE BODY"));
+        assert!(!requests[0].to_string().contains("Original text."));
     }
-    let run=lease.with_connection(|db,_|runs::get_run(db,"title-run")).unwrap();
-    let late=pipeline.compute(&lease,&run,&chapter,"title").await.unwrap();
-    lease.with_connection(|db,_|{
-        let t=ProjectRepository::new(db,ProjectKind::Book)?.chapter(&chapter)?.translation.unwrap();
-        results::edit_translation_title(db,&t.id,&t.revision,"Ручной заголовок")?;
-        let tx=db.transaction().unwrap();assert!(pipeline.persist(&tx,late).is_err());Ok(())
-    }).unwrap();
-    drop(lease);drop(manager);std::fs::remove_dir_all(root).unwrap();
+    let run = lease
+        .with_connection(|db, _| runs::get_run(db, "title-run"))
+        .unwrap();
+    let late = pipeline
+        .compute(&lease, &run, &chapter, "title")
+        .await
+        .unwrap();
+    lease
+        .with_connection(|db, _| {
+            let t = ProjectRepository::new(db, ProjectKind::Book)?
+                .chapter(&chapter)?
+                .translation
+                .unwrap();
+            results::edit_translation_title(db, &t.id, &t.revision, "Ручной заголовок")?;
+            let tx = db.transaction().unwrap();
+            assert!(pipeline.persist(&tx, late).is_err());
+            Ok(())
+        })
+        .unwrap();
+    drop(lease);
+    drop(manager);
+    std::fs::remove_dir_all(root).unwrap();
 }
 
 #[tokio::test]
 async fn glossary_is_filtered_again_for_only_the_unresolved_fragments() {
-    let terms=vec![super::book_terms::term("Alpha","Первый"),super::book_terms::term("Beta","Второй"),super::book_terms::term("NeverOccurs","НЕ ОТПРАВЛЯТЬ")];
-    let fake=Fake::new(vec![r#"{"segments":[{"id":"a","text":"Первый"}]}"#,r#"{"segments":[{"id":"b","text":"Второй"}]}"#]);
-    let segments=[Segment{id:"a".into(),text:"Alpha appears".into()},Segment{id:"b".into(),text:"Beta appears".into()}];
-    super::book::translate_segments_with_glossary(&fake,"Translate",&segments,&terms).await.unwrap();
-    let requests=fake.requests.lock().unwrap();let first=requests[0]["system"].as_str().unwrap();let retry=requests[1]["system"].as_str().unwrap();
-    assert!(first.contains("Первый"));assert!(first.contains("Второй"));assert!(!first.contains("НЕ ОТПРАВЛЯТЬ"));
-    assert!(retry.contains("Второй"));assert!(!retry.contains("Первый"));assert!(!retry.contains("NeverOccurs"));
+    let terms = vec![
+        super::book_terms::term("Alpha", "Первый"),
+        super::book_terms::term("Beta", "Второй"),
+        super::book_terms::term("NeverOccurs", "НЕ ОТПРАВЛЯТЬ"),
+    ];
+    let fake = Fake::new(vec![
+        r#"{"segments":[{"id":"a","text":"Первый"}]}"#,
+        r#"{"segments":[{"id":"b","text":"Второй"}]}"#,
+    ]);
+    let segments = [
+        Segment {
+            id: "a".into(),
+            text: "Alpha appears".into(),
+        },
+        Segment {
+            id: "b".into(),
+            text: "Beta appears".into(),
+        },
+    ];
+    super::book::translate_segments_with_glossary(&fake, "Translate", &segments, &terms)
+        .await
+        .unwrap();
+    let requests = fake.requests.lock().unwrap();
+    let first = requests[0]["system"].as_str().unwrap();
+    let retry = requests[1]["system"].as_str().unwrap();
+    assert!(first.contains("Первый"));
+    assert!(first.contains("Второй"));
+    assert!(!first.contains("НЕ ОТПРАВЛЯТЬ"));
+    assert!(retry.contains("Второй"));
+    assert!(!retry.contains("Первый"));
+    assert!(!retry.contains("NeverOccurs"));
 }
 
 #[tokio::test]
 async fn rejected_segments_preserve_structural_diagnostics() {
-    let segment = Segment { id: "a".into(), text: "private source".into() };
+    let segment = Segment {
+        id: "a".into(),
+        text: "private source".into(),
+    };
     for (reply, reason, detail, value) in [
-        ("private malformed response", "invalid_json", "jsonCategory", "Syntax"),
-        (r#"{"segments":[{"id":"wrong","text":"private translation"}]}"#, "unknown_ids", "unknown", "1"),
+        (
+            "private malformed response",
+            "invalid_json",
+            "jsonCategory",
+            "Syntax",
+        ),
+        (
+            r#"{"segments":[{"id":"wrong","text":"private translation"}]}"#,
+            "unknown_ids",
+            "unknown",
+            "1",
+        ),
         (r#"{"segments":[]}"#, "unresolved_segments", "missing", "1"),
-        (r#"{"segments":[{"id":"a","text":" "}]}"#, "unresolved_segments", "empty", "1"),
-        (r#"{"segments":[{"id":"a","text":"one"},{"id":"a","text":"two"}]}"#, "unresolved_segments", "duplicated", "1"),
+        (
+            r#"{"segments":[{"id":"a","text":" "}]}"#,
+            "unresolved_segments",
+            "empty",
+            "1",
+        ),
+        (
+            r#"{"segments":[{"id":"a","text":"one"},{"id":"a","text":"two"}]}"#,
+            "unresolved_segments",
+            "duplicated",
+            "1",
+        ),
     ] {
         let fake = Fake::new(vec![reply; 3]);
-        let error = translate_segments(&fake, "JSON", std::slice::from_ref(&segment)).await.unwrap_err();
+        let error = translate_segments(&fake, "JSON", std::slice::from_ref(&segment))
+            .await
+            .unwrap_err();
         assert_eq!(error.params["reason"], reason);
         assert_eq!(error.params[detail], value);
         assert_eq!(error.params["attempt"], "3");
@@ -741,10 +981,13 @@ async fn rejected_segments_preserve_structural_diagnostics() {
         fake.replies.lock().unwrap().push_back(Err(AppError {
             code: crate::app::contracts::ErrorCode::InvalidOutput,
             message_key: "errors.providerResponse".into(),
-            params: Default::default(), retryable: false,
+            params: Default::default(),
+            retryable: false,
         }));
     }
-    let error = translate_segments(&fake, "JSON", &[segment]).await.unwrap_err();
+    let error = translate_segments(&fake, "JSON", &[segment])
+        .await
+        .unwrap_err();
     assert_eq!(error.params["reason"], "provider_response");
     assert_eq!(error.params["providerError"], "errors.providerResponse");
 }
@@ -754,9 +997,16 @@ async fn premature_finish_reason_is_preserved() {
     for (reason, attempts) in [("length", 3), ("content_filter", 1)] {
         let mut fake = Fake::new(vec!["partial"; attempts]);
         fake.finish_reason = reason.into();
-        let error = translate_segments(&fake, "JSON", &[Segment {
-            id: "a".into(), text: "source".into(),
-        }]).await.unwrap_err();
+        let error = translate_segments(
+            &fake,
+            "JSON",
+            &[Segment {
+                id: "a".into(),
+                text: "source".into(),
+            }],
+        )
+        .await
+        .unwrap_err();
         assert_eq!(error.params["reason"], "finish_reason");
         assert_eq!(error.params["finishReason"], reason);
         assert_eq!(error.params["attempt"], attempts.to_string());
@@ -768,13 +1018,18 @@ async fn premature_finish_reason_is_preserved() {
 async fn dialogue_quote_repair_avoids_retry_but_still_validates_ids() {
     let reply = r#"{"segments":[{"id":"a","text":"«Что такое "лапает"?»"}]}"#;
     let fake = Fake::new(vec![reply]);
-    let segments = [Segment { id: "a".into(), text: "source".into() }];
+    let segments = [Segment {
+        id: "a".into(),
+        text: "source".into(),
+    }];
     let output = translate_segments(&fake, "JSON", &segments).await.unwrap();
     assert_eq!(output["a"], "«Что такое \"лапает\"?»");
     assert_eq!(fake.requests.lock().unwrap().len(), 1);
 
     let wrong = reply.replace("\"id\":\"a\"", "\"id\":\"wrong\"");
     let fake = Fake::new(vec![&wrong; 3]);
-    let error = translate_segments(&fake, "JSON", &segments).await.unwrap_err();
+    let error = translate_segments(&fake, "JSON", &segments)
+        .await
+        .unwrap_err();
     assert_eq!(error.params["reason"], "unknown_ids");
 }

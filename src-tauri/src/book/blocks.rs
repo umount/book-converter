@@ -76,7 +76,7 @@ pub enum ChapterKind {
     /// Prose only — everything the text pipeline was built for.
     #[default]
     Text,
-    /// Images only: nothing for a text translator to do (a manga page).
+    /// Images only: nothing for a text translator to do (an illustration).
     Image,
     /// Prose with images in between.
     Mixed,

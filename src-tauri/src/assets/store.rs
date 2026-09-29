@@ -122,7 +122,7 @@ mod tests {
         std::fs::create_dir_all(&root).unwrap();
         let db = crate::storage::create(
             &root.join("project.db"),
-            crate::app::contracts::ProjectKind::Manga,
+            crate::app::contracts::ProjectKind::Book,
             "ru",
         )
         .unwrap();

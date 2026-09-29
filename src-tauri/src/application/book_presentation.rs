@@ -17,12 +17,28 @@ pub fn read(db: &Connection) -> Result<BookPresentation, AppError> {
     if kind != "book" {
         return Err(AppError::invalid("projectKind"));
     }
-    let source = db.query_row("SELECT title,author,summary FROM book_source_metadata WHERE singleton=1",[],|r|Ok((r.get::<_,Option<String>>(0)?,r.get::<_,Option<String>>(1)?,r.get::<_,Option<String>>(2)?))).optional().map_err(storage_error)?.unwrap_or_default();
+    let source = db
+        .query_row(
+            "SELECT title,author,summary FROM book_source_metadata WHERE singleton=1",
+            [],
+            |r| {
+                Ok((
+                    r.get::<_, Option<String>>(0)?,
+                    r.get::<_, Option<String>>(1)?,
+                    r.get::<_, Option<String>>(2)?,
+                ))
+            },
+        )
+        .optional()
+        .map_err(storage_error)?
+        .unwrap_or_default();
     let mut value = db.query_row("SELECT title,author,summary,instructions,cover_asset_id,revision FROM book_presentation WHERE singleton=1", [], |r| Ok(BookPresentation {
         source_title:None,source_author:None,source_summary:None,
         title:r.get(0)?, author:r.get(1)?, summary:r.get(2)?, instructions:r.get(3)?, cover_asset_id:r.get(4)?, revision:Revision(r.get::<_,i64>(5)?.to_string()),
     })).optional().map_err(storage_error)?.unwrap_or(BookPresentation {source_title:None,source_author:None,source_summary:None,title:None,author:None,summary:None,instructions:String::new(),cover_asset_id:None,revision:Revision("0".into())});
-    value.source_title=source.0; value.source_author=source.1; value.source_summary=source.2;
+    value.source_title = source.0;
+    value.source_author = source.1;
+    value.source_summary = source.2;
     Ok(value)
 }
 fn ensure_row(db: &Connection) -> Result<(), AppError> {
@@ -176,10 +192,6 @@ mod tests {
         let reopened = crate::storage::open(&path).unwrap();
         assert_eq!(read(&reopened).unwrap().revision, Revision("0".into()));
         drop(reopened);
-        let manga =
-            crate::storage::create(&root.join("manga.db"), ProjectKind::Manga, "ru").unwrap();
-        assert!(read(&manga).is_err());
-        drop(manga);
         std::fs::remove_dir_all(root).unwrap();
     }
 }

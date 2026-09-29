@@ -44,10 +44,9 @@ archive('structural.epub', [
     ('OEBPS/nav.xhtml', '<html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops"><head><title>Contents</title></head><body><nav epub:type="toc"><ol>' + ''.join(f'<li><a href="p{i}.xhtml">Chapter {i+1}</a></li>' for i in range(3)) + '</ol></nav></body></html>'),
     ('OEBPS/plate.png', image),
 ] + [(f'OEBPS/p{i}.xhtml', f'<html xmlns="http://www.w3.org/1999/xhtml"><head><title>Chapter {i+1}</title></head><body>{body}</body></html>') for i, body in enumerate(pages)])
-archive('two-volumes.cbz', [(f'Volume {v}/page {p}.png', image) for v in (2, 1) for p in (10, 2, 1)])
-files = ['numbered-chinese.txt', 'reference.fb2', 'structural.epub', 'two-volumes.cbz']
+files = ['numbered-chinese.txt', 'reference.fb2', 'structural.epub']
 (ROOT / 'manifest.json').write_text(json.dumps({
     'license': 'CC0-1.0',
-    'expectations': {'book_chapters': 3, 'book_block_kinds': ['text', 'image', 'mixed'], 'image_occurrences': 3, 'unique_images': 1, 'comic_volumes': 2, 'comic_pages': 6, 'natural_page_order': [1, 2, 10]},
+    'expectations': {'book_chapters': 3, 'book_block_kinds': ['text', 'image', 'mixed'], 'image_occurrences': 3, 'unique_images': 1},
     'sha256': {name: hashlib.sha256((ROOT / name).read_bytes()).hexdigest() for name in files},
 }, indent=2) + '\n')

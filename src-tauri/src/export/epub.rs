@@ -35,7 +35,7 @@ pub fn export(chapters: &[TranslatedChapter], meta: &OutputMeta, out_path: &Path
     }
 
     // Pictures the chapters point at. Added before the content documents so a
-    // chapter that is nothing but a page image (manga) has something to show.
+    // chapter that is nothing but a page image (illustrated editions) has something to show.
     let embedded = embed_images(&mut builder, chapters, meta);
 
     builder.inline_toc();
@@ -163,7 +163,9 @@ mod tests {
             index: 1,
             number: Some(1),
             title: "Страница 1".into(),
-            body: crate::export::ChapterBody::Blocks(vec![crate::export::ExportBlock::Image("ab12".into())]),
+            body: crate::export::ChapterBody::Blocks(vec![crate::export::ExportBlock::Image(
+                "ab12".into(),
+            )]),
         }];
         let meta = OutputMeta {
             images: HashMap::from([(
@@ -207,7 +209,11 @@ mod tests {
             index: 1,
             number: Some(1),
             title: "Глава 1".into(),
-            body: crate::export::ChapterBody::Blocks(vec![crate::export::ExportBlock::Text("До.".into()),crate::export::ExportBlock::Image("ab12".into()),crate::export::ExportBlock::Text("После.".into())]),
+            body: crate::export::ChapterBody::Blocks(vec![
+                crate::export::ExportBlock::Text("До.".into()),
+                crate::export::ExportBlock::Image("ab12".into()),
+                crate::export::ExportBlock::Text("После.".into()),
+            ]),
         }];
         let out = dir.join("book.epub");
         export(&chapters, &OutputMeta::default(), &out).unwrap();
