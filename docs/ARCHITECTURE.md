@@ -2,8 +2,7 @@
 
 Book Converter is a local desktop application. React renders the workspace inside
 Tauri; Rust owns project data, file access, provider requests and background jobs.
-Books and manga share lifecycle, settings, glossary, assets and execution infrastructure,
-while using separate domain models and processing pipelines.
+Project lifecycle, settings, glossary, assets and execution infrastructure serve book workflows.
 
 ## Component boundaries
 
@@ -20,12 +19,11 @@ flowchart TB
     subgraph Backend[Rust application]
         IPC[Tauri command adapters]
         Context[AppContext]
-        Services[Book / Manga / Assistant services]
+        Services[Book / Assistant services]
         Manager[ProjectManager and leases]
         Jobs[Durable job runner]
         Storage[Repositories and transactions]
         Assets[AssetStore and bookasset protocol]
-        Models[ModelManager]
         AI[ChatCompletions transport]
         IPC --> Context
         IPC --> Services
@@ -35,7 +33,6 @@ flowchart TB
         Jobs --> Services
         Manager --> Storage
         Services --> Assets
-        Services --> Models
         Services --> AI
     end
     API <-->|Typed IPC| IPC
@@ -44,22 +41,19 @@ flowchart TB
     Assets --> Files[Project image files]
     Assets -->|Image URLs| UI
     AI --> Provider[Configured external API]
-    Services -->|Local image operations| Worker[Native manga worker]
-    Models --> Weights[Verified model files]
-    Weights --> Worker
 ```
 
 `AppContext` is the composition root. It owns `ProjectManager`, job admission and
-cancellation registries, edit previews, `AssistantService` and `ModelManager`.
+cancellation registries, edit previews, `AssistantService`.
 Commands adapt IPC arguments and responses; domain behavior lives in application
-services. The native worker never receives project database access or API credentials.
+services.
 
 Code entry points:
 
 - [AppShell.tsx](../src/app/AppShell.tsx) composes project navigation, workspaces,
   supporting panels and Jobs. [features](../src/features/) contains feature UI.
 - [shared/state](../src/shared/state/) handles workspace response ordering, editor
-  saves, job subscriptions and manga canvas state.
+  saves and job subscriptions.
 - [transport.ts](../src/shared/api/transport.ts) defines the typed frontend API;
   [desktop.ts](../src/shared/api/desktop.ts) binds it to Tauri or development fixtures.
 - [lib.rs](../src-tauri/src/lib.rs) registers commands, plugins, resources and startup
@@ -69,9 +63,7 @@ Code entry points:
 - [storage](../src-tauri/src/storage/) owns SQL, result revisions and durable records.
   [assets.rs](../src-tauri/src/assets.rs) serves images; [assets/store.rs](../src-tauri/src/assets/store.rs)
   publishes immutable content-addressed files.
-- [ai](../src-tauri/src/ai/) handles provider requests; [models](../src-tauri/src/models/)
-  manages model artifacts; [manga-inference](../crates/manga-inference/) implements
-  isolated local image processing.
+- [ai](../src-tauri/src/ai/) handles provider requests.
 - [book](../src-tauri/src/book/) parses book formats and [export](../src-tauri/src/export/)
   writes output formats.
 
@@ -126,13 +118,7 @@ flowchart LR
     Chapters --> Translations[Translation revisions]
     Translations --> Texts[Translated blocks keyed by source ID]
     Translations --> Continuity[Rolling context]
-    Project --> Volumes[Manga volumes]
-    Volumes --> Pages[Ordered pages]
-    Pages --> Regions[Regions and manual edits]
-    Pages --> Results[Stage results and validity]
     Blocks --> Assets[(Immutable assets)]
-    Pages --> Assets
-    Results --> Assets
     Project --> Shared[Glossary / settings / assistant history]
     Project --> Runs[Job runs and settings snapshots]
     Runs --> Steps[Attempts / fingerprints / output references]
@@ -149,7 +135,7 @@ cancels work and waits for current users before removing its directory.
 Import first normalizes a source into a staging project and returns a preview.
 Creation assigns project choices and publishes the staged directory. Archive paths,
 file counts/sizes and image dimensions are validated; folder import rejects symlinks.
-Book blocks and manga page IDs preserve separate occurrences even when image bytes
+Book block IDs preserve separate occurrences even when image bytes
 share one asset hash.
 
 Images are loaded through `bookasset` URLs rather than serialized as large IPC
@@ -168,7 +154,7 @@ Output publication refuses to overwrite an existing destination.
 A run freezes entity selection, processing settings, provider configuration and
 instructions. A step records its entity, stage, attempt, input fingerprint and output
 reference. The runner is independent of the webview and works with `StepExecutor`
-implementations for books and manga.
+implementations for books.
 
 ```mermaid
 sequenceDiagram
@@ -245,34 +231,6 @@ language. Supported-script checks trigger language repair and reject unresolved
 foreign-script output. These checks are not universal language detection. Manual
 presentation overrides remain separate from generated metadata.
 
-## Manga processing
-
-```mermaid
-flowchart LR
-    Preflight[Local capability preflight] --> Select[Select page batch]
-    Select --> OCR[Cloud recognition: regions and text]
-    OCR --> Translate[Cloud dialogue translation]
-    Translate --> Masks[Local text masks]
-    Masks --> Clean[Local inpainting]
-    Clean --> Letter[Local lettering]
-    Letter --> Publish[Publish versioned page render]
-    Publish --> Next{More pages?}
-    Next -->|Yes| OCR
-    Next -->|No| Done[Complete job]
-    Edit[Apply region edits] --> Masks
-```
-
-Each page completes the pipeline before the next page starts. Geometry uses
-EXIF-normalized original pixels. Recognition maps resized/cropped provider coordinates
-back into that space. Translation uses region IDs and preserves manual text.
-
-Local operations run in a child process with versioned JSON requests, verified input
-hashes, temporary outputs and timeout handling. Only validated output is imported as
-an immutable asset and published with the corresponding result revision. Geometry
-edits can request a local masks → inpainting → lettering rebuild without another
-recognition/translation request. See [Manga](MANGA.md) and
-[Native runtime](MANGA_RUNTIME.md) for prerequisites and supported editing behavior.
-
 ## Assistant actions
 
 ```mermaid
@@ -303,7 +261,7 @@ Keep source images immutable, distinguish status from result freshness and revie
 and validate captured revisions before publishing asynchronous results. Keep API keys
 out of project archives, job snapshots and frontend responses. Starting processing is
 an explicit action; viewing, capability inspection and selecting a page do not submit
-paid work. Book and manga commands must reject the wrong project kind.
+paid work. Commands validate project identity before processing.
 
 [Development](DEVELOPMENT.md) describes checks for these boundaries. Automated fixtures
 verify application behavior; provider quality, font coverage and native packaging

@@ -35,7 +35,7 @@ glossary entries. Replies may contain at most four action proposals. These are r
 context limits, not limits on the project's stored glossary or conversation history.
 Translation/correction services independently select terms matching their supplied text.
 
-The assistant does not have unrestricted IPC access, whole-book browsing or manga
+The assistant does not have unrestricted IPC access, whole-book browsing or image
 actions. Project language/provider changes and unbounded whole-book translation are
 not supported actions. Book text and conversation history are supplied as data, and
 the model is asked to acknowledge missing context.

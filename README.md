@@ -1,6 +1,6 @@
 # Book Converter
 
-Desktop application for translating books and manga with a shared glossary,
+Desktop application for translating books with a glossary,
 editable results and resumable background jobs. Built with Rust, Tauri 2 and
 React/TypeScript. The interface supports English, Russian and Chinese.
 
@@ -10,7 +10,7 @@ Import TXT, FB2, EPUB, PDF, or supported books inside ZIP archives. The reader k
 text and illustrations as separate, ordered blocks. EPUB/FB2 illustrations and
 available covers are retained; PDF extraction depends on the source document.
 
-Translate a selected batch of chapters, optionally extracting terminology first.
+Translate a selected batch of chapters. The glossary updates after each chapter and reference import.
 Book and chapter instructions, matching glossary terms and preceding story context
 are included in translation requests. Review and edit translations, search and
 replace text, import an aligned reference translation, or use the book assistant
@@ -19,19 +19,7 @@ for proposed changes. Title, author, annotation and cover are managed in Overvie
 Export books as TXT, FB2 in a `.fb2.zip` archive, EPUB or PDF. Portable `.bcproj`
 archives contain project data and assets so work can be continued elsewhere.
 
-## Manga
-
-Import CBZ/ZIP or an image folder. Browse volumes and naturally ordered pages with
-thumbnails, zoom and panning. The processing pipeline performs cloud recognition
-and translation, followed by local text masks, inpainting and lettering.
-
-Processing requires configured API access, installed model weights and the native
-runtime. Regions can be moved/resized and locally rebuilt using existing translated
-text. Original images remain unchanged. Portable `.bcproj` export is available;
-rendered manga export to CBZ/EPUB is not currently implemented. RAR/CBR must be
-extracted to a folder before import.
-
-See [Books](docs/BOOKS.md) and [Manga](docs/MANGA.md) for the workflows and limitations.
+See [Books](docs/BOOKS.md) for workflows and limitations.
 
 ## Quick start for development
 
@@ -45,24 +33,15 @@ make dev
 ```
 
 `make dev` downloads pdfium if needed and starts the desktop application with Vite.
-Tauri dev/build prepares the native manga resources automatically. To prepare them
-separately:
-
-```bash
-npm run manga:prepare
-```
-
-Model weights are downloaded separately in **Settings → Manga models**. Configure
+Configure
 provider access in Settings, create a project, choose its source and target languages,
-and start an explicit chapter/page batch. Opening a project does not start processing.
+and start an explicit chapter batch. Opening a project does not start processing.
 
 ```bash
 make binary   # Release application without an installer
 make bundle   # Platform-specific installers
 ```
 
-Release builds prepare the manga runtime automatically. The runtime directory must
-remain available alongside an unbundled executable or in the application's resources.
 See [Development](docs/DEVELOPMENT.md) for checks, packaging and test commands, and
 [Settings](docs/SETTINGS.md) for providers and local data locations.
 
@@ -83,15 +62,7 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/prepare-windows.
 npm run tauri -- dev
 ```
 
-The first launch requires internet access: preparation downloads ONNX Runtime and
-builds `manga-inference.exe` before opening the application. Subsequent launches use
-the download cache and incremental Rust compilation. `npm run dev` starts only the
-web interface, without the application's native features.
-
-For manga translation, configure API access in **Settings** and download both
-processing models. Model weights and the executable runtime are separate components:
-downloading models does not restore a missing `manga-runtime`. The launch command
-above prepares the runtime automatically.
+Preparation downloads PDFium. The Vite server alone does not provide native features.
 
 ### Release installer
 
@@ -103,8 +74,7 @@ npm run tauri -- build --target x86_64-pc-windows-msvc --bundles nsis
 
 The installer is written to
 `src-tauri/target/x86_64-pc-windows-msvc/release/bundle/nsis/`.
-Distribute the installer: a standalone `book-converter.exe` without its resources
-cannot process manga.
+Distribute the installer so PDFium and other resources are included.
 
 ### Diagnostic build for testers
 
@@ -112,15 +82,14 @@ cannot process manga.
 npm run build:debug:windows
 ```
 
-The script runs `npm ci`, prepares pdfium and builds an installer with the manga
-runtime, debug information and full diagnostic logging enabled by default.
+The script runs `npm ci`, prepares pdfium and builds an installer with debug information and full diagnostic logging enabled by default.
 Output: `src-tauri/target/x86_64-pc-windows-msvc/debug/bundle/nsis/*-setup.exe`.
 Testers do not need Node.js, Rust or Python; they need the installer, configured API
-access and models downloaded through the application.
+access.
 
 After reproducing an issue, select **Settings → Diagnostics → Save diagnostic logs**.
 The **Full diagnostic logging** checkbox takes effect immediately and persists across
-restarts. API keys, book text and images are not written to logs. A previously saved
+restarts. API keys are redacted. Rejected translation responses can include source or translated text in logs. A previously saved
 preference to disable logging also applies to diagnostic builds.
 
 The manual **Windows diagnostic installer** GitHub Actions workflow builds the same
@@ -130,8 +99,6 @@ installer and uploads it as the `book-converter-windows-debug` artifact.
 
 - [Architecture and interaction diagrams](docs/ARCHITECTURE.md)
 - [Book workflow](docs/BOOKS.md)
-- [Manga workflow](docs/MANGA.md)
-- [Native manga runtime](docs/MANGA_RUNTIME.md)
 - [Settings and provider profiles](docs/SETTINGS.md)
 - [Book assistant](docs/ASSISTANT.md)
 - [Development and verification](docs/DEVELOPMENT.md)
@@ -140,5 +107,5 @@ installer and uploads it as the `book-converter-windows-debug` artifact.
 ## License
 
 Book Converter is free and open-source software under the [MIT License](LICENSE.md).
-Third-party libraries, fonts and model weights retain their own licenses; bundled
-notices are in [third-party](third-party/) and the prepared runtime resources.
+Third-party libraries and fonts retain their own licenses; bundled
+notices are in [third-party](third-party/).

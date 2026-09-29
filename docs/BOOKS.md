@@ -1,9 +1,11 @@
 # Books
 
+Click **Choose book** to open the file picker. After import, **Translation settings** shows the suggested name and both source/target languages. Confirm with **Open book**. The default target language comes from Settings. No project-kind selection is needed.
+
 ## Import and project identity
 
-Create a **Book** project from TXT, FB2, EPUB, PDF or a supported book inside ZIP.
-Confirm the source and target languages before creation; the language pair is fixed
+Open a book from TXT, FB2, EPUB, PDF or a supported book inside ZIP.
+Confirm the source and target languages before opening; the language pair is fixed
 for that project. Import is local and does not request AI processing.
 
 The importer produces ordered chapters and stable text, caption and image blocks.

@@ -23,27 +23,16 @@ only Vite; it does not provide native IPC. To work on UI fixtures without Tauri,
 `http://localhost:1420/?preview=1`. Fixtures are enabled only in development and make
 no real provider requests. They do not validate native file dialogs or model quality.
 
-Tauri development now prepares and verifies manga resources before starting Vite.
-To prepare them separately:
-
-```bash
-npm run manga:prepare
-```
-
-Download weights through Settings. See [Native runtime](MANGA_RUNTIME.md) for resource
-layout, supported build targets and model installation.
-
 ## Source layout
 
 - `src/app/`: application shell, settings, localized strings and Jobs UI.
-- `src/features/`: book, manga, glossary, assistant and project screens.
+- `src/features/`: book, glossary, assistant and project screens.
 - `src/shared/`: typed API, generated contracts, state stores and shared UI.
 - `src-tauri/src/app/`: Rust contracts and application composition.
 - `src-tauri/src/commands/`: Tauri command adapters.
 - `src-tauri/src/application/`: domain workflows and provider-backed processing.
 - `src-tauri/src/project/`, `storage/`, `assets/`: lifecycle and persistence.
-- `src-tauri/src/ai/`, `models/`: external provider transport and model downloads.
-- `crates/manga-inference/`: local worker, ONNX adapters, text shaping and layout.
+- `src-tauri/src/ai/`: external provider transport.
 - `tests/frontend/`, `tests/fixtures/`: frontend checks and deterministic input data.
 
 The [architecture](ARCHITECTURE.md) explains dependency direction and data ownership.
@@ -62,8 +51,7 @@ npm run contracts:check
 
 `npm test` compiles the pure TypeScript API/state modules and runs Node tests.
 Rust tests cover persistence, import/export, provider payloads, stale-result guards,
-checkpoint recovery and domain workflows. Downloader integration tests bind local HTTP
-servers. Native-model tests are explicitly ignored unless their resources are supplied.
+checkpoint recovery and domain workflows. Provider integration tests use local HTTP servers.
 These commands are verification instructions, not a stored claim about a particular run.
 
 Use a temporary `XDG_DATA_HOME` when testing code that accesses application-wide settings:
@@ -90,31 +78,6 @@ npm run build
 Do not manually maintain a second DTO definition. Wire new commands through Rust
 registration and the typed frontend transport, and preserve structured error fields.
 
-## Native worker tests
-
-Worker protocol/lettering tests can run without downloading model weights:
-
-```bash
-cargo test --manifest-path crates/manga-inference/Cargo.toml --features onnx,worker
-```
-
-The actual inference smoke test is opt-in. Set absolute paths to the prepared runtime
-library and installed mask/LaMa artifacts, then run:
-
-```bash
-MANGA_RUNTIME=/absolute/path/to/runtime-library \
-MANGA_MASK_MODEL=/absolute/path/to/model.safetensors \
-MANGA_LAMA_MODEL=/absolute/path/to/weights.onnx \
-cargo test --manifest-path crates/manga-inference/Cargo.toml \
-  --features onnx,worker --test native_smoke -- --ignored
-```
-
-Application-level native pipeline tests additionally require `MANGA_WORKER` to point
-to the prepared executable. Their requirements are stated on the ignored tests in
-[application/manga/tests.rs](../src-tauri/src/application/manga/tests.rs).
-Native GUI behavior, representative pages and each packaged target need their own
-checks; a fixture screenshot or synthetic CPU test does not establish those results.
-
 Regenerate portable format fixtures with `python3 scripts/generate-fixtures.py`.
 Their provenance and expected structure are documented in
 [tests/fixtures/README.md](../tests/fixtures/README.md).
@@ -130,8 +93,7 @@ make show-version
 
 `make binary` produces `src-tauri/target/release/book-converter` on Linux;
 `make bundle` builds platform installers. Both run the configured Tauri build hooks,
-including native manga resource preparation and the frontend build. pdfium and
-manga-runtime resources must be available in the deployed application layout.
+including the frontend build. PDFium must be available in the deployed application layout.
 
 The version is declared in `package.json`, `src-tauri/Cargo.toml` and
 `src-tauri/tauri.conf.json`; the version helper updates these together. Vite embeds a
@@ -163,12 +125,11 @@ npm run build:debug:windows
 ```
 
 The script installs npm dependencies, fetches pdfium, and builds an NSIS installer
-using `tauri build --debug --features diagnostics`. The normal build hook also builds
-the native manga worker and packages the pinned ONNX DLLs and manifest.
+using `tauri build --debug --features diagnostics`.
 Output: `src-tauri/target/x86_64-pc-windows-msvc/debug/bundle/nsis/*-setup.exe`.
 
 Send the **installer**, not the bare application executable. Testers do not need
-Rust, Node.js or Python. They still download model weights from Settings.
+Rust, Node.js or Python.
 The diagnostic feature defaults full logging to on unless the user has explicitly
 saved a different preference. This build includes debug information and is larger
 than a release build.
