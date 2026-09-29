@@ -6,8 +6,8 @@
   },
   {
     "name": "cjk",
-    "description": "Chinese/Japanese: 第1章 / 第一章 (Arabic or CJK numerals; 章/回/話/节 unit)",
-    "pattern": "(?m)^第([0-9]+|[一二三四五六七八九十百千零两〇]+)[章回話话節节][^\\n]*"
+    "description": "Chinese/Japanese chapters, optionally prefixed by part/volume labels; prefixed prologues and epilogues",
+    "pattern": "(?m)^(?:第(?:[0-9一二三四五六七八九十百千零两〇]+)[部卷集][^\\n]{0,60}?)?第([0-9一二三四五六七八九十百千零两〇]+)[章回話话節节][^\\n]*$|^第(?:[0-9一二三四五六七八九十百千零两〇]+)[部卷集][^\\n]{0,60}?(?:楔子|序章|序言|尾声|尾聲|后记|後記)[^\\n]*$"
   },
   {
     "name": "english-chapter",

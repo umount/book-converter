@@ -517,6 +517,12 @@ pub struct InspectManifestArgs {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ChapterSummary {
+    #[serde(default)]
+    #[ts(optional = nullable)]
+    pub translated_volume: Option<String>,
+    #[serde(default)]
+    #[ts(optional = nullable)]
+    pub volume: Option<String>,
     pub translated_title: Option<String>,
     pub status: String,
     pub origin: Option<String>,
@@ -728,6 +734,9 @@ pub fn typescript() -> String {
         ProjectSettingsUpdateArgs::decl(&config),
         InspectManifestArgs::decl(&config),
         ChapterSummary::decl(&config),
+        BookVolumeTitle::decl(&config),
+        BookVolumeArgs::decl(&config),
+        SaveBookVolumeArgs::decl(&config),
         ChapterPage::decl(&config),
         BookChapterView::decl(&config),
         MangaVolumeSummary::decl(&config),
@@ -940,3 +949,13 @@ pub struct StartBookMetadataArgs {
     #[serde(default)]
     pub summary_only: bool,
 }
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, ts_rs::TS)]
+#[serde(rename_all="camelCase")]
+pub struct BookVolumeTitle { pub source: String, pub title: String, pub revision: Revision }
+#[derive(Debug, Clone, serde::Deserialize, ts_rs::TS)]
+#[serde(rename_all="camelCase", deny_unknown_fields)]
+pub struct BookVolumeArgs { pub project_id: ProjectId, pub source: String }
+#[derive(Debug, Clone, serde::Deserialize, ts_rs::TS)]
+#[serde(rename_all="camelCase", deny_unknown_fields)]
+pub struct SaveBookVolumeArgs { pub project_id: ProjectId, pub source: String, pub title: String, pub expected_revision: Revision }

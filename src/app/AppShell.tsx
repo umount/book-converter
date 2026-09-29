@@ -22,6 +22,8 @@ import { BookEditorSession } from "../shared/state/editor";
 import type { ProjectSummary } from "../shared/contracts/generated";
 import { VirtualList } from "../shared/ui/VirtualList";
 import { CreateProject } from "../features/projects/CreateProject";
+import { VolumeTitle } from "../features/book/VolumeTitle";
+import { chapterRows } from "../shared/state/chapterGroups";
 import { BookReader } from "../features/book/BookReader";
 import { BookTools, type BookTool } from "../features/book/BookTools";
 import { Glossary } from "../features/glossary/Glossary";
@@ -480,9 +482,11 @@ function Shell({
   const failedCount = state.chapters.filter(
     (c) => c.status === "failed",
   ).length;
+  const [volumeTitleSource, setVolumeTitleSource] = useState<string|null>(null);
+  const [collapsedVolumes, setCollapsedVolumes] = useState<Set<string>>(() => new Set());
   const visibleChapters = state.chapters.filter(
     (c) =>
-      `${c.title} ${c.translatedTitle ?? ""}`
+      `${c.title} ${c.translatedTitle ?? ""} ${c.volume ?? ""} ${c.translatedVolume ?? ""}`
         .toLocaleLowerCase()
         .includes(filter.toLocaleLowerCase()) &&
       (chapterState === "all" ||
@@ -796,12 +800,27 @@ function Shell({
                         </select>
                       </label>
                     </details>
+                    {volumeTitleSource && <VolumeTitle key={`${project.id}/${volumeTitleSource}`} projectId={project.id} source={volumeTitleSource} t={t} onClose={()=>setVolumeTitleSource(null)} onSaved={()=>workspace.refreshChapters()} />}
                     <VirtualList
                       key={`${project.id}/${filter}/${chapterState}`}
-                      items={visibleChapters}
+                      items={chapterRows(visibleChapters, collapsedVolumes, project.id, !!filter || chapterState !== "all")}
                       rowHeight={30}
                       className="bc-chapters"
-                      renderRow={(c) => (
+                      renderRow={(row) => {
+                        if (row.kind === "volume") return (
+                          <div key={row.key} className="bc-volume-group"><button className="bc-volume-row" aria-expanded={!row.collapsed}
+                            onClick={() => setCollapsedVolumes(current => {
+                              const next = new Set(current);
+                              if (next.has(row.key)) next.delete(row.key); else next.add(row.key);
+                              return next;
+                            })}>
+                            <span aria-hidden="true">{row.collapsed ? "▸" : "▾"}</span>
+                            <strong title={row.label}>{row.label}</strong>
+                            <small>{row.count}</small>
+                          </button><button className="bc-volume-edit bc-icon-button" title={t("volumeTitle")} aria-label={`${t("volumeTitle")}: ${row.label}`} onClick={()=>setVolumeTitleSource(row.source)}><ToolbarIcon name="manual" /></button></div>
+                        );
+                        const c = row.chapter;
+                        return (
                         <button
                           key={c.id}
                           disabled={busy}
@@ -855,7 +874,8 @@ function Shell({
                             </span>
                           </small>
                         </button>
-                      )}
+                        );
+                      }}
                     />
                   </div>
                 </>

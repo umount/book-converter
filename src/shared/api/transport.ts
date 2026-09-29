@@ -102,6 +102,9 @@ export function createProjectApi(transport: Transport) {
       call<C.Revision>("book_update_instructions", args),
     editSource: (args: C.UpdateBookBlockArgs) =>
       call<C.Revision>("book_update_block", args),
+    volume: (args: C.BookVolumeArgs) => call<C.BookVolumeTitle>("book_get_volume", args),
+    saveVolume: (args: C.SaveBookVolumeArgs) => call<void>("book_save_volume", args),
+    translateVolume: (args: C.BookVolumeArgs) => call<string>("book_translate_volume", args),
     editTitle: (args: C.UpdateTranslationTitleArgs) =>
       call<C.Revision>("book_update_translation_title", args),
     retargetPreview: (args: C.StartBookRetargetArgs) =>

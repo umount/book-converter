@@ -74,7 +74,7 @@ pub async fn translate_segments(
     translate_segments_with_glossary(provider,system,segments,&[]).await
 }
 
-pub(super) async fn translate_segments_with_glossary(
+pub(crate) async fn translate_segments_with_glossary(
     provider: &dyn Provider, system: &str, segments: &[Segment], terms: &[shared::GlossaryTerm],
 ) -> Result<HashMap<String,String>,AppError> {
     transform_segments(provider, segments, |pending| translation_request(system, pending, terms)).await

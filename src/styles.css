@@ -1909,3 +1909,14 @@ button + button {
 }
 .bc-reader-lock .bc-chapter-spinner { flex-shrink: 0; }
 .bc-reader input[readonly], .bc-reader textarea[readonly] { cursor: default; }
+
+.bc-chapters .bc-volume-row {
+  background: color-mix(in srgb, var(--accent) 9%, transparent);
+  border-top: 1px solid var(--line);
+  font-weight: 600;
+}
+.bc-chapters .bc-volume-row small { color: var(--muted); }
+
+.bc-volume-group { display: flex; height: 30px; align-items: stretch; }
+.bc-volume-group .bc-volume-row { flex: 1; min-width: 0; }
+.bc-chapters .bc-volume-edit { display: flex; align-items: center; justify-content: center; width: 28px; flex: 0 0 28px; padding: 0; }

@@ -46,8 +46,12 @@ pub async fn book_list_chapters(
         crate::storage::repository::ProjectRepository::new(db,crate::app::contracts::ProjectKind::Book)?;
         let after=if let Some(cursor)=args.cursor{db.query_row("SELECT position FROM book_chapters WHERE id=?1",[cursor],|r|r.get::<_,i64>(0)).map_err(storage_error)?}else{-1};
         let mut query=db.prepare("SELECT id,position,source_title,revision,status,origin,needs_review,(SELECT NULLIF(trim(translated_title),'') FROM book_translations WHERE chapter_id=book_chapter_states.id AND target_language=(SELECT target_language FROM project_settings WHERE singleton=1) ORDER BY revision DESC LIMIT 1) FROM book_chapter_states WHERE position>?1 ORDER BY position LIMIT ?2").map_err(storage_error)?;
-        let rows=query.query_map(rusqlite::params![after,args.limit+1],|r|Ok(ChapterSummary{translated_title:r.get(7)?,status:r.get(4)?,origin:r.get(5)?,needs_review:r.get(6)?,id:crate::app::contracts::ChapterId(r.get(0)?),position:r.get(1)?,title:r.get(2)?,revision:crate::app::contracts::Revision(r.get::<_,i64>(3)?.to_string())})).map_err(storage_error)?;
+        let rows=query.query_map(rusqlite::params![after,args.limit+1],|r|Ok(ChapterSummary{translated_volume:None,volume:crate::book::parser::chapter_volume(&r.get::<_,String>(2)?),translated_title:r.get(7)?,status:r.get(4)?,origin:r.get(5)?,needs_review:r.get(6)?,id:crate::app::contracts::ChapterId(r.get(0)?),position:r.get(1)?,title:r.get(2)?,revision:crate::app::contracts::Revision(r.get::<_,i64>(3)?.to_string())})).map_err(storage_error)?;
         let mut items=rows.collect::<Result<Vec<_>,_>>().map_err(storage_error)?;
+        for item in &mut items { if let Some(source)=&item.volume {
+            let title=crate::application::book_volume::read(db,source)?.title;
+            item.translated_volume=(!title.is_empty()).then_some(title);
+        }}
         let next_cursor=if items.len()>args.limit as usize{items.pop();items.last().map(|c|c.id.0.clone())}else{None};Ok(ChapterPage{items,next_cursor})
     })).await.map_err(|_|AppError::invalid("task"))?
 }
@@ -544,4 +548,23 @@ mod progress_tests {
         assert_eq!(view.completed_chapters, Some(0));
         assert_eq!(view.current_chapter_number, Some(100));
     }
+}
+
+#[tauri::command]
+pub async fn book_get_volume(context: State<'_,AppContext>, args: BookVolumeArgs) -> Result<BookVolumeTitle,AppError> {
+    context.manager.lease(&args.project_id)?.with_connection(|db,_| crate::application::book_volume::read(db,&args.source))
+}
+#[tauri::command]
+pub async fn book_save_volume(context: State<'_,AppContext>, args: SaveBookVolumeArgs) -> Result<(),AppError> {
+    context.manager.lease(&args.project_id)?.with_connection(|db,_| crate::application::book_volume::save(db,&args.source,&args.title,&args.expected_revision))
+}
+#[tauri::command]
+pub async fn book_translate_volume(context: State<'_,AppContext>, args: BookVolumeArgs) -> Result<String,AppError> {
+    let lease=context.manager.lease(&args.project_id)?;
+    let (settings,instructions,terms)=lease.with_connection(|db,_| Ok((crate::storage::shared::settings(db)?,crate::application::book_presentation::read(db)?.instructions,crate::storage::shared::glossary(db)?)))?;
+    let (profile,key)=crate::application::runtime::provider_profile(settings.choices.book_translation_profile.as_deref())?;
+    let provider=crate::ai::ChatCompletions::new(profile,key)?;
+    let system=format!("Translate only this book volume/part heading into {}. Preserve part and volume numbers. Return JSON {{\"segments\":[{{\"id\":\"volume\",\"text\":\"translated heading\"}}]}}. Book instructions: {}",settings.choices.target_language,instructions);
+    let result=crate::application::book::translate_segments_with_glossary(&provider,&system,&[crate::application::book::Segment{id:"volume".into(),text:args.source}],&terms).await?;
+    result.get("volume").cloned().ok_or_else(||AppError::invalid("translation"))
 }

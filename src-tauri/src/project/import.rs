@@ -188,6 +188,8 @@ fn book(
             .collect::<Vec<_>>();
         ProjectRepository::new(db, ProjectKind::Book)?.insert_chapter(
             &ChapterSummary {
+                translated_volume: None,
+                volume: crate::book::parser::chapter_volume(&chapter.title),
                 translated_title: None,
                 status: "pending".into(),
                 origin: None,
@@ -489,6 +491,30 @@ mod folder_tests {
             assert!(comic(&source, &target, &mut db, &mut |_| {}).is_err());
         }
         drop(db);
+        std::fs::remove_dir_all(root).unwrap();
+    }
+}
+
+#[cfg(test)]
+mod volume_import_tests {
+    use super::*;
+    #[test]
+    fn txt_volume_headings_reach_the_chapter_reader() {
+        let root = std::env::temp_dir().join(format!("volume-import-{}", uuid()));
+        std::fs::create_dir_all(&root).unwrap();
+        let source = root.join("book.txt");
+        std::fs::write(&source, "书名\n作者：作者\n第01集 第一章 开始\n正文一\n第02集 第一章 继续\n正文二").unwrap();
+        let mut db = crate::storage::tests::database(ProjectKind::Book);
+        let (_, warnings) = book(&source, &root, &mut db).unwrap();
+        assert!(!warnings.iter().any(|w| w == "import.singleChapter"));
+        let ids = db.prepare("SELECT id FROM book_chapters ORDER BY position").unwrap()
+            .query_map([], |r| r.get::<_,String>(0)).unwrap().collect::<Result<Vec<_>,_>>().unwrap();
+        assert_eq!(ids.len(), 2);
+        let mut repository = ProjectRepository::new(&mut db, ProjectKind::Book).unwrap();
+        for (id, volume) in ids.iter().zip(["第1集", "第2集"]) {
+            let chapter = repository.chapter(id).unwrap();
+            assert_eq!(chapter.chapter.volume.as_deref(), Some(volume));
+        }
         std::fs::remove_dir_all(root).unwrap();
     }
 }

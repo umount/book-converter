@@ -105,12 +105,14 @@ impl<'a> ProjectRepository<'a> {
     pub fn chapter(&mut self, id: &str) -> Result<BookChapterView, AppError> {
         self.require(ProjectKind::Book)?;
         let tx = self.connection.transaction().map_err(storage_error)?;
-        let chapter = tx
+        let mut chapter = tx
             .query_row(
                 "SELECT id,position,source_title,revision,status,origin,needs_review,(SELECT NULLIF(trim(translated_title),'') FROM book_translations WHERE chapter_id=book_chapter_states.id AND target_language=(SELECT target_language FROM project_settings WHERE singleton=1) ORDER BY revision DESC LIMIT 1) FROM book_chapter_states WHERE id=?1",
                 [id],
                 |r| {
                     Ok(ChapterSummary {
+                translated_volume: None,
+                        volume: crate::book::parser::chapter_volume(&r.get::<_,String>(2)?),
                         translated_title:r.get(7)?,
                         status:r.get(4)?,origin:r.get(5)?,needs_review:r.get(6)?,
                         id: crate::app::contracts::ChapterId(r.get(0)?),
@@ -123,6 +125,10 @@ impl<'a> ProjectRepository<'a> {
             .optional()
             .map_err(storage_error)?
             .ok_or_else(not_found)?;
+        if let Some(source) = &chapter.volume {
+            let title = crate::application::book_volume::read(&tx, source)?.title;
+            chapter.translated_volume = (!title.is_empty()).then_some(title);
+        }
         let translation=tx.query_row("SELECT id,revision,translated_title,status,CASE WHEN provenance='reference' THEN 'reference' WHEN provenance IN ('manual','manual-replace') THEN 'manual' ELSE 'model' END FROM book_translations WHERE chapter_id=?1 AND target_language=(SELECT target_language FROM project_settings WHERE singleton=1) ORDER BY revision DESC LIMIT 1",[id],|r|Ok(TranslationSummary{id:r.get(0)?,revision:Revision(r.get::<_,i64>(1)?.to_string()),title:r.get(2)?,status:r.get(3)?,origin:r.get(4)?})).optional().map_err(storage_error)?;
         let translated: std::collections::HashMap<String, String> = if let Some(translation) =
             &translation
@@ -339,6 +345,8 @@ mod tests {
         let mut db = fixture(ProjectKind::Book);
         let mut repo = ProjectRepository::new(&mut db, ProjectKind::Book).unwrap();
         let chapter = ChapterSummary {
+                translated_volume: None,
+            volume: None,
             translated_title:None,
             status:"pending".into(),origin:None,needs_review:false,
             id: ChapterId("chapter".into()),

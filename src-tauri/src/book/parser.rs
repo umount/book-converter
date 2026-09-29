@@ -113,6 +113,23 @@ pub fn detect_chapter_pattern(text: &str) -> Option<Regex> {
         .map(|(_, re)| re)
 }
 
+/// Volume labels are derived from preserved source headings, including older imports.
+/// Keep part and volume distinct; do not infer missing volume numbers.
+pub fn chapter_volume(title: &str) -> Option<String> {
+    static PREFIX: std::sync::OnceLock<Regex> = std::sync::OnceLock::new();
+    static UNIT: std::sync::OnceLock<Regex> = std::sync::OnceLock::new();
+    let prefix = PREFIX.get_or_init(|| Regex::new(r"^(第[0-9一二三四五六七八九十百千零两〇]+[部卷集].*?)(?:第[0-9一二三四五六七八九十百千零两〇]+[章回話话節节]|楔子|序章|序言|尾声|尾聲|后记|後記)").unwrap());
+    let units = UNIT.get_or_init(|| Regex::new(r"第([0-9一二三四五六七八九十百千零两〇]+)([部卷集])").unwrap());
+    let captures = prefix.captures(title)?;
+    let mut labels = Vec::new();
+    for unit in units.captures_iter(&captures[1]) {
+        let number = parse_chapter_number(&unit[1])?;
+        let label = format!("第{number}{}", &unit[2]);
+        if !labels.contains(&label) { labels.push(label); }
+    }
+    (!labels.is_empty()).then(|| labels.join(" · "))
+}
+
 /// Parse a chapter number from either an Arabic (`123`) or Chinese (`一百二十三`)
 /// numeral.
 pub fn parse_chapter_number(numeral: &str) -> Option<usize> {
@@ -306,9 +323,11 @@ pub fn validate(chapters: &[Chapter], meta: &BookMeta) -> ParseReport {
     // A number is a duplicate if it occurs more than once.
     let mut seen = BTreeSet::new();
     let mut dups = BTreeSet::new();
-    for n in numbers {
-        if !seen.insert(n) {
-            dups.insert(n);
+    for chapter in chapters {
+        if let Some(n) = chapter.number {
+            if !seen.insert((chapter_volume(&chapter.title), n)) {
+                dups.insert(n);
+            }
         }
     }
 
@@ -451,4 +470,30 @@ mod tests {
     }
 
 
+}
+
+#[cfg(test)]
+mod volume_tests {
+    use super::*;
+    #[test]
+    fn splits_compound_headings_without_losing_restarted_numbers_or_prologues() {
+        let text = "Книга\n第01集 第一章 古音\n正文包含第01集第一章古音，不是标题。\n第01集 第二章 标题\n正文二\n第二部 楔子\n序言正文\n第二部第七集 第一章 道途\n正文三\n第二部 第十九集 尘埃落定 第八章 终章\n结尾";
+        let chapters = parse_chapters(text);
+        assert_eq!(chapters.len(), 5);
+        assert_eq!(chapters.iter().map(|c| c.number).collect::<Vec<_>>(), vec![Some(1), Some(2), None, Some(1), Some(8)]);
+        assert_eq!(chapters[0].body, "正文包含第01集第一章古音，不是标题。");
+        assert_eq!(chapters[2].body, "序言正文");
+        assert_eq!(chapters[4].body, "结尾");
+        assert!(validate(&chapters, &BookMeta::default()).duplicate_numbers.is_empty());
+        assert_eq!(chapter_volume(&chapters[0].title).as_deref(), Some("第1集"));
+        assert_eq!(chapter_volume(&chapters[2].title).as_deref(), Some("第2部"));
+        assert_eq!(chapter_volume(&chapters[3].title).as_deref(), Some("第2部 · 第7集"));
+    }
+    #[test]
+    fn normalizes_volume_numbers_and_duplicate_prefixes_without_guessing() {
+        assert_eq!(chapter_volume("第二部 第十七集 第十七集仙路杀劫 第一章 大战"), chapter_volume("第二部第17集 第二章 继续"));
+        assert_eq!(chapter_volume("第二部 第一章 逃命").as_deref(), Some("第2部"));
+        assert_eq!(chapter_volume("第一章 标题"), None);
+        assert_eq!(parse_chapters("第1卷 第一章 开始\n一\n第二章 继续\n二").len(), 2);
+    }
 }

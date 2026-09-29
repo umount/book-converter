@@ -47,6 +47,8 @@ const chapters = [
   "A garden in the rain",
   "Letters from the coast",
 ].map((title, position) => ({
+  translatedVolume: null as string|null,
+  volume: new URLSearchParams(location.search).has("volumes") ? (position < 2 ? "第1集" : "第2部 · 第7集") : null,
   id: `chapter-${position}`,
   status: "done",
   origin: "model",
@@ -121,6 +123,7 @@ let glossary: GlossaryTermView[] = [
     revision: "1",
   },
 ];
+const volumeTitles = new Map<string, {source:string;title:string;revision:string}>();
 let settingsRevision = 1;
 const jobs: JobView[] = new URLSearchParams(location.search).has("rebuild") ? [{
   editingLockedChapters: [],
@@ -151,6 +154,15 @@ export async function invokePreview<T>(
   const args = (raw?.args ?? {}) as Record<string, any>;
   let result: unknown;
   switch (command) {
+    case "book_get_volume": return (volumeTitles.get(args.source) ?? {source:args.source,title:"",revision:"0"}) as T;
+    case "book_translate_volume": return (args.source === "第1集" ? "Том 1" : "Часть 2 · Том 7") as T;
+    case "book_save_volume": {
+      const current=volumeTitles.get(args.source);
+      if ((current?.revision ?? "0") !== args.expectedRevision) throw {messageKey:"errors.revisionConflict"};
+      volumeTitles.set(args.source,{source:args.source,title:args.title,revision:String(Number(args.expectedRevision)+1)});
+      for(const c of chapters) if(c.volume===args.source)c.translatedVolume=args.title || null;
+      return null as T;
+    }
     case "model_list":
       if (previewModel.status === "downloading") {
         previewModel.downloadedBytes = Math.min(

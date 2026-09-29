@@ -34,3 +34,11 @@ CREATE TABLE IF NOT EXISTS book_source_metadata (
 CREATE TRIGGER IF NOT EXISTS book_source_metadata_kind_guard BEFORE INSERT ON book_source_metadata
 WHEN (SELECT kind FROM project_settings WHERE singleton=1)!='book'
 BEGIN SELECT RAISE(ABORT, 'Book metadata requires book project'); END;
+
+CREATE TABLE IF NOT EXISTS book_volume_titles (
+    source TEXT NOT NULL,
+    target_language TEXT NOT NULL,
+    title TEXT NOT NULL,
+    revision INTEGER NOT NULL,
+    PRIMARY KEY(source, target_language)
+);

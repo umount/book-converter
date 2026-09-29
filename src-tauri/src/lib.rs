@@ -104,6 +104,9 @@ pub fn run() {
             commands::book_update_translation_block,
             commands::book_update_translation_title,
             commands::book_start_title,
+            commands::book_get_volume,
+            commands::book_save_volume,
+            commands::book_translate_volume,
             commands::book_start_retarget,
             commands::book_retarget_preview,
 

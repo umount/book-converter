@@ -30,3 +30,5 @@ pub mod book_retarget;
 mod book_workflow_tests;
 
 pub mod manga;
+
+pub mod book_volume;
