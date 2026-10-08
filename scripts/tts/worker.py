@@ -172,7 +172,9 @@ def main():
     if args.parent_pipe:
         # Parent owns the write end. Exit even if the desktop process crashes or is killed.
         def watch_parent():
-            sys.stdin.buffer.read(1)
+            # A daemon blocked on BufferedReader holds its lock during interpreter
+            # shutdown, aborting even a successful job. Read the OS pipe directly.
+            os.read(sys.stdin.fileno(), 1)
             os._exit(2)
         threading.Thread(target=watch_parent, daemon=True).start()
     with contextlib.redirect_stdout(sys.stderr):

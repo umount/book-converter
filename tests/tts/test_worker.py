@@ -3,6 +3,7 @@ import json
 from pathlib import Path
 import tempfile
 import sys
+import subprocess
 import unittest
 from unittest.mock import patch
 import numpy as np
@@ -14,6 +15,34 @@ spec.loader.exec_module(worker)
 
 
 class NarrationTests(unittest.TestCase):
+    def test_worker_exits_cleanly_while_parent_pipe_stays_open(self):
+        self.check_parent_pipe(close=False, expected=0)
+
+    def test_worker_stops_when_parent_pipe_closes(self):
+        self.check_parent_pipe(close=True, expected=2)
+
+    def check_parent_pipe(self, close, expected):
+        script = """
+import runpy, sys, time
+scope = runpy.run_path(sys.argv[1])
+delay = float(sys.argv[2])
+scope['main'].__globals__['run'] = lambda _: time.sleep(delay)
+sys.argv = ['book-tts', '--parent-pipe', '--run', sys.argv[3]]
+raise SystemExit(scope['main']())
+"""
+        with tempfile.TemporaryDirectory() as tmp, subprocess.Popen(
+            [sys.executable, "-I", "-c", script, str(Path(worker.__file__)), "30" if close else "0.1", tmp],
+            stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+        ) as child:
+            try:
+                if close:
+                    child.stdin.close()
+                self.assertEqual(child.wait(timeout=10), expected, child.stderr.read())
+            finally:
+                if child.poll() is None:
+                    child.kill()
+                    child.wait()
+
     def request(self):
         return {"version": 1, "language": "Russian", "voice": "Ryan", "device": "cpu", "chapters": [{"title": "Глава", "chunks": ["Первый фрагмент.", "Второй фрагмент."]}]}
 

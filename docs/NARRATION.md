@@ -114,6 +114,8 @@ Create the export directory first and prepare the runtime. `narrate_sample` impo
 the supplied text into a new isolated project, narrates the original with Ryan on
 CPU, checks completion and exports the MP3 and playlist using the application
 services. It runs real synthesis and is not part of the fast automated suite.
+To resume that saved job, replace `SOURCE_TXT EXPORT_DIR` with
+`--resume PROJECT_ID JOB_ID EXPORT_DIR`; completed audio checkpoints are reused.
 
 Upstream references: [Qwen3-TTS](https://github.com/QwenLM/Qwen3-TTS),
 [0.6B CustomVoice model](https://huggingface.co/Qwen/Qwen3-TTS-12Hz-0.6B-CustomVoice).
