@@ -28,10 +28,16 @@ def main():
     python = cache / ("Scripts/python.exe" if os.name == "nt" else "bin/python")
     requirements = ROOT / "scripts/tts/requirements.txt"
     mode = "cu128" if args.cuda else "cpu"
-    stamp = {"version": 1, "torch": "2.8.0", "mode": mode, "requirements": hashlib.sha256(requirements.read_bytes()).hexdigest(), "python": sys.version_info[:2]}
     ready = cache / "ready.json"
     if not python.exists() or not (cache / "pyvenv.cfg").exists():
         venv.create(cache, with_pip=True)
+    # The launcher may change while an existing, supported virtualenv is reused.
+    # Record the runtime's actual Python version, including its license directory.
+    runtime_python = json.loads(subprocess.check_output([str(python), "-I", "-c",
+        "import json, sys; print(json.dumps(list(sys.version_info[:2])))"], text=True))
+    if runtime_python not in [[3, 11], [3, 12]]:
+        parser.error("Remove .cache/tts-venv and prepare it with Python 3.11 or 3.12")
+    stamp = {"version": 1, "torch": "2.8.0", "mode": mode, "requirements": hashlib.sha256(requirements.read_bytes()).hexdigest(), "python": runtime_python}
     try:
         installed = json.loads(ready.read_text())
     except (OSError, ValueError):
@@ -78,7 +84,7 @@ def main():
     shutil.copytree(built, next_pack)
     shutil.copytree(ROOT / "third-party", next_pack / "notices")
     # Preserve installed package metadata and license texts beside the runtime.
-    packages = cache / ("Lib/site-packages" if os.name == "nt" else f"lib/python{sys.version_info.major}.{sys.version_info.minor}/site-packages")
+    packages = cache / ("Lib/site-packages" if os.name == "nt" else f"lib/python{runtime_python[0]}.{runtime_python[1]}/site-packages")
     for metadata in packages.glob("*.dist-info"):
         shutil.copytree(metadata, next_pack / "package-notices" / metadata.name)
     (next_pack / ".gitkeep").touch()
