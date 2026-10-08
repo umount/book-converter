@@ -1,4 +1,4 @@
-# Optional speech runtime
+# Speech runtime
 
 The application and the speech worker source remain under the repository's MIT
 license. The prepared speech runtime contains separately licensed dependencies.

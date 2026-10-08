@@ -19,7 +19,7 @@ ROOT = Path(__file__).resolve().parent.parent
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--cuda", action="store_true")
+    parser.add_argument("--cuda", action="store_true", default=os.environ.get("BOOK_TTS_CUDA") == "1")
     parser.add_argument("--bundle", action="store_true")
     args = parser.parse_args()
     if sys.version_info[:2] not in [(3, 11), (3, 12)]:
@@ -47,7 +47,7 @@ def main():
     if not args.bundle:
         print(f"TTS development runtime ready ({mode}). Download weights in Narration.")
         return
-    source_hash = hashlib.sha256((ROOT / "scripts/tts/worker.py").read_bytes() + json.dumps(stamp).encode()).hexdigest()
+    source_hash = hashlib.sha256(Path(__file__).read_bytes() + (ROOT / "scripts/tts/worker.py").read_bytes() + json.dumps(stamp).encode()).hexdigest()
     destination = ROOT / "src-tauri/tts-runtime"
     try:
         if json.loads((destination / "manifest.json").read_text())["sourceHash"] == source_hash:
@@ -61,6 +61,8 @@ def main():
     subprocess.run([str(python), "-m", "PyInstaller", "--noconfirm", "--clean", "--onedir", "--name", "book-tts",
                     "--distpath", str(work / "dist"), "--workpath", str(work / "work"), "--specpath", str(work),
                     "--collect-all", "qwen_tts", "--collect-all", "transformers", "--collect-all", "torchaudio",
+                    "--collect-all", "librosa",
+                    "--collect-submodules", "scipy._external.array_api_compat",
                     "--copy-metadata", "qwen-tts", "--copy-metadata", "accelerate",
                     str(ROOT / "scripts/tts/worker.py")], check=True)
     built = work / "dist/book-tts"

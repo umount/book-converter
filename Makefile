@@ -60,6 +60,8 @@ binary: fetch-pdfium
 	@$(TAURI) build --no-bundle
 	@mkdir -p $(TAURI_DIR)/target/release/pdfium
 	@cp -f $(TAURI_DIR)/pdfium/* $(TAURI_DIR)/target/release/pdfium/ 2>/dev/null || true
+	@rm -rf $(TAURI_DIR)/target/release/tts-runtime
+	@cp -R $(TAURI_DIR)/tts-runtime $(TAURI_DIR)/target/release/tts-runtime
 	@echo "Binary: $(BIN)"
 
 # Full installers (.deb / .rpm / .AppImage on Linux)

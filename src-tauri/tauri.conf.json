@@ -7,7 +7,7 @@
     "frontendDist": "../dist",
     "devUrl": "http://localhost:1420",
     "beforeDevCommand": "npm run dev",
-    "beforeBuildCommand": "npm run build"
+    "beforeBuildCommand": "npm run tts:bundle && npm run build"
   },
   "app": {
     "windows": [
@@ -28,6 +28,7 @@
     "targets": "all",
     "resources": {
       "pdfium/": "pdfium/",
+      "tts-runtime/": "tts-runtime/",
       "../third-party/": "third-party/",
       "../LICENSE.md": "LICENSE.md"
     },
