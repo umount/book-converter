@@ -78,6 +78,8 @@ pub fn run() {
             commands::audio_cancel,
             commands::audio_list,
             commands::audio_export,
+            commands::audio_preview,
+            commands::audio_preview_export,
             commands::export_diagnostics,
             commands::diagnostic_event,
             commands::project_inspect_manifest,

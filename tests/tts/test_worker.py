@@ -1,4 +1,5 @@
 import importlib.util
+import hashlib
 import json
 from pathlib import Path
 import tempfile
@@ -117,6 +118,58 @@ raise SystemExit(scope['main']())
                     patch.object(sys, "argv", ["book-tts", "--run", tmp]):
                 self.assertEqual(worker.main(), 1)
                 emit.assert_called_once_with("error", reason=reason)
+
+    def preview_input(self, root):
+        request = self.request()
+        (root / "input.json").write_text(json.dumps(request))
+        (root / "model-files.json").write_text("[]")
+        return request, hashlib.sha256(b"[]").hexdigest()
+
+    def test_preview_plays_saved_fragment_before_chapter_finishes_without_model(self):
+        with tempfile.TemporaryDirectory() as tmp, patch.object(worker, "emit"):
+            root = Path(tmp)
+            request, fingerprint = self.preview_input(root)
+            count = 0
+            def generate(text):
+                nonlocal count
+                count += 1
+                return self.samples(text)
+            worker.narrate(root, request, generate, fingerprint, cancelled=lambda: count == 1)
+            self.assertFalse((root / "audio/00001.mp3").exists())
+            output = root / "preview"
+            output.mkdir()
+            with patch.object(worker, "SpeechModel", side_effect=AssertionError("must not load model")):
+                worker.preview(root, output)
+            decoded, rate = sf.read(output / "audio.mp3")
+            self.assertEqual(rate, 24000)
+            self.assertGreater(np.max(np.abs(decoded)), 0.05)
+            self.assertAlmostEqual(len(decoded) / rate, 0.5, delta=0.15)
+            receipt = json.loads((output / "preview.json").read_text())
+            self.assertEqual(receipt["title"], "Глава")
+            self.assertEqual(receipt["durationSeconds"], 0.5)
+            self.assertEqual(receipt["sha256"], worker.digest(output / "audio.mp3"))
+            self.assertEqual(len(list((root / "chunks").glob("*.pcm"))), 1)
+            # A preview neither consumes checkpoints nor changes the resume position.
+            with patch.object(self, "samples", wraps=self.samples) as resumed:
+                worker.narrate(root, request, resumed, fingerprint)
+                resumed.assert_called_once_with("Второй фрагмент.")
+
+    def test_preview_uses_finished_chapter_and_limits_duration(self):
+        with tempfile.TemporaryDirectory() as tmp, patch.object(worker, "emit"):
+            root = Path(tmp)
+            request, fingerprint = self.preview_input(root)
+            worker.narrate(root, request, lambda _: (np.tile(self.samples("")[0], 40), 24000), fingerprint)
+            self.assertFalse(list((root / "chunks").iterdir()))
+            output = root / "preview"
+            output.mkdir()
+            worker.preview(root, output)
+            audio, rate = sf.read(output / "audio.mp3")
+            self.assertAlmostEqual(len(audio) / rate, 30, delta=0.15)
+            self.assertLess((output / "audio.mp3").stat().st_size, 500_000)
+            # Receipts prevent playing damaged or unrelated audio.
+            (root / "audio/00001.mp3").write_bytes(b"corrupt")
+            with self.assertRaisesRegex(ValueError, "audioPreviewUnavailable"):
+                worker.preview(root, output)
 
     def test_one_loaded_model_survives_pause_resume_and_new_voice_jobs(self):
         with tempfile.TemporaryDirectory() as tmp, patch.object(worker, "emit") as emit:

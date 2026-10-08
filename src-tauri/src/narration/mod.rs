@@ -1,5 +1,6 @@
 //! Local, checkpointed book narration. Models are global; jobs are project-owned.
 pub mod contracts;
+mod preview;
 #[cfg(test)]
 mod tests;
 mod text;

@@ -131,6 +131,7 @@ book-converter/
     model-files.json       Pinned model file specifications
     chunks/                PCM checkpoints and integrity receipts
     audio/                 Chapter MP3s and integrity receipts
+    previews/<preview-id>/ Bounded MP3 samples and integrity receipts for playback/export
   logs/                    Rotating diagnostic logs
   staging/                 Temporary imports and archive snapshots
   projects/<project-id>/
@@ -295,6 +296,14 @@ Generated fragments are temporary PCM checkpoints, joined through one continuous
 encoder per chapter. Verified chapter MP3s replace their fragment checkpoints. Export
 rechecks MP3 hashes and writes a chapter playlist. Finished jobs keep the input, status,
 model specification and chapter audio; the shared engine stays loaded for the next job.
+
+`audio_preview` starts a lightweight encoder process without acquiring the engine's
+model lock. It reads verified PCM checkpoints or chapter MP3s and produces a sample
+of at most 30 seconds. The service returns a bounded MP3 data URL for the shared
+inline player in Jobs and Narration. Progress polling does not replace that sample.
+`audio_preview_export` verifies the saved sample receipt and exports the same bytes
+the user heard, using a new file. A project lease protects both operations; deletion
+cancels an active preview encoder before removing its files.
 
 Pause sends a control message read by a dedicated thread during synthesis. The worker
 saves the current fragment and reports paused, retaining the model. Project deletion

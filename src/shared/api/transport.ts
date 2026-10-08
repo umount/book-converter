@@ -21,6 +21,8 @@ export function createProjectApi(transport: Transport) {
     audioCancel: (args: C.AudioJobArgs) => call<void>("audio_cancel", args),
     audioList: (args: C.ProjectArgs) => call<C.AudioJobView[]>("audio_list", args),
     audioExport: (args: C.AudioExportArgs) => call<string>("audio_export", args),
+    audioPreview: (args: C.AudioJobArgs) => call<C.AudioPreviewView>("audio_preview", args),
+    audioPreviewExport: (args: C.AudioPreviewExportArgs) => call<string>("audio_preview_export", args),
     profiles: () =>
       transport.invoke<C.ProviderEntry[]>("provider_profiles_list"),
     saveProfile: (args: C.SaveProviderArgs) =>

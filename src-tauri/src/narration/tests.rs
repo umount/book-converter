@@ -403,3 +403,104 @@ async fn model_loading_failure_is_visible_and_can_be_retried() {
     assert_eq!(service.engine_view().device, Some(AudioDevice::Cpu));
     service.unload_engine().await.unwrap();
 }
+
+#[cfg(unix)]
+#[tokio::test]
+async fn preview_during_narration_exports_the_heard_sample_without_loading_model() {
+    use base64::{engine::general_purpose::STANDARD, Engine as _};
+    use sha2::{Digest, Sha256};
+    let f = Fixture::new();
+    let service = Narration::new(f.root.join("audio"));
+    let id = uuid::Uuid::new_v4().to_string();
+    let directory = service.project_dir(&f.project).unwrap().join(&id);
+    std::fs::create_dir(&directory).unwrap();
+    let mut view = AudioJobView {
+        id: id.clone(),
+        project_id: f.project.clone(),
+        state: AudioState::Running,
+        voice: "Ryan".into(),
+        device: AudioDevice::Cpu,
+        text: AudioText::Original,
+        language: "Russian".into(),
+        completed_chunks: 0,
+        total_chunks: 2,
+        completed_chapters: 0,
+        total_chapters: 1,
+        current_chapter: "Chapter".into(),
+        error: None,
+        created_at: "1".into(),
+    };
+    let _reservation = service.reserve(&f.project, &id).unwrap();
+    let args = AudioJobArgs {
+        project_id: f.project.clone(),
+        job_id: id.clone(),
+    };
+    write_json(&directory.join("status.json"), &view).unwrap();
+    let runtime = fake_runtime(&f, "exit 1");
+    assert_eq!(
+        service
+            .preview(&f.manager, runtime, &args)
+            .await
+            .unwrap_err()
+            .params["reason"],
+        "audioPreviewUnavailable"
+    );
+    view.completed_chunks = 1;
+    write_json(&directory.join("status.json"), &view).unwrap();
+    // Python tests cover MP3 decoding; this exercises IPC, artifact validation and export.
+    let bytes = b"encoded-sample";
+    std::fs::write(f.root.join("sample.mp3"), bytes).unwrap();
+    write_json(&f.root.join("receipt.json"), &serde_json::json!({
+        "title": "Chapter", "durationSeconds": 12.0, "sha256": format!("{:x}", Sha256::digest(bytes)),
+    })).unwrap();
+    let runtime = fake_runtime(&f, &format!(
+        "cp '{}/sample.mp3' \"$5/audio.mp3\"\ncp '{}/receipt.json' \"$5/preview.json\"\necho '{{\"event\":\"preview\"}}'",
+        f.root.display(), f.root.display()
+    ));
+    let preview = service.preview(&f.manager, runtime, &args).await.unwrap();
+    assert_eq!(
+        preview.audio_url,
+        format!("data:audio/mpeg;base64,{}", STANDARD.encode(bytes))
+    );
+    assert_eq!(service.engine_view().state, AudioEngineState::Unloaded);
+    assert_eq!(service.read_view(&args).unwrap().state, AudioState::Running);
+    let export = AudioPreviewExportArgs {
+        project_id: f.project.clone(),
+        job_id: id,
+        preview_id: preview.preview_id.clone(),
+        destination: f.root.to_string_lossy().into_owned(),
+    };
+    let output = PathBuf::from(service.export_preview(&f.manager, &export).unwrap());
+    assert_eq!(std::fs::read(&output).unwrap(), bytes);
+    assert!(service.export_preview(&f.manager, &export).is_err());
+    assert_eq!(std::fs::read(&output).unwrap(), bytes);
+    std::fs::remove_file(&output).unwrap();
+    assert!(service
+        .export_preview(
+            &f.manager,
+            &AudioPreviewExportArgs {
+                destination: directory.to_string_lossy().into_owned(),
+                ..export.clone()
+            }
+        )
+        .is_err());
+    assert!(service
+        .export_preview(
+            &f.manager,
+            &AudioPreviewExportArgs {
+                preview_id: "../outside".into(),
+                ..export.clone()
+            }
+        )
+        .is_err());
+    std::fs::write(
+        directory
+            .join("previews")
+            .join(preview.preview_id)
+            .join("audio.mp3"),
+        b"corrupt",
+    )
+    .unwrap();
+    assert!(service.export_preview(&f.manager, &export).is_err());
+    assert!(!output.exists());
+}

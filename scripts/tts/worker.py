@@ -10,6 +10,7 @@ import json
 import os
 from pathlib import Path
 import queue
+import re
 import sys
 import threading
 
@@ -71,6 +72,11 @@ def encode_chapter(parts, destination):
     os.replace(temporary, destination)
 
 
+def chapter_fingerprint(request, chapter, model_fingerprint):
+    identity = json.dumps([PIPELINE, model_fingerprint, request["language"], request["voice"], request["device"], chapter], ensure_ascii=False, sort_keys=True)
+    return hashlib.sha256(identity.encode("utf-8")).hexdigest()
+
+
 def narrate(directory, request, synthesize, model_fingerprint, cancelled=lambda: False):
     """synthesize is lazy: finished checkpoints do not need a loaded model."""
     import numpy as np
@@ -87,8 +93,7 @@ def narrate(directory, request, synthesize, model_fingerprint, cancelled=lambda:
         if cancelled():
             emit("paused")
             return
-        identity = json.dumps([PIPELINE, model_fingerprint, request["language"], request["voice"], request["device"], chapter], ensure_ascii=False, sort_keys=True)
-        fingerprint = hashlib.sha256(identity.encode("utf-8")).hexdigest()
+        fingerprint = chapter_fingerprint(request, chapter, model_fingerprint)
         target = audio / f"{chapter_index + 1:05}.mp3"
         receipt = target.with_suffix(".json")
         if cached(target, receipt, fingerprint):
@@ -259,15 +264,84 @@ def report_error(error):
         reason = "audioMemory"
     elif isinstance(error, OSError):
         reason = "audioStorage"
-    if reason not in {"audioCuda", "audioModels", "audioTooLong", "audioOutput", "audioMemory", "audioStorage", "audioVersion"}:
+    if reason not in {"audioCuda", "audioModels", "audioTooLong", "audioOutput", "audioMemory", "audioStorage", "audioVersion", "audioPreviewUnavailable"}:
         reason = "audioWorker"
     emit("error", reason=reason)
+
+
+def preview(directory, destination):
+    """Encode a bounded sample from saved audio without importing or loading Qwen."""
+    import numpy as np
+    import soundfile as sf
+    request = json.loads((directory / "input.json").read_text(encoding="utf-8"))
+    if request["version"] != 1:
+        raise ValueError("audioVersion")
+    specs = json.loads((directory / "model-files.json").read_text(encoding="utf-8"))
+    fingerprint = hashlib.sha256(json.dumps(specs, sort_keys=True).encode()).hexdigest()
+    limit = 24000 * 30
+    # A chapter can finish and replace its PCM checkpoints while preview is read.
+    for _ in range(2):
+        candidates = []
+        for folder in ("chunks", "audio"):
+            parent = directory / folder
+            if parent.is_symlink():
+                raise ValueError("audioStorage")
+            for path in parent.glob("*"):
+                match = re.fullmatch(r"(\d{5,})-(\d{5,})\.pcm", path.name) if folder == "chunks" else re.fullmatch(r"(\d{5,})\.mp3", path.name)
+                if match:
+                    chapter = int(match[1]) - (folder == "audio")
+                    chunk = int(match[2]) if folder == "chunks" else 2**63
+                    if 0 <= chapter < len(request["chapters"]):
+                        candidates.append((chapter, chunk, path))
+        for chapter_index, chunk_index, path in sorted(candidates, reverse=True):
+            chapter = request["chapters"][chapter_index]
+            expected = chapter_fingerprint(request, chapter, fingerprint)
+            if path.suffix == ".pcm":
+                if chunk_index >= len(chapter["chunks"]):
+                    continue
+                expected = hashlib.sha256(f"{expected}:{chunk_index}".encode()).hexdigest()
+            receipt = path.with_suffix(".json")
+            if receipt.is_symlink():
+                raise ValueError("audioStorage")
+            saved = cached(path, receipt, expected)
+            if not saved:
+                continue
+            try:
+                if path.suffix == ".pcm":
+                    if saved.get("rate") != 24000 or path.stat().st_size > 24000 * 160 * 2:
+                        continue
+                    with open(path, "rb") as source:
+                        pcm = source.read(limit * 2)
+                else:
+                    with sf.SoundFile(path) as source:
+                        if source.samplerate != 24000 or source.channels != 1:
+                            continue
+                        source.seek(max(0, len(source) - limit))
+                        samples = source.read(limit, dtype="float32")
+                    pcm = (np.clip(samples, -1, 1) * 32767).astype("<i2").tobytes()
+            except FileNotFoundError:
+                continue
+            if not pcm or len(pcm) % 2:
+                continue
+            intermediate = destination / "sample.pcm"
+            try:
+                intermediate.write_bytes(pcm)
+                output = destination / "audio.mp3"
+                encode_chapter([(intermediate, 24000)], output)
+                atomic_json(destination / "preview.json", {"title": chapter["title"], "durationSeconds": len(pcm) / 48000, "sha256": digest(output)})
+            finally:
+                intermediate.unlink(missing_ok=True)
+            emit("preview")
+            return
+    raise ValueError("audioPreviewUnavailable")
 
 
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--run", type=Path)
     parser.add_argument("--serve", type=Path)
+    parser.add_argument("--preview", type=Path)
+    parser.add_argument("--output", type=Path)
     parser.add_argument("--device", choices=["auto", "cpu", "cuda"], default="auto")
     parser.add_argument("--check", action="store_true")
     parser.add_argument("--parent-pipe", action="store_true")
@@ -291,9 +365,13 @@ def main():
             encoder.silence()
             assert encoder.encode(b"\0\0" * 2400) + encoder.flush()
             emit("ready", version=1, cuda=torch.cuda.is_available())
-        elif args.run or args.serve:
+        elif args.run or args.serve or args.preview:
             try:
-                if args.serve:
+                if args.preview:
+                    if not args.output:
+                        parser.error("--preview requires --output")
+                    preview(args.preview.resolve(), args.output.resolve())
+                elif args.serve:
                     serve(args.serve.resolve(), args.device)
                 else:
                     run(args.run.resolve())
@@ -301,7 +379,7 @@ def main():
                 report_error(error)
                 return 1
         else:
-            parser.error("choose --serve, --run or --check")
+            parser.error("choose --serve, --run, --preview or --check")
     return 0
 
 

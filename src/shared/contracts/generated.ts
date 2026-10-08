@@ -105,5 +105,7 @@ export type AudioLoadArgs = { device: AudioDevice, };
 export type AudioStartArgs = { projectId: ProjectId, selection: EntitySelection, text: AudioText, voice: string, device: AudioDevice, };
 export type AudioJobArgs = { projectId: ProjectId, jobId: string, };
 export type AudioExportArgs = { projectId: ProjectId, jobId: string, destination: string, };
+export type AudioPreviewExportArgs = { projectId: ProjectId, jobId: string, previewId: string, destination: string, };
+export type AudioPreviewView = { previewId: string, title: string, durationSeconds: number, audioUrl: string, };
 export type AudioJobView = { id: string, projectId: ProjectId, state: AudioState, voice: string, device: AudioDevice, text: AudioText, language: string, completedChunks: number, totalChunks: number, completedChapters: number, totalChapters: number, currentChapter: string, error: AppError | null, createdAt: string, };
 export type AudioSetupView = { runtimeReady: boolean, engine: AudioEngineView, downloading: boolean, files: Array<ModelView>, };

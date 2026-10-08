@@ -7,6 +7,7 @@ import type { AudioDevice, AudioSetupView, AudioText, ChapterSummary, EntitySele
 import type { BookEditorSession } from "../../shared/state/editor";
 import type { AudioJobStore } from "../../shared/state/audioJobs";
 import { errorText, type T } from "../../app/strings";
+import { AudioPreviewPlayer } from "../../shared/ui/AudioPreviewPlayer";
 
 const voices = ["Ryan", "Aiden", "Serena", "Vivian", "Uncle_Fu", "Dylan", "Eric", "Ono_Anna", "Sohee"];
 const size = (bytes: number) => `${(bytes / 1_000_000_000).toFixed(2)} GB`;
@@ -137,6 +138,7 @@ export function BookNarration({ project, chapters, session, t, audio, onAudioJob
               if (typeof destination === "string") { const path = await api.audioExport({ projectId: project.id, jobId: job.id, destination }); if (alive.current) setExported(path); }
             })}>{t("audioSave")}</button>}
         </div>
+        <AudioPreviewPlayer job={job} t={t} />
       </article>)}
     </section>
     {exported && <p className="bc-success" role="status">{t("audioSaved")} <button onClick={() => void act(() => openPath(exported))}>{t("audioOpenFolder")}</button></p>}

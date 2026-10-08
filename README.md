@@ -25,6 +25,8 @@ Create audiobooks locally with Qwen3-TTS in the **Narration** tab. Choose the
 original or translation, chapters and a preset voice; pause and resume generation,
 then export chapter MP3s with a playlist. Load the model once and keep it in memory
 for subsequent jobs. Audio progress and controls also appear in Jobs.
+Listen to saved fragments in the inline player before a chapter finishes; saving
+the sample as MP3 is optional.
 See [Narration](docs/NARRATION.md) for
 model downloads, supported languages and CPU/CUDA setup.
 

@@ -1,4 +1,5 @@
 import { ToolbarIcon } from "../shared/ui/ToolbarIcon";
+import { AudioPreviewPlayer } from "../shared/ui/AudioPreviewPlayer";
 import type { AudioJobArgs, AudioJobView, JobRef, JobView, ProjectSummary, } from "../shared/contracts/generated";
 import { errorText, type T } from "./strings";
 function remainingTime(seconds: number, t: T): string {
@@ -141,5 +142,6 @@ function AudioJobRow({ job, t, busy, audioRunning, pause, resume, openNarration 
         <span className="bc-hint">{t("audioProgress")}: {job.completedChunks}/{job.totalChunks}</span>
       </div>
       {job.error && <span className="bc-error">{errorText(job.error, t)}</span>}
+      <AudioPreviewPlayer job={job} t={t} />
     </div>;
 }

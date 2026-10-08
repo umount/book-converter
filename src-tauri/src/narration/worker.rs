@@ -104,6 +104,48 @@ impl Runtime {
         command.creation_flags(0x08000000);
         command
     }
+    pub(super) async fn preview(
+        &self,
+        lease: &ProjectLease,
+        directory: &Path,
+        output: &Path,
+    ) -> Result<(), AppError> {
+        let mut child = self
+            .command()
+            .arg("--parent-pipe")
+            .arg("--preview")
+            .arg(directory)
+            .arg("--output")
+            .arg(output)
+            .spawn()
+            .map_err(|_| failure("audioRuntime"))?;
+        // Keep the parent pipe open while wait_with_output owns the child.
+        let _input = child.stdin.take();
+        let wait = child.wait_with_output();
+        tokio::pin!(wait);
+        let mut interval = tokio::time::interval(std::time::Duration::from_millis(100));
+        let result = loop {
+            tokio::select! {
+                result = &mut wait => break result.map_err(io_error)?,
+                _ = interval.tick() => {
+                    if lease.cancelled() { return Err(failure("audioPreviewUnavailable")); }
+                }
+            }
+        };
+        for line in result.stdout.split(|b| *b == b'\n') {
+            if let Ok(event) = serde_json::from_slice::<serde_json::Value>(line) {
+                if event["event"] == "error" {
+                    return Err(worker_error(
+                        event["reason"].as_str().unwrap_or("audioWorker"),
+                    ));
+                }
+                if event["event"] == "preview" && result.status.success() {
+                    return Ok(());
+                }
+            }
+        }
+        Err(failure("audioWorker"))
+    }
 }
 #[derive(Deserialize)]
 #[serde(tag = "event", rename_all = "snake_case")]
@@ -125,6 +167,7 @@ fn worker_error(reason: &str) -> AppError {
         "audioMemory",
         "audioStorage",
         "audioVersion",
+        "audioPreviewUnavailable",
     ];
     failure(if allowed.contains(&reason) {
         reason

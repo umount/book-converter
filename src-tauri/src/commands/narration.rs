@@ -120,3 +120,27 @@ pub async fn audio_export(
         .await
         .map_err(|_| crate::narration::failure("audioStorage"))?
 }
+
+#[tauri::command]
+pub async fn audio_preview(
+    app: tauri::AppHandle,
+    context: tauri::State<'_, AppContext>,
+    args: AudioJobArgs,
+) -> Result<AudioPreviewView, AppError> {
+    context
+        .narration
+        .preview(&context.manager, runtime(&app).await?, &args)
+        .await
+}
+
+#[tauri::command]
+pub async fn audio_preview_export(
+    context: tauri::State<'_, AppContext>,
+    args: AudioPreviewExportArgs,
+) -> Result<String, AppError> {
+    let service = context.narration.clone();
+    let manager = context.manager.clone();
+    tokio::task::spawn_blocking(move || service.export_preview(&manager, &args))
+        .await
+        .map_err(|_| crate::narration::failure("audioStorage"))?
+}

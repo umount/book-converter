@@ -1686,3 +1686,7 @@ button + button {
 .bc-volume-group { display: flex; height: 30px; align-items: stretch; }
 .bc-volume-group .bc-volume-row { flex: 1; min-width: 0; }
 .bc-chapters .bc-volume-edit { display: flex; align-items: center; justify-content: center; width: 28px; flex: 0 0 28px; padding: 0; }
+
+.bc-audio-preview { display: grid; gap: 8px; margin-top: 12px; }
+.bc-audio-preview p { margin: 0; }
+.bc-audio-preview audio { display: block; width: 100%; min-width: 0; height: 36px; }

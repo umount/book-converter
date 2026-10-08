@@ -120,6 +120,10 @@ export async function invokePreview<T>(command: string, raw?: Record<string, unk
             return structuredClone(audioJobs.filter(j => j.projectId === args.projectId)) as T;
         }
         case "audio_models_download": case "audio_models_pause": return null as T;
+        case "audio_preview": return {
+            previewId: "preview-sample", title: "Глава 1. Утро · демо озвучки",
+            durationSeconds: 12.312, audioUrl: new URL("./fixtures/narration.mp3", import.meta.url).href,
+        } as T;
         case "audio_start": {
             audioEngine = { state: "ready", device: args.device === "cuda" ? "cuda" : "cpu", error: null };
             const job: AudioJobView = { ...audioJobs[0], projectId: args.projectId, id: `preview-audio-${audioJobs.length}`, voice: args.voice, text: args.text, device: args.device, state: "running", completedChunks: 0, totalChunks: 12, completedChapters: 0, totalChapters: 1, currentChapter: "Последний паром", createdAt: String(Date.now()) };

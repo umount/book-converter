@@ -53,8 +53,25 @@ folder to the chosen directory, containing `00001.mp3`, `00002.mp3`, etc. and a
 `book.m3u8` playlist with chapter names. Numbering starts at 1 within the audio job,
 including when only a range of book chapters was selected. Existing folders are
 never overwritten; choose another parent directory to export the same job again.
-Incomplete jobs cannot be exported. Open the exported MP3s or playlist in an audio
+Whole-book export requires a completed job. Open the exported MP3s or playlist in an audio
 player; the Narration tab provides an **Open folder** button.
+
+## Listen before a chapter finishes
+
+Press **Listen** in an audio job in **Jobs** or **Narration**. As soon as the first
+fragment is saved, an inline player can play it without downloading a file or waiting
+for the whole chapter. Playback works while generating, paused or after completion.
+The player has its own play/pause and seek controls, independent of the narration job.
+
+The sample contains up to 30 seconds from the latest saved fragment, or the end of
+the latest completed chapter if its fragment checkpoints have already been removed.
+Press **Latest fragment** to refresh it as narration advances. The currently playing
+sample stays unchanged when progress updates. Sample preparation reads saved audio;
+it does not load the speech model or synthesize text again.
+
+**Save fragment as MP3** optionally writes that exact sample to a selected folder as
+`fragment-<job-id-prefix>-<preview-id-prefix>.mp3`. Samples are kept with the audio job
+and are removed when its project is deleted. Existing exported files are not overwritten.
 
 ## Devices and recovery
 

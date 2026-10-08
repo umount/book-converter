@@ -68,6 +68,22 @@ pub struct AudioExportArgs {
     pub destination: String,
 }
 #[derive(Clone, Debug, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct AudioPreviewExportArgs {
+    pub project_id: ProjectId,
+    pub job_id: String,
+    pub preview_id: String,
+    pub destination: String,
+}
+#[derive(Clone, Debug, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+pub struct AudioPreviewView {
+    pub preview_id: String,
+    pub title: String,
+    pub duration_seconds: f64,
+    pub audio_url: String,
+}
+#[derive(Clone, Debug, Serialize, Deserialize, TS)]
 #[serde(rename_all = "camelCase")]
 pub struct AudioJobView {
     pub id: String,
@@ -105,6 +121,8 @@ pub fn typescript() -> String {
         AudioStartArgs::decl(&c),
         AudioJobArgs::decl(&c),
         AudioExportArgs::decl(&c),
+        AudioPreviewExportArgs::decl(&c),
+        AudioPreviewView::decl(&c),
         AudioJobView::decl(&c),
         AudioSetupView::decl(&c),
     ]
