@@ -31,8 +31,8 @@ export default defineConfig({
     port: 1420,
     strictPort: true,
     watch: {
-      // Don't watch the Rust side — Tauri rebuilds it.
-      ignored: ["**/src-tauri/**"],
+      // Tauri rebuilds Rust; generated model/runtime caches must not reload the UI.
+      ignored: ["**/src-tauri/**", "**/.cache/**"],
     },
   },
 });
