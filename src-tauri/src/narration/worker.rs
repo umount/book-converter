@@ -26,6 +26,38 @@ impl Runtime {
         Self::locate(resources, false).is_ok()
     }
     fn locate(resources: &Path, verify_contents: bool) -> Result<Self, AppError> {
+        Self::locate_with_source(
+            resources,
+            verify_contents,
+            cfg!(debug_assertions).then(|| Path::new(env!("CARGO_MANIFEST_DIR")).parent().unwrap()),
+        )
+    }
+    fn locate_with_source(
+        resources: &Path,
+        verify_contents: bool,
+        source: Option<&Path>,
+    ) -> Result<Self, AppError> {
+        // Development always runs the current worker source, even if an older pack exists.
+        if let Some(root) = source {
+            let executable = root.join(if cfg!(windows) {
+                ".cache/tts-venv/Scripts/python.exe"
+            } else {
+                ".cache/tts-venv/bin/python"
+            });
+            let script = root.join("scripts/tts/worker.py");
+            if executable.is_file()
+                && root.join(".cache/tts-venv/ready.json").is_file()
+                && script.is_file()
+            {
+                return Ok(Self {
+                    executable,
+                    script: Some(script),
+                });
+            }
+        }
+        Self::locate_pack(resources, verify_contents)
+    }
+    pub(super) fn locate_pack(resources: &Path, verify_contents: bool) -> Result<Self, AppError> {
         let name = if cfg!(windows) {
             "book-tts.exe"
         } else {
@@ -63,24 +95,6 @@ impl Runtime {
                 return Ok(Self {
                     executable,
                     script: None,
-                });
-            }
-        }
-        if cfg!(debug_assertions) {
-            let root = Path::new(env!("CARGO_MANIFEST_DIR")).parent().unwrap();
-            let executable = root.join(if cfg!(windows) {
-                ".cache/tts-venv/Scripts/python.exe"
-            } else {
-                ".cache/tts-venv/bin/python"
-            });
-            let script = root.join("scripts/tts/worker.py");
-            if executable.is_file()
-                && root.join(".cache/tts-venv/ready.json").is_file()
-                && script.is_file()
-            {
-                return Ok(Self {
-                    executable,
-                    script: Some(script),
                 });
             }
         }
@@ -147,6 +161,7 @@ impl Runtime {
         Err(failure("audioWorker"))
     }
 }
+
 #[derive(Deserialize)]
 #[serde(tag = "event", rename_all = "snake_case")]
 enum Progress {
@@ -487,5 +502,41 @@ async fn execute(
                 write_json(&directory.join("status.json"), view)?;
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod runtime_tests {
+    use super::*;
+
+    #[test]
+    fn prepared_source_takes_precedence_over_an_obsolete_frozen_pack() {
+        let root = std::env::temp_dir().join(format!("audio-runtime-{}", uuid::Uuid::new_v4()));
+        let python = root.join(if cfg!(windows) {
+            ".cache/tts-venv/Scripts/python.exe"
+        } else {
+            ".cache/tts-venv/bin/python"
+        });
+        let script = root.join("scripts/tts/worker.py");
+        let frozen = root.join("tts-runtime").join(if cfg!(windows) {
+            "book-tts.exe"
+        } else {
+            "book-tts"
+        });
+        for file in [
+            &python,
+            &script,
+            &frozen,
+            &root.join(".cache/tts-venv/ready.json"),
+        ] {
+            std::fs::create_dir_all(file.parent().unwrap()).unwrap();
+            std::fs::write(file, "test").unwrap();
+        }
+        let runtime = Runtime::locate_with_source(&root, true, Some(&root)).unwrap();
+        assert_eq!(runtime.executable, python);
+        assert_eq!(runtime.script, Some(script));
+        // A release-style lookup must still validate a pack; source is never used.
+        assert!(Runtime::locate_with_source(&root, true, None).is_err());
+        std::fs::remove_dir_all(root).unwrap();
     }
 }

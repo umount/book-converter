@@ -193,8 +193,8 @@ fn runtime_availability_does_not_bypass_integrity_at_job_admission() {
         }),
     )
     .unwrap();
-    assert!(Runtime::is_available(&f.root));
-    assert!(Runtime::discover(&f.root).is_err());
+    assert!(Runtime::locate_pack(&f.root, false).is_ok());
+    assert!(Runtime::locate_pack(&f.root, true).is_err());
 }
 
 #[cfg(unix)]

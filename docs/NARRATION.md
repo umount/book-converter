@@ -146,9 +146,10 @@ the application. Allow several GB of free space for dependencies and build copie
 in addition to the model and generated audio. The first build downloads large
 dependencies; subsequent builds reuse the matching runtime pack.
 
-Runtime discovery prefers a frozen `tts-runtime/` pack over the development virtual
-environment. After changing the Python worker, rebuild an existing pack with
-`npm run tts:bundle` so native development runs pick up the updated worker.
+Debug builds prefer the prepared development virtual environment and current worker
+source, so an older frozen pack cannot hide Python changes. Without that environment,
+they fall back to the packaged runtime. Release builds use the frozen `tts-runtime/`
+pack; rebuild it with `npm run tts:bundle` after changing the worker.
 
 For an NVIDIA runtime, preserve the CUDA option through the Tauri build hook:
 

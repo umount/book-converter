@@ -282,7 +282,8 @@ reuses the snapshot and verified audio rather than applying translation fingerpr
 sizes and SHA-256 hashes. Loading the engine materializes the expected model layout
 with hard links where possible and copies otherwise. The runtime validates the frozen
 executable at admission; the Python worker rechecks model files and loads them in
-offline mode. Debug builds can fall back to the prepared development virtual environment.
+offline mode. Debug builds prefer the prepared development virtual environment and
+current worker source; release builds use the verified frozen runtime.
 
 `audio_engine_load` explicitly prepares the model; starting a job can also load it on
 demand. `audio_setup` reports unloaded/loading/ready/failed state and the actual device.
