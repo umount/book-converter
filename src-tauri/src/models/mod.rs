@@ -161,7 +161,7 @@ impl ModelManager {
     pub fn new(root: PathBuf) -> Self {
         Self::with_catalog(root, catalog::catalog())
     }
-    fn with_catalog(root: PathBuf, specs: Vec<ModelSpec>) -> Self {
+    pub(crate) fn with_catalog(root: PathBuf, specs: Vec<ModelSpec>) -> Self {
         Self {
             root,
             initialized: OnceCell::new(),

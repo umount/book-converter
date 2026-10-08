@@ -170,3 +170,106 @@ fn one_runtime_reservation_covers_all_projects() {
         .unwrap();
     assert!(*cancel.borrow());
 }
+
+#[cfg(unix)]
+fn fake_runtime(f: &Fixture, body: &str) -> Runtime {
+    use std::os::unix::fs::PermissionsExt;
+    let executable = f.root.join("test-worker");
+    std::fs::write(&executable, format!("#!/bin/sh\n{body}\n")).unwrap();
+    std::fs::set_permissions(&executable, std::fs::Permissions::from_mode(0o700)).unwrap();
+    Runtime::for_test(executable)
+}
+
+#[cfg(unix)]
+async fn wait_until(check: impl Fn() -> bool) {
+    tokio::time::timeout(std::time::Duration::from_secs(5), async {
+        while !check() {
+            tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+        }
+    })
+    .await
+    .expect("worker did not settle");
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn pause_resume_and_project_deletion_release_the_worker_lease() {
+    let f = Fixture::new();
+    let manager = Arc::new(ProjectManager::new(f.root.join("app")));
+    let models = Arc::new(ModelManager::with_catalog(f.root.join("models"), vec![]));
+    let service = Arc::new(Narration::new(f.root.join("audio")));
+    let runtime = fake_runtime(&f, "echo $$ > \"$3/started\"\nexec sleep 30");
+    let job = service
+        .start(manager.clone(), models.clone(), runtime, f.args())
+        .await
+        .unwrap();
+    let args = AudioJobArgs {
+        project_id: f.project.clone(),
+        job_id: job.id.clone(),
+    };
+    let dir = service.directory(&args).unwrap();
+    wait_until(|| dir.join("started").is_file()).await;
+    service.cancel(&args).unwrap();
+    wait_until(|| service.list(&f.project).unwrap()[0].state == AudioState::Paused).await;
+    let snapshot = std::fs::read(dir.join("input.json")).unwrap();
+    std::fs::remove_file(dir.join("started")).unwrap();
+    let resumed = service
+        .resume(
+            manager.clone(),
+            models,
+            Runtime::for_test(f.root.join("test-worker")),
+            args,
+        )
+        .await
+        .unwrap();
+    assert_eq!(resumed.id, job.id);
+    wait_until(|| dir.join("started").is_file()).await;
+    assert_eq!(std::fs::read(dir.join("input.json")).unwrap(), snapshot);
+    #[cfg(target_os = "linux")]
+    let pid = std::fs::read_to_string(dir.join("started")).unwrap();
+    let project = f.project.clone();
+    tokio::time::timeout(
+        std::time::Duration::from_secs(5),
+        tokio::task::spawn_blocking(move || manager.delete(&project)),
+    )
+    .await
+    .unwrap()
+    .unwrap()
+    .unwrap();
+    assert_eq!(
+        service.list(&f.project).unwrap()[0].state,
+        AudioState::Paused
+    );
+    assert!(service.active.lock().unwrap().is_none());
+    #[cfg(target_os = "linux")]
+    assert!(!Path::new("/proc").join(pid.trim()).exists());
+    service.remove_project(&f.project).unwrap();
+    assert!(!dir.exists());
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn invalid_worker_progress_fails_the_job_and_releases_admission() {
+    let f = Fixture::new();
+    let manager = Arc::new(ProjectManager::new(f.root.join("app")));
+    let models = Arc::new(ModelManager::with_catalog(f.root.join("models"), vec![]));
+    let service = Arc::new(Narration::new(f.root.join("audio")));
+    let runtime = fake_runtime(
+        &f,
+        "echo '{\"event\":\"chunk\",\"completed\":999999,\"chapter\":\"invalid\"}'",
+    );
+    service
+        .start(manager, models, runtime, f.args())
+        .await
+        .unwrap();
+    wait_until(|| service.list(&f.project).unwrap()[0].state == AudioState::Failed).await;
+    assert_eq!(
+        service.list(&f.project).unwrap()[0]
+            .error
+            .as_ref()
+            .unwrap()
+            .params["reason"],
+        "audioWorker"
+    );
+    assert!(service.active.lock().unwrap().is_none());
+}

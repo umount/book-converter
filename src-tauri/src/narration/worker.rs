@@ -11,6 +11,13 @@ pub struct Runtime {
     script: Option<PathBuf>,
 }
 impl Runtime {
+    #[cfg(all(test, unix))]
+    pub(super) fn for_test(executable: PathBuf) -> Self {
+        Self {
+            executable,
+            script: None,
+        }
+    }
     pub fn discover(resources: &Path) -> Result<Self, AppError> {
         let name = if cfg!(windows) {
             "book-tts.exe"

@@ -100,10 +100,20 @@ runtime. Runtime preparation and the frozen executable both run a dependency and
 MP3 encoder self-check. The frozen self-check does not load model weights or prove
 speech quality. A real model smoke test must be run separately.
 
-For isolated manual testing, the `prepare_narration` Rust example downloads and
-verifies models into explicitly supplied directories. A worker job directory needs
-`input.json`, `model-files.json` and the materialized `model/` files. These are
-internal versioned formats, not a public document format.
+For isolated manual testing, the examples use explicitly supplied directories:
+
+```bash
+cargo run --manifest-path src-tauri/Cargo.toml --example prepare_narration -- \
+  /tmp/tts-models /tmp/tts-materialized
+cargo run --manifest-path src-tauri/Cargo.toml --example narrate_sample -- \
+  /tmp/tts-app /tmp/tts-models /absolute/path/to/book-converter/src-tauri \
+  /absolute/path/to/short-russian-sample.txt /tmp/tts-export
+```
+
+Create the export directory first and prepare the runtime. `narrate_sample` imports
+the supplied text into a new isolated project, narrates the original with Ryan on
+CPU, checks completion and exports the MP3 and playlist using the application
+services. It runs real synthesis and is not part of the fast automated suite.
 
 Upstream references: [Qwen3-TTS](https://github.com/QwenLM/Qwen3-TTS),
 [0.6B CustomVoice model](https://huggingface.co/Qwen/Qwen3-TTS-12Hz-0.6B-CustomVoice).
