@@ -115,8 +115,9 @@ be reconstructed retrospectively.
 
 The **Narration** tab creates local MP3 audiobooks from the original or saved
 translation. Select a chapter, a range or the whole book, choose a preset voice,
-and start generation after downloading the model. Audio jobs have their own progress,
-pause and resume controls in this tab. Translation and narration can run independently.
+and start generation after downloading the model. Audio jobs show progress and
+pause/resume controls in both this tab and the shared Jobs panel. Translation and
+narration can run independently.
 
 Narration uses a saved text snapshot; later edits apply only to new audio jobs.
 For translated audio, all text blocks and titles in the selected text chapters must

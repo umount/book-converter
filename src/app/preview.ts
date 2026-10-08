@@ -104,19 +104,30 @@ export async function invokePreview<T>(command: string, raw?: Record<string, unk
     let result: unknown;
     switch (command) {
         case "audio_setup": return { runtimeReady: true, downloading: false, files: [{ model: { id: "preview-qwen", name: "Qwen3-TTS 0.6B", repository: "Qwen/Qwen3-TTS-12Hz-0.6B-CustomVoice", revision: "preview", filename: "model.safetensors", sha256: "preview", bytes: 2498383610, license: "Apache-2.0", experimental: true }, status: "downloaded", downloadedBytes: 2498383610, failure: null }] } as T;
-        case "audio_list": return [...audioJobs] as T;
+        case "audio_list": {
+            for (const job of audioJobs.filter(j => j.projectId === args.projectId && j.state === "running")) {
+                job.completedChunks = Math.min(job.totalChunks, job.completedChunks + 1);
+                job.completedChapters = Math.floor(job.completedChunks / job.totalChunks * job.totalChapters);
+                if (job.completedChunks === job.totalChunks) job.state = "succeeded";
+            }
+            return structuredClone(audioJobs.filter(j => j.projectId === args.projectId)) as T;
+        }
         case "audio_models_download": case "audio_models_pause": return null as T;
         case "audio_start": {
-            const job: AudioJobView = { ...audioJobs[0], id: `preview-audio-${audioJobs.length}`, voice: args.voice, text: args.text, device: args.device, state: "succeeded", completedChunks: 5, totalChunks: 5, completedChapters: 1, totalChapters: 1, currentChapter: "Последний паром", createdAt: String(Date.now()) };
+            const job: AudioJobView = { ...audioJobs[0], projectId: args.projectId, id: `preview-audio-${audioJobs.length}`, voice: args.voice, text: args.text, device: args.device, state: "running", completedChunks: 0, totalChunks: 12, completedChapters: 0, totalChapters: 1, currentChapter: "Последний паром", createdAt: String(Date.now()) };
             audioJobs.unshift(job);
-            return job as T;
+            return structuredClone(job) as T;
         }
         case "audio_resume": {
             const job = audioJobs.find(j => j.id === args.jobId)!;
-            job.state = "succeeded"; job.completedChapters = job.totalChapters; job.completedChunks = job.totalChunks;
-            return job as T;
+            job.state = "running";
+            return structuredClone(job) as T;
         }
-        case "audio_cancel": return null as T;
+        case "audio_cancel": {
+            const job = audioJobs.find(j => j.projectId === args.projectId && j.id === args.jobId);
+            if (job?.state === "running") job.state = "paused";
+            return null as T;
+        }
         case "book_get_volume": return (volumeTitles.get(args.source) ?? { source: args.source, title: "", revision: "0" }) as T;
         case "book_translate_volume": return (args.source === "第1集" ? "Том 1" : "Часть 2 · Том 7") as T;
         case "book_save_volume": {

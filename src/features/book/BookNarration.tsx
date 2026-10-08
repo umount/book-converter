@@ -3,17 +3,19 @@ import { open } from "@tauri-apps/plugin-dialog";
 import { openPath } from "@tauri-apps/plugin-opener";
 import { projectApi as api } from "../../shared/api/projects";
 import { previewMode } from "../../shared/api/desktop";
-import type { AudioDevice, AudioJobView, AudioSetupView, AudioText, ChapterSummary, EntitySelection, ProjectDescriptor } from "../../shared/contracts/generated";
+import type { AudioDevice, AudioSetupView, AudioText, ChapterSummary, EntitySelection, ProjectDescriptor } from "../../shared/contracts/generated";
 import type { BookEditorSession } from "../../shared/state/editor";
+import type { AudioJobStore } from "../../shared/state/audioJobs";
 import { errorText, type T } from "../../app/strings";
 
 const voices = ["Ryan", "Aiden", "Serena", "Vivian", "Uncle_Fu", "Dylan", "Eric", "Ono_Anna", "Sohee"];
 const size = (bytes: number) => `${(bytes / 1_000_000_000).toFixed(2)} GB`;
-export function BookNarration({ project, chapters, session, t }: {
+export function BookNarration({ project, chapters, session, t, audio, onAudioJob }: {
   project: ProjectDescriptor; chapters: ChapterSummary[]; session: BookEditorSession | null; t: T;
+  audio: AudioJobStore; onAudioJob: () => void;
 }) {
   const [setup, setSetup] = useState<AudioSetupView | null>(null);
-  const [jobs, setJobs] = useState<AudioJobView[]>([]);
+  const jobs = audio.list(project.id, true);
   const [voice, setVoice] = useState("Ryan"), [device, setDevice] = useState<AudioDevice>("auto");
   const [text, setText] = useState<AudioText>("translation");
   const [scope, setScope] = useState(session ? "chapter" : "all");
@@ -27,8 +29,8 @@ export function BookNarration({ project, chapters, session, t }: {
     let timer: ReturnType<typeof setTimeout>;
     async function poll() {
       try {
-        const [nextSetup, nextJobs] = await Promise.all([api.audioSetup(), api.audioList({ projectId: project.id })]);
-        if (!disposed) { setSetup(nextSetup); setJobs(nextJobs); }
+        const nextSetup = await api.audioSetup();
+        if (!disposed) setSetup(nextSetup);
       } catch (e) { if (!disposed) setError(e); }
       finally { if (!disposed) timer = setTimeout(() => void poll(), 1500); }
     }
@@ -46,7 +48,7 @@ export function BookNarration({ project, chapters, session, t }: {
   const downloaded = setup?.files.reduce((sum, f) => sum + f.downloadedBytes, 0) ?? 0;
   const total = setup?.files.reduce((sum, f) => sum + f.model.bytes, 0) ?? 1;
   const failed = setup?.files.find(f => f.failure);
-  const running = jobs.some(j => j.state === "running");
+  const running = audio.running();
   const chapterId = session?.snapshot().view.chapter.id;
   const validRange = chapters.findIndex(c => c.id === first) >= 0 && chapters.findIndex(c => c.id === first) <= chapters.findIndex(c => c.id === last);
   async function start() {
@@ -54,8 +56,8 @@ export function BookNarration({ project, chapters, session, t }: {
     let selection: EntitySelection = { kind: "all" };
     if (scope === "chapter") { if (!chapterId) return; selection = { kind: "explicit_ids", ids: [chapterId] }; }
     if (scope === "range") selection = { kind: "range", first, last };
-    const job = await api.audioStart({ projectId: project.id, selection, voice, text, device });
-    if (alive.current) setJobs(previous => [job, ...previous.filter(j => j.id !== job.id)]);
+    await audio.start({ projectId: project.id, selection, voice, text, device });
+    onAudioJob();
   }
   return <div className="bc-tool bc-narration">
     <div className="bc-audio-heading"><h2>{t("narration")}</h2><span className="bc-audio-format">MP3 · 128 kbps</span></div>
@@ -104,8 +106,8 @@ export function BookNarration({ project, chapters, session, t }: {
         <p className="bc-audio-current" role="status">{job.currentChapter || t("audioPreparing")} <span className="bc-hint">{job.completedChunks} / {job.totalChunks}</span></p>
         {job.error && <p className="bc-error" role="alert">{errorText(job.error, t)}</p>}
         <div className="bc-toolbar">
-          {job.state === "running" ? <button disabled={busy} onClick={() => void act(() => api.audioCancel({ projectId: project.id, jobId: job.id }))}>{t("audioPause")}</button>
-            : job.state !== "succeeded" ? <button disabled={busy || running || !ready || !setup?.runtimeReady} onClick={() => void act(async () => { const next = await api.audioResume({ projectId: project.id, jobId: job.id }); if (alive.current) setJobs(all => all.map(j => j.id === next.id ? next : j)); })}>{t("audioResume")}</button>
+          {job.state === "running" ? <button disabled={busy} onClick={() => void act(() => audio.pause({ projectId: project.id, jobId: job.id }))}>{t("audioPause")}</button>
+            : job.state !== "succeeded" ? <button disabled={busy || running || !ready || !setup?.runtimeReady} onClick={() => void act(async () => { await audio.resume({ projectId: project.id, jobId: job.id }); onAudioJob(); })}>{t("audioResume")}</button>
             : <button disabled={busy || previewMode} onClick={() => void act(async () => {
               const destination = await open({ directory: true, multiple: false });
               if (typeof destination === "string") { const path = await api.audioExport({ projectId: project.id, jobId: job.id, destination }); if (alive.current) setExported(path); }

@@ -100,9 +100,14 @@ initial job listing, reads updated jobs on events, and rejects older revisions.
 It does not continuously poll unchanged jobs. UI preferences and selected locations
 can live in local storage; persisted project content remains authoritative in SQLite.
 
-Narration uses separate `audio_*` commands and JSON-backed job views. While mounted,
-`BookNarration` polls setup and audio job status every 1.5 seconds after the previous
-request completes. These jobs do not pass through `JobStore` or `project-event`.
+Narration uses separate `audio_*` commands and JSON-backed job views. `AudioJobStore`
+polls known projects every 1.5 seconds after the previous request completes, independent
+of the visible tab, and supplies both Narration and the shared Jobs panel. Start/resume
+responses invalidate older reads; removed projects and disposed stores reject late
+responses. Clearing stopped audio jobs hides their current status locally without
+deleting checkpoints; changed or explicitly resumed jobs reappear. `BookNarration`
+polls model setup while mounted. Audio jobs do not pass through `JobStore` or
+`project-event`.
 
 Shared modal windows keep their header/footer outside the scrolling body. Jobs uses
 one fixed header/progress area and a scrolling list with active work first.

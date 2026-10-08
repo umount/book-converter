@@ -11,6 +11,7 @@ import type {
 } from "../../shared/contracts/generated";
 import { errorText, type T } from "../../app/strings";
 import type { BookEditorSession } from "../../shared/state/editor";
+import type { AudioJobStore } from "../../shared/state/audioJobs";
 export type BookTool = "overview" | "reference" | "narration";
 export function BookTools(props: Parameters<typeof Tools>[0]) {
   if (props.tool === "narration") return <BookNarration {...props} />;
@@ -30,6 +31,8 @@ function Tools({
   registerFlush,
   updateReferenceGlossary,
 }: {
+  audio: AudioJobStore;
+  onAudioJob: () => void;
   updateReferenceGlossary: (ids: string[]) => Promise<void>;
   metadataRevision: string;
   translationControls: import("react").ReactNode;

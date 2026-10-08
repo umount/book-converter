@@ -10,6 +10,7 @@ import { open } from "@tauri-apps/plugin-dialog";
 import { projectApi as api } from "../shared/api/projects";
 import { WorkspaceStore } from "../shared/state/workspace";
 import { JobStore } from "../shared/state/jobs";
+import { AudioJobStore } from "../shared/state/audioJobs";
 import { BookEditorSession } from "../shared/state/editor";
 import type { ProjectSummary } from "../shared/contracts/generated";
 import { VirtualList } from "../shared/ui/VirtualList";
@@ -39,6 +40,7 @@ const lastChaptersKey = previewMode
 type Runtime = {
     workspace: WorkspaceStore;
     jobs: JobStore;
+    audio: AudioJobStore;
 };
 export default function AppShell() {
     const [runtime, setRuntime] = useState<Runtime | null>(null), [error, setError] = useState<unknown>(null);
@@ -46,24 +48,30 @@ export default function AppShell() {
         const value = {
             workspace: new WorkspaceStore(api),
             jobs: new JobStore(api, setError),
+            audio: new AudioJobStore(api, setError),
         };
         setRuntime(value);
         return () => {
             value.workspace.dispose();
             value.jobs.dispose();
+            value.audio.dispose();
         };
     }, []);
     return runtime ? (<Shell runtime={runtime} initialError={error} dismissInitialError={() => setError(null)}/>) : null;
 }
-function Shell({ runtime: { workspace, jobs }, initialError, dismissInitialError, }: {
+function Shell({ runtime: { workspace, jobs, audio }, initialError, dismissInitialError, }: {
     runtime: Runtime;
     initialError: unknown;
     dismissInitialError: () => void;
 }) {
     const state = useSyncExternalStore(workspace.subscribe, workspace.snapshot);
+    useSyncExternalStore(audio.subscribe, audio.snapshot);
     const [lang, setLang] = useState(() => normalizeLang(previewMode ? "ru" : localStorage.getItem(LS_LANG))), t = translator(lang);
     const confirmation = useConfirm(t);
     const [catalog, setCatalog] = useState<ProjectSummary[]>([]), [library, setLibrary] = useState(true), [create, setCreate] = useState(false), [settings, setSettings] = useState(false);
+    useEffect(() => {
+        audio.setProjects(catalog.map(project => project.descriptor.id));
+    }, [audio, catalog]);
     const [panel, setPanel] = useState<"reader" | "glossary" | BookTool>("reader"), [filter, setFilter] = useState(""), [showJobs, setShowJobs] = useState(false), [force, setForce] = useState(false), [batchSizes, setBatchSizes] = useState<Record<string, string>>(() => {
         try {
             return JSON.parse(localStorage.getItem("bc.batchSizes") || "{}") || {};
@@ -407,6 +415,7 @@ function Shell({ runtime: { workspace, jobs }, initialError, dismissInitialError
         setShowJobs(true);
     }
     const project = state.project, jobList = project && !library ? jobs.list(project.id) : [];
+    const audioJobList = project && !library ? audio.list(project.id) : [];
     const translationRunning = jobList.some((job) => job.job.projectId === project?.id &&
         job.kind === "book_translation" &&
         ["queued", "running", "cancelling"].includes(job.state));
@@ -502,7 +511,7 @@ function Shell({ runtime: { workspace, jobs }, initialError, dismissInitialError
         <button onClick={() => setSettings(true)}>{t("settings")}</button>
         <button className="bc-jobs-toggle" disabled={library || !project} onClick={() => setShowJobs(!showJobs)} aria-pressed={showJobs}>
           {t("jobs")}
-          {jobList.some((j) => j.state === "running") && (<span className="bc-activity-dot"/>)}
+          {(jobList.some((j) => j.state === "running") || audioJobList.some(j => j.state === "running")) && (<span className="bc-activity-dot"/>)}
         </button>
         {!library && (<button aria-pressed={showAssistant} onClick={() => setShowAssistant((v) => !v)}>
             {t("assistant")}
@@ -537,7 +546,7 @@ function Shell({ runtime: { workspace, jobs }, initialError, dismissInitialError
                     }}>
                       <span className={jobs
                         .list(item.id)
-                        .some((j) => ["running", "queued"].includes(j.state))
+                        .some((j) => ["running", "queued"].includes(j.state)) || audio.list(item.id).some(j => j.state === "running")
                         ? "bc-project-dot running"
                         : "bc-project-dot"}/>
                       <span>{item.name}</span>
@@ -743,7 +752,7 @@ function Shell({ runtime: { workspace, jobs }, initialError, dismissInitialError
                           <span className="bc-hint">{t("automaticGlossary")}</span>
                           <span className="bc-hint">{t("batchHint")}</span>
                         </div>
-                      </section>} tool={panel} updateReferenceGlossary={updateReferenceGlossary} registerFlush={registerFlush} project={project} chapters={state.chapters} session={editor} t={t} run={run} metadataRevision={jobList
+                      </section>} tool={panel} audio={audio} onAudioJob={() => setShowJobs(true)} updateReferenceGlossary={updateReferenceGlossary} registerFlush={registerFlush} project={project} chapters={state.chapters} session={editor} t={t} run={run} metadataRevision={jobList
                             .filter((j) => j.kind === "book_metadata" && j.state === "succeeded")
                             .map((j) => `${j.job.jobId}/${j.revision}`)
                             .join(",")} refresh={async () => {
@@ -766,7 +775,12 @@ function Shell({ runtime: { workspace, jobs }, initialError, dismissInitialError
                 }}/>
             </ResizablePanel>)}
         </div>)}
-      {showJobs && !library && project && (<JobPanel jobs={jobList} catalog={catalog} t={t} busy={busy} close={() => setShowJobs(false)} clear={() => jobs.clearFinished(project.id)} cancel={(job) => void api
+      {showJobs && !library && project && (<JobPanel jobs={jobList} audioJobs={audioJobList} audioRunning={audio.running()} pauseAudio={job => void act(() => audio.pause(job))} resumeAudio={job => void act(async () => { await audio.resume(job); })} openNarration={() => void act(async () => {
+                await editorRef.current?.flush();
+                await toolFlush.current?.();
+                await searchFlush.current?.();
+                setPanel("narration");
+            })} catalog={catalog} t={t} busy={busy} close={() => setShowJobs(false)} clear={() => { jobs.clearFinished(project.id); audio.clearFinished(project.id); }} cancel={(job) => void api
                 .cancelJob(job)
                 .then(() => jobs.refresh(job))
                 .catch(setError)} resume={(job) => void api

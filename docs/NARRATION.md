@@ -55,8 +55,11 @@ CUDA explicitly reports an error when it is unavailable. CUDA builds require the
 build option described below. GPU memory needs depend on the device and input;
 there is no fixed performance or memory guarantee.
 
-Audio jobs and their progress appear in **Narration**, separately from the translation
-Jobs panel. Only one narration job runs at a time across projects. **Pause** stops the worker.
+Audio jobs and their progress appear in both **Narration** and the shared **Jobs**
+panel, including when the Narration tab is closed. Both views provide pause and
+resume controls; the Jobs row also opens Narration for export. Clearing finished
+Jobs entries hides them in that panel while preserving audio and the Narration history.
+Only one narration job runs at a time across projects. **Pause** stops the worker.
 Completed fragments and chapters are checked and reused on **Resume saved text**.
 An interrupted fragment is regenerated. After an application restart, interrupted
 jobs require an explicit resume; opening a book never starts narration.
