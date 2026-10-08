@@ -18,6 +18,7 @@ mod diagnostics;
 mod export;
 mod i18n;
 pub mod jobs;
+pub mod models;
 mod language;
 mod paths;
 pub mod project;

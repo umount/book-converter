@@ -38,3 +38,9 @@ src-tauri/pdfium/
 /crates/*/target
 
 /.cache/
+/src-tauri/tts-runtime/*
+!/src-tauri/tts-runtime/.gitkeep
+/src-tauri/tts-runtime.previous/
+/src-tauri/tts-runtime.next/
+__pycache__/
+!scripts/tts/requirements.txt

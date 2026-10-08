@@ -11,7 +11,10 @@
     "contracts:generate": "cargo run --manifest-path src-tauri/Cargo.toml --example export_contracts",
     "contracts:check": "cargo run --manifest-path src-tauri/Cargo.toml --example export_contracts -- --check",
     "test": "node scripts/test-frontend.mjs",
-    "build:debug:windows": "powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/build-debug-windows.ps1"
+    "build:debug:windows": "powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/build-debug-windows.ps1",
+    "tts:prepare": "node scripts/prepare-tts-runtime.mjs",
+    "tts:bundle": "node scripts/prepare-tts-runtime.mjs --bundle",
+    "test:tts": "node scripts/prepare-tts-runtime.mjs --test"
   },
   "dependencies": {
     "@tauri-apps/api": "^2",
