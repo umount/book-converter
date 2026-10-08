@@ -6,6 +6,7 @@ These documents describe the current implementation, not a development roadmap.
 - [Architecture](ARCHITECTURE.md): component boundaries, data ownership, IPC,
   background execution and interaction diagrams.
 - [Books](BOOKS.md): importing, translating, reviewing, terminology and export.
+- [Narration](NARRATION.md): local Qwen3-TTS, model preparation, MP3s and recovery.
 - [Settings](SETTINGS.md): languages, provider roles, credentials and data locations.
 - [Book assistant](ASSISTANT.md): context, proposals and confirmation.
 - [Development](DEVELOPMENT.md): setup, contracts, tests and packaging.

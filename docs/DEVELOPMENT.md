@@ -23,6 +23,10 @@ only Vite; it does not provide native IPC. To work on UI fixtures without Tauri,
 `http://localhost:1420/?preview=1`. Fixtures are enabled only in development and make
 no real provider requests. They do not validate native file dialogs or model quality.
 
+Narration in development additionally requires Python 3.11/3.12 with pip and venv,
+then `npm run tts:prepare`. The installed application includes a frozen speech
+runtime. See [Narration](NARRATION.md) for model downloads, checks and CUDA builds.
+
 ## Source layout
 
 - `src/app/`: application shell, settings, localized strings and Jobs UI.
@@ -33,6 +37,7 @@ no real provider requests. They do not validate native file dialogs or model qua
 - `src-tauri/src/application/`: domain workflows and provider-backed processing.
 - `src-tauri/src/project/`, `storage/`, `assets/`: lifecycle and persistence.
 - `src-tauri/src/ai/`: external provider transport.
+- `src-tauri/src/models/`, `narration/`, `scripts/tts/`: model downloads and offline MP3 generation.
 - `tests/frontend/`, `tests/fixtures/`: frontend checks and deterministic input data.
 
 The [architecture](ARCHITECTURE.md) explains dependency direction and data ownership.
@@ -93,7 +98,9 @@ make show-version
 
 `make binary` produces `src-tauri/target/release/book-converter` on Linux;
 `make bundle` builds platform installers. Both run the configured Tauri build hooks,
-including the frontend build. PDFium must be available in the deployed application layout.
+including the frontend build and `npm run tts:bundle` (Python 3.11/3.12 required on
+the build machine). PDFium and the `tts-runtime/` directory must be included beside
+the standalone binary; `make binary` copies both. Installers include these resources.
 
 The version is declared in `package.json`, `src-tauri/Cargo.toml` and
 `src-tauri/tauri.conf.json`; the version helper updates these together. Vite embeds a
@@ -117,8 +124,8 @@ project in the UI after completion. For ordinary use, prefer **Resume** in Jobs.
 
 ## Windows diagnostic installer for testers
 
-On a Windows x64 build machine with Node.js, Rust MSVC and Visual Studio C++ build
-tools, run from PowerShell:
+On a Windows x64 build machine with Node.js, Python 3.11/3.12, Rust MSVC and Visual
+Studio C++ build tools, run from PowerShell:
 
 ```powershell
 npm run build:debug:windows

@@ -21,6 +21,11 @@ archives contain project data and assets so work can be continued elsewhere.
 
 See [Books](docs/BOOKS.md) for workflows and limitations.
 
+Create audiobooks locally with Qwen3-TTS in the **Narration** tab. Choose the
+original or translation, chapters and a preset voice; pause and resume generation,
+then export chapter MP3s with a playlist. See [Narration](docs/NARRATION.md) for
+model downloads, supported languages and CPU/CUDA setup.
+
 ## Quick start for development
 
 Install Node.js/npm, stable Rust/Cargo and the native dependencies for Tauri.
@@ -50,6 +55,7 @@ See [Development](docs/DEVELOPMENT.md) for checks, packaging and test commands, 
 Windows x64 is supported. To build from source, install:
 
 - Node.js 22 with npm.
+- Python 3.11 or 3.12 with pip (build machine only, for the bundled speech engine).
 - Rust through rustup with the `stable-x86_64-pc-windows-msvc` toolchain.
 - Visual Studio 2022 Build Tools with **Desktop development with C++**, MSVC and the Windows SDK.
 - Microsoft Edge WebView2 Runtime, if it is not already installed.
@@ -99,6 +105,7 @@ installer and uploads it as the `book-converter-windows-debug` artifact.
 
 - [Architecture and interaction diagrams](docs/ARCHITECTURE.md)
 - [Book workflow](docs/BOOKS.md)
+- [Local narration and MP3 export](docs/NARRATION.md)
 - [Settings and provider profiles](docs/SETTINGS.md)
 - [Book assistant](docs/ASSISTANT.md)
 - [Development and verification](docs/DEVELOPMENT.md)

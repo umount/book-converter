@@ -424,7 +424,7 @@ function Shell({ runtime: { workspace, jobs }, initialError, dismissInitialError
                 : chapterState === "reference"
                     ? c.origin === "reference"
                     : c.status === chapterState)));
-    const tabs = (["reader", "overview", "glossary", "reference"] as const);
+    const tabs = (["reader", "overview", "glossary", "reference", "narration"] as const);
     const commands: Command[] = [
         {
             id: "library",

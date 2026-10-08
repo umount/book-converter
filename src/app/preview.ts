@@ -1,5 +1,5 @@
 /** Deterministic, memory-only fixture for browser visual QA; never used in native builds. */
-import type { BookChapterView, BookReplacePreview, BookReferenceView, JobView, GlossaryTermView, } from "../shared/contracts/generated";
+import type { AudioJobView, BookChapterView, BookReplacePreview, BookReferenceView, JobView, GlossaryTermView, } from "../shared/contracts/generated";
 let defaultTargetLanguage = "ru";
 let replacePreview: BookReplacePreview | null = null;
 const project = {
@@ -98,10 +98,25 @@ const volumeTitles = new Map<string, {
 }>();
 let settingsRevision = 1;
 const jobs: JobView[] = [];
+const audioJobs: AudioJobView[] = [{ id: "preview-audio", projectId: project.id, state: "interrupted", voice: "Ryan", device: "auto", text: "translation", language: "Russian", completedChunks: 18, totalChunks: 42, completedChapters: 1, totalChapters: 3, currentChapter: "Сад под дождём", error: null, createdAt: "1791450000000" }];
 export async function invokePreview<T>(command: string, raw?: Record<string, unknown>): Promise<T> {
     const args = (raw?.args ?? {}) as Record<string, any>;
     let result: unknown;
     switch (command) {
+        case "audio_setup": return { runtimeReady: true, downloading: false, files: [{ model: { id: "preview-qwen", name: "Qwen3-TTS 0.6B", repository: "Qwen/Qwen3-TTS-12Hz-0.6B-CustomVoice", revision: "preview", filename: "model.safetensors", sha256: "preview", bytes: 2498383610, license: "Apache-2.0", experimental: true }, status: "downloaded", downloadedBytes: 2498383610, failure: null }] } as T;
+        case "audio_list": return [...audioJobs] as T;
+        case "audio_models_download": case "audio_models_pause": return null as T;
+        case "audio_start": {
+            const job: AudioJobView = { ...audioJobs[0], id: `preview-audio-${audioJobs.length}`, voice: args.voice, text: args.text, device: args.device, state: "succeeded", completedChunks: 5, totalChunks: 5, completedChapters: 1, totalChapters: 1, currentChapter: "Последний паром", createdAt: String(Date.now()) };
+            audioJobs.unshift(job);
+            return job as T;
+        }
+        case "audio_resume": {
+            const job = audioJobs.find(j => j.id === args.jobId)!;
+            job.state = "succeeded"; job.completedChapters = job.totalChapters; job.completedChunks = job.totalChunks;
+            return job as T;
+        }
+        case "audio_cancel": return null as T;
         case "book_get_volume": return (volumeTitles.get(args.source) ?? { source: args.source, title: "", revision: "0" }) as T;
         case "book_translate_volume": return (args.source === "第1集" ? "Том 1" : "Часть 2 · Том 7") as T;
         case "book_save_volume": {

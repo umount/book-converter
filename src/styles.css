@@ -14,6 +14,21 @@
   --line: #303034;
   --accent: #4c8bf5;
 }
+.bc-narration { max-width: 880px; }
+.bc-audio-heading { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.bc-audio-heading h2, .bc-audio-heading h3 { margin-bottom: 12px; }
+.bc-audio-format { color: var(--muted); white-space: nowrap; }
+.bc-audio-setup { padding: 18px 0; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); margin-bottom: 24px; }
+.bc-narration progress { width: 100%; height: 6px; accent-color: var(--accent); margin-bottom: 12px; }
+.bc-audio-options { padding: 0; margin: 0 0 28px; border: 0; min-width: 0; }
+.bc-audio-options legend { font-size: 15px; font-weight: 600; margin-bottom: 14px; }
+.bc-audio-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; margin-bottom: 16px; }
+.bc-audio-fields select { min-width: 0; text-overflow: ellipsis; }
+.bc-audio-job { border-top: 1px solid var(--line); padding: 18px 0; }
+.bc-audio-current { display: flex; justify-content: space-between; gap: 12px; overflow-wrap: anywhere; }
+.bc-audio-current span { flex-shrink: 0; }
+.bc-audio-job .bc-toolbar { padding: 0; border: 0; }
+@media (max-width: 900px) { .bc-audio-fields { grid-template-columns: minmax(0, 1fr); } }
 * {
   box-sizing: border-box;
 }

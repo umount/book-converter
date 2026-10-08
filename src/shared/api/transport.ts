@@ -11,6 +11,14 @@ export function createProjectApi(transport: Transport) {
   const call = <T>(command: string, args: unknown) =>
     transport.invoke<T>(command, { args });
   return {
+    audioSetup: () => transport.invoke<C.AudioSetupView>("audio_setup"),
+    audioDownload: () => transport.invoke<void>("audio_models_download"),
+    audioPauseDownload: () => transport.invoke<void>("audio_models_pause"),
+    audioStart: (args: C.AudioStartArgs) => call<C.AudioJobView>("audio_start", args),
+    audioResume: (args: C.AudioJobArgs) => call<C.AudioJobView>("audio_resume", args),
+    audioCancel: (args: C.AudioJobArgs) => call<void>("audio_cancel", args),
+    audioList: (args: C.ProjectArgs) => call<C.AudioJobView[]>("audio_list", args),
+    audioExport: (args: C.AudioExportArgs) => call<string>("audio_export", args),
     profiles: () =>
       transport.invoke<C.ProviderEntry[]>("provider_profiles_list"),
     saveProfile: (args: C.SaveProviderArgs) =>

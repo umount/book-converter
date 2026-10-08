@@ -1,5 +1,6 @@
 import { ReferenceMappings } from "./ReferenceMappings";
 import { BookOverview } from "./BookOverview";
+import { BookNarration } from "./BookNarration";
 import { useEffect, useRef, useState } from "react";
 import { open } from "@tauri-apps/plugin-dialog";
 import { projectApi } from "../../shared/api/projects";
@@ -10,8 +11,9 @@ import type {
 } from "../../shared/contracts/generated";
 import { errorText, type T } from "../../app/strings";
 import type { BookEditorSession } from "../../shared/state/editor";
-export type BookTool = "overview" | "reference";
+export type BookTool = "overview" | "reference" | "narration";
 export function BookTools(props: Parameters<typeof Tools>[0]) {
+  if (props.tool === "narration") return <BookNarration {...props} />;
   return props.tool === "overview" ? (
     <BookOverview key={props.project.id} {...props} />
   ) : (
