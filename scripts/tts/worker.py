@@ -192,8 +192,10 @@ def main():
             except Exception as error:
                 # Keep source text, filesystem details and dependency traces out of IPC.
                 reason = str(error)
-                if "out of memory" in reason.lower():
+                if isinstance(error, MemoryError) or "out of memory" in reason.lower():
                     reason = "audioMemory"
+                elif isinstance(error, OSError):
+                    reason = "audioStorage"
                 if reason not in {"audioCuda", "audioModels", "audioTooLong", "audioOutput", "audioMemory", "audioStorage", "audioVersion"}:
                     reason = "audioWorker"
                 emit("error", reason=reason)

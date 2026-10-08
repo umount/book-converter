@@ -2,6 +2,7 @@ import importlib.util
 import json
 from pathlib import Path
 import tempfile
+import sys
 import unittest
 from unittest.mock import patch
 import numpy as np
@@ -74,6 +75,17 @@ class NarrationTests(unittest.TestCase):
                 with self.assertRaises(ValueError):
                     worker.narrate(root, self.request(), lambda _: (samples, 24000), "model")
                 self.assertFalse((root / "audio/00001.mp3").exists())
+
+    def test_resource_failures_report_actionable_errors_without_private_details(self):
+        for error, reason in [(OSError(28, "private path: no space"), "audioStorage"),
+                              (MemoryError(), "audioMemory"),
+                              (RuntimeError("CUDA out of memory"), "audioMemory"),
+                              (RuntimeError("private book text"), "audioWorker")]:
+            with tempfile.TemporaryDirectory() as tmp, patch.object(worker, "emit") as emit, \
+                    patch.object(worker, "run", side_effect=error), \
+                    patch.object(sys, "argv", ["book-tts", "--run", tmp]):
+                self.assertEqual(worker.main(), 1)
+                emit.assert_called_once_with("error", reason=reason)
 
 
 if __name__ == "__main__":
