@@ -19,6 +19,13 @@ impl Runtime {
         }
     }
     pub fn discover(resources: &Path) -> Result<Self, AppError> {
+        Self::locate(resources, true)
+    }
+    /// Poll availability cheaply; every job still verifies the executable at admission.
+    pub(crate) fn is_available(resources: &Path) -> bool {
+        Self::locate(resources, false).is_ok()
+    }
+    fn locate(resources: &Path, verify_contents: bool) -> Result<Self, AppError> {
         let name = if cfg!(windows) {
             "book-tts.exe"
         } else {
@@ -43,11 +50,15 @@ impl Runtime {
                 {
                     return Err(failure("audioRuntime"));
                 }
-                let mut file = std::fs::File::open(&executable).map_err(io_error)?;
-                let mut hash = Sha256::new();
-                std::io::copy(&mut file, &mut hash).map_err(io_error)?;
-                if manifest["sha256"].as_str() != Some(format!("{:x}", hash.finalize()).as_str()) {
-                    return Err(failure("audioRuntime"));
+                if verify_contents {
+                    let mut file = std::fs::File::open(&executable).map_err(io_error)?;
+                    let mut hash = Sha256::new();
+                    std::io::copy(&mut file, &mut hash).map_err(io_error)?;
+                    if manifest["sha256"].as_str()
+                        != Some(format!("{:x}", hash.finalize()).as_str())
+                    {
+                        return Err(failure("audioRuntime"));
+                    }
                 }
                 return Ok(Self {
                     executable,

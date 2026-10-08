@@ -171,6 +171,32 @@ fn one_runtime_reservation_covers_all_projects() {
     assert!(*cancel.borrow());
 }
 
+#[test]
+fn runtime_availability_does_not_bypass_integrity_at_job_admission() {
+    let f = Fixture::new();
+    let root = f.root.join("tts-runtime");
+    std::fs::create_dir(&root).unwrap();
+    std::fs::write(
+        root.join(if cfg!(windows) {
+            "book-tts.exe"
+        } else {
+            "book-tts"
+        }),
+        b"corrupt runtime",
+    )
+    .unwrap();
+    write_json(
+        &root.join("manifest.json"),
+        &serde_json::json!({
+            "version": 1, "platform": std::env::consts::OS, "arch": std::env::consts::ARCH,
+            "sha256": "0".repeat(64),
+        }),
+    )
+    .unwrap();
+    assert!(Runtime::is_available(&f.root));
+    assert!(Runtime::discover(&f.root).is_err());
+}
+
 #[cfg(unix)]
 fn fake_runtime(f: &Fixture, body: &str) -> Runtime {
     use std::os::unix::fs::PermissionsExt;

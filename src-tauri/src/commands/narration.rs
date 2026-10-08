@@ -19,8 +19,14 @@ pub async fn audio_setup(
     app: tauri::AppHandle,
     context: tauri::State<'_, AppContext>,
 ) -> Result<AudioSetupView, ModelFailure> {
+    let runtime_ready = match app.path().resource_dir() {
+        Ok(resources) => tokio::task::spawn_blocking(move || Runtime::is_available(&resources))
+            .await
+            .unwrap_or(false),
+        Err(_) => false,
+    };
     Ok(AudioSetupView {
-        runtime_ready: runtime(&app).await.is_ok(),
+        runtime_ready,
         files: context.models.list().await?,
         downloading: context.models.busy(),
     })
