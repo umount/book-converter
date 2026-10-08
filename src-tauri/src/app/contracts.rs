@@ -199,6 +199,8 @@ pub fn typescript() -> String {
         output.push('\n');
     }
     output.push_str(&super::requests::typescript());
+    output.push_str(&crate::models::typescript());
+    output.push_str(&crate::narration::contracts::typescript());
 
     output
 }

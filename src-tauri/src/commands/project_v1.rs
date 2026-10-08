@@ -83,9 +83,13 @@ pub async fn project_delete(
     args: ProjectArgs,
 ) -> Result<(), AppError> {
     let manager = context.manager.clone();
-    tauri::async_runtime::spawn_blocking(move || manager.delete(&args.project_id))
-        .await
-        .map_err(|_| AppError::invalid("task"))?
+    let narration = context.narration.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        manager.delete(&args.project_id)?;
+        narration.remove_project(&args.project_id)
+    })
+    .await
+    .map_err(|_| AppError::invalid("task"))?
 }
 #[tauri::command]
 pub async fn project_archive_export(

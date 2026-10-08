@@ -19,6 +19,7 @@ mod export;
 mod i18n;
 pub mod jobs;
 pub mod models;
+pub mod narration;
 mod language;
 mod paths;
 pub mod project;
@@ -67,6 +68,14 @@ pub fn run() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
+            commands::audio_setup,
+            commands::audio_models_download,
+            commands::audio_models_pause,
+            commands::audio_start,
+            commands::audio_resume,
+            commands::audio_cancel,
+            commands::audio_list,
+            commands::audio_export,
             commands::export_diagnostics,
             commands::diagnostic_event,
             commands::project_inspect_manifest,

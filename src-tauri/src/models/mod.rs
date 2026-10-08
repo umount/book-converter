@@ -88,7 +88,16 @@ impl ModelManager {
                 if *specs.1.borrow() {
                     break;
                 }
-                manager.progress(&spec.id, ModelStatus::Downloading, 0);
+                {
+                    let mut inner = manager.inner.lock().unwrap();
+                    let view = inner
+                        .views
+                        .iter_mut()
+                        .find(|v| v.model.id == spec.id)
+                        .unwrap();
+                    view.status = ModelStatus::Downloading;
+                    view.failure = None;
+                }
                 let result =
                     transfer::download(manager.clone(), &spec, specs.1.clone(), spec.url()).await;
                 let mut inner = manager.inner.lock().unwrap();

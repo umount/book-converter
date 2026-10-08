@@ -15,6 +15,8 @@ impl ProjectService for FilesystemProjectService {
 }
 
 pub struct AppContext {
+    pub models: Arc<crate::models::ModelManager>,
+    pub narration: Arc<crate::narration::Narration>,
     pub assistant: Arc<crate::application::assistant::AssistantService>,
     pub assistant_runs: Arc<crate::application::runtime::BookRuntime>,
     pub projects: Arc<dyn ProjectService>,
@@ -26,6 +28,12 @@ pub struct AppContext {
 impl Default for AppContext {
     fn default() -> Self {
         Self {
+            models: Arc::new(crate::models::ModelManager::new(
+                crate::paths::app_data_dir().join("tts-models"),
+            )),
+            narration: Arc::new(crate::narration::Narration::new(
+                crate::paths::app_data_dir().join("audiobooks"),
+            )),
             assistant: Arc::new(crate::application::assistant::AssistantService::default()),
             assistant_runs: Arc::new(crate::application::runtime::BookRuntime::default()),
             projects: Arc::new(FilesystemProjectService),
