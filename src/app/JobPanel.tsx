@@ -25,7 +25,7 @@ export function JobPanel({ jobs, audioJobs, audioRunning, pauseAudio, resumeAudi
     resume: (job: JobRef) => void;
     clear: () => void;
 }) {
-    const activeStates = ["running", "cancelling", "queued"];
+    const activeStates = ["running", "pausing", "cancelling", "queued"];
     const orderedJobs: PanelEntry[] = [
         ...jobs.map(job => ({ type: "processing" as const, job })),
         ...audioJobs.map(job => ({ type: "audio" as const, job })),
@@ -124,13 +124,15 @@ function AudioJobRow({ job, t, busy, audioRunning, pause, resume, openNarration 
     openNarration: () => void;
 }) {
     const args = { projectId: job.projectId, jobId: job.id };
-    const state = { running: "audioRunning", paused: "audioPaused", interrupted: "audioInterrupted", failed: "audioFailed", succeeded: "audioFinished" } as const;
+    const state = { running: "audioRunning", pausing: "audioPausing", paused: "audioPaused", interrupted: "audioInterrupted", failed: "audioFailed", succeeded: "audioFinished" } as const;
     return <div className={`bc-job${job.state === "succeeded" ? " bc-job-complete" : ""}`}>
       <div className="bc-job-heading">
         <strong>{t("narration")} · {job.voice}</strong>
         {job.currentChapter && <span className="bc-job-chapter">{job.currentChapter}</span>}
+        {job.state === "running" && !job.currentChapter && <span className="bc-hint">{t("audioPreparing")}</span>}
         <span className="bc-hint">{t(job.text === "original" ? "audioOriginal" : "audioTranslation")} · {job.language}</span>
         {job.state === "running" && <button disabled={busy} onClick={() => pause(args)}>{t("audioPause")}</button>}
+        {job.state === "pausing" && <span className="bc-hint">{t("audioPauseHint")}</span>}
         {["paused", "failed", "interrupted"].includes(job.state) && <button disabled={busy || audioRunning} onClick={() => resume(args)}>{t("audioResume")}</button>}
         <button disabled={busy} onClick={openNarration}>{t("narration")}</button>
       </div>

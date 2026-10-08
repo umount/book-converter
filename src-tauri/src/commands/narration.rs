@@ -27,9 +27,24 @@ pub async fn audio_setup(
     };
     Ok(AudioSetupView {
         runtime_ready,
+        engine: context.narration.engine_view(),
         files: context.models.list().await?,
         downloading: context.models.busy(),
     })
+}
+#[tauri::command]
+pub async fn audio_engine_load(
+    app: tauri::AppHandle,
+    context: tauri::State<'_, AppContext>,
+    args: AudioLoadArgs,
+) -> Result<(), AppError> {
+    context
+        .narration
+        .load_engine(context.models.clone(), runtime(&app).await?, args.device)
+}
+#[tauri::command]
+pub async fn audio_engine_unload(context: tauri::State<'_, AppContext>) -> Result<(), AppError> {
+    context.narration.unload_engine().await
 }
 #[tauri::command]
 pub async fn audio_models_download(

@@ -224,7 +224,10 @@ async fn pause_resume_and_project_deletion_release_the_worker_lease() {
     let manager = Arc::new(ProjectManager::new(f.root.join("app")));
     let models = Arc::new(ModelManager::with_catalog(f.root.join("models"), vec![]));
     let service = Arc::new(Narration::new(f.root.join("audio")));
-    let runtime = fake_runtime(&f, "echo $$ > \"$3/started\"\nexec sleep 30");
+    let runtime = fake_runtime(&f, &format!(
+        "echo $$ > '{}/started'\necho '{{\"event\":\"loaded\",\"device\":\"cpu\"}}'\nwhile IFS= read -r line; do\ncase \"$line\" in\n*'\"command\":\"run\"'*) echo run >> '{}/runs';;\n*'\"command\":\"pause\"'*) echo '{{\"event\":\"paused\"}}';;\nesac\ndone",
+        f.root.display(), f.root.display()
+    ));
     let job = service
         .start(manager.clone(), models.clone(), runtime, f.args())
         .await
@@ -234,11 +237,13 @@ async fn pause_resume_and_project_deletion_release_the_worker_lease() {
         job_id: job.id.clone(),
     };
     let dir = service.directory(&args).unwrap();
-    wait_until(|| dir.join("started").is_file()).await;
+    wait_until(|| f.root.join("runs").is_file()).await;
+    let pid = std::fs::read_to_string(f.root.join("started")).unwrap();
+    assert!(service.unload_engine().await.is_err());
     service.cancel(&args).unwrap();
     wait_until(|| service.list(&f.project).unwrap()[0].state == AudioState::Paused).await;
+    assert_eq!(service.engine_view().state, AudioEngineState::Ready);
     let snapshot = std::fs::read(dir.join("input.json")).unwrap();
-    std::fs::remove_file(dir.join("started")).unwrap();
     let resumed = service
         .resume(
             manager.clone(),
@@ -249,10 +254,19 @@ async fn pause_resume_and_project_deletion_release_the_worker_lease() {
         .await
         .unwrap();
     assert_eq!(resumed.id, job.id);
-    wait_until(|| dir.join("started").is_file()).await;
+    wait_until(|| {
+        std::fs::read_to_string(f.root.join("runs"))
+            .unwrap()
+            .lines()
+            .count()
+            == 2
+    })
+    .await;
+    assert_eq!(
+        std::fs::read_to_string(f.root.join("started")).unwrap(),
+        pid
+    );
     assert_eq!(std::fs::read(dir.join("input.json")).unwrap(), snapshot);
-    #[cfg(target_os = "linux")]
-    let pid = std::fs::read_to_string(dir.join("started")).unwrap();
     let project = f.project.clone();
     tokio::time::timeout(
         std::time::Duration::from_secs(5),
@@ -267,6 +281,7 @@ async fn pause_resume_and_project_deletion_release_the_worker_lease() {
         AudioState::Paused
     );
     assert!(service.active.lock().unwrap().is_none());
+    assert_eq!(service.engine_view().state, AudioEngineState::Unloaded);
     #[cfg(target_os = "linux")]
     assert!(!Path::new("/proc").join(pid.trim()).exists());
     service.remove_project(&f.project).unwrap();
@@ -282,7 +297,7 @@ async fn invalid_worker_progress_fails_the_job_and_releases_admission() {
     let service = Arc::new(Narration::new(f.root.join("audio")));
     let runtime = fake_runtime(
         &f,
-        "echo '{\"event\":\"chunk\",\"completed\":999999,\"chapter\":\"invalid\"}'",
+        "echo '{\"event\":\"loaded\",\"device\":\"cpu\"}'\nread -r line\necho '{\"event\":\"chunk\",\"completed\":999999,\"chapter\":\"invalid\"}'",
     );
     service
         .start(manager, models, runtime, f.args())
@@ -298,4 +313,93 @@ async fn invalid_worker_progress_fails_the_job_and_releases_admission() {
         "audioWorker"
     );
     assert!(service.active.lock().unwrap().is_none());
+    assert_eq!(service.engine_view().state, AudioEngineState::Failed);
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn preloaded_model_serves_multiple_jobs_until_explicit_unload() {
+    let f = Fixture::new();
+    let manager = Arc::new(ProjectManager::new(f.root.join("app")));
+    let models = Arc::new(ModelManager::with_catalog(f.root.join("models"), vec![]));
+    let service = Arc::new(Narration::new(f.root.join("audio")));
+    let input = text::snapshot(&manager.lease(&f.project).unwrap(), &f.args()).unwrap();
+    let chunks: usize = input
+        .chapters
+        .iter()
+        .map(|chapter| chapter.chunks.len())
+        .sum();
+    let runtime = fake_runtime(&f, &format!(
+        "echo $$ >> '{}/loads'\necho '{{\"event\":\"loaded\",\"device\":\"cpu\"}}'\nwhile IFS= read -r line; do\necho '{{\"event\":\"chunk\",\"completed\":{},\"chapter\":\"Test\"}}'\necho '{{\"event\":\"chapter\",\"completed\":{}}}'\necho '{{\"event\":\"done\"}}'\ndone",
+        f.root.display(), chunks, input.chapters.len()
+    ));
+    service
+        .load_engine(models.clone(), runtime, AudioDevice::Cpu)
+        .unwrap();
+    wait_until(|| service.engine_view().state == AudioEngineState::Ready).await;
+    for _ in 0..2 {
+        let job = service
+            .start(
+                manager.clone(),
+                models.clone(),
+                Runtime::for_test(f.root.join("test-worker")),
+                f.args(),
+            )
+            .await
+            .unwrap();
+        wait_until(|| {
+            service
+                .list(&f.project)
+                .unwrap()
+                .iter()
+                .any(|view| view.id == job.id && view.state == AudioState::Succeeded)
+        })
+        .await;
+        assert_eq!(service.engine_view().state, AudioEngineState::Ready);
+    }
+    assert_eq!(
+        std::fs::read_to_string(f.root.join("loads"))
+            .unwrap()
+            .lines()
+            .count(),
+        1
+    );
+    service.unload_engine().await.unwrap();
+    assert_eq!(service.engine_view().state, AudioEngineState::Unloaded);
+    assert_eq!(
+        std::fs::read_dir(f.root.join("audio/.engine"))
+            .unwrap()
+            .count(),
+        0
+    );
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn model_loading_failure_is_visible_and_can_be_retried() {
+    let f = Fixture::new();
+    let models = Arc::new(ModelManager::with_catalog(f.root.join("models"), vec![]));
+    let service = Arc::new(Narration::new(f.root.join("audio")));
+    let runtime = fake_runtime(
+        &f,
+        "echo '{\"event\":\"error\",\"reason\":\"audioMemory\"}'",
+    );
+    service
+        .load_engine(models.clone(), runtime, AudioDevice::Cpu)
+        .unwrap();
+    wait_until(|| service.engine_view().state == AudioEngineState::Failed).await;
+    assert_eq!(
+        service.engine_view().error.unwrap().params["reason"],
+        "audioMemory"
+    );
+    let runtime = fake_runtime(
+        &f,
+        "echo '{\"event\":\"loaded\",\"device\":\"cpu\"}'\nread -r line",
+    );
+    service
+        .load_engine(models, runtime, AudioDevice::Auto)
+        .unwrap();
+    wait_until(|| service.engine_view().state == AudioEngineState::Ready).await;
+    assert_eq!(service.engine_view().device, Some(AudioDevice::Cpu));
+    service.unload_engine().await.unwrap();
 }

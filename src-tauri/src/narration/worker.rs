@@ -2,7 +2,7 @@ use super::*;
 use sha2::{Digest, Sha256};
 use std::process::Stdio;
 use tokio::{
-    io::{AsyncBufReadExt, BufReader},
+    io::{AsyncBufReadExt, AsyncWriteExt, BufReader},
     process::Command,
 };
 
@@ -108,13 +108,224 @@ impl Runtime {
 #[derive(Deserialize)]
 #[serde(tag = "event", rename_all = "snake_case")]
 enum Progress {
+    Loaded { device: AudioDevice },
     Chunk { completed: u32, chapter: String },
     Chapter { completed: u32 },
     Error { reason: String },
     Done,
+    Paused,
+}
+
+fn worker_error(reason: &str) -> AppError {
+    let allowed = [
+        "audioCuda",
+        "audioModels",
+        "audioTooLong",
+        "audioOutput",
+        "audioMemory",
+        "audioStorage",
+        "audioVersion",
+    ];
+    failure(if allowed.contains(&reason) {
+        reason
+    } else {
+        "audioWorker"
+    })
+}
+
+struct SessionDirectory(PathBuf);
+impl Drop for SessionDirectory {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_dir_all(&self.0);
+    }
+}
+struct Session {
+    child: tokio::process::Child,
+    input: tokio::process::ChildStdin,
+    output: tokio::io::Lines<BufReader<tokio::process::ChildStdout>>,
+    device: AudioDevice,
+    specs: Vec<crate::models::ModelSpec>,
+    _directory: SessionDirectory,
+}
+impl Session {
+    async fn spawn(
+        root: &Path,
+        models: Arc<ModelManager>,
+        runtime: Runtime,
+        device: AudioDevice,
+    ) -> Result<Self, AppError> {
+        let directory = SessionDirectory(root.join(uuid::Uuid::new_v4().to_string()));
+        std::fs::create_dir_all(&directory.0).map_err(io_error)?;
+        models
+            .materialize(&directory.0.join("model"))
+            .await
+            .map_err(|_| failure("audioModels"))?;
+        let specs = models
+            .list()
+            .await
+            .map_err(|_| failure("audioModels"))?
+            .into_iter()
+            .map(|v| v.model)
+            .collect::<Vec<_>>();
+        write_json(&directory.0.join("model-files.json"), &specs)?;
+        let mut child = runtime
+            .command()
+            .arg("--serve")
+            .arg(&directory.0)
+            .arg("--device")
+            .arg(match device {
+                AudioDevice::Auto => "auto",
+                AudioDevice::Cpu => "cpu",
+                AudioDevice::Cuda => "cuda",
+            })
+            .spawn()
+            .map_err(|_| failure("audioRuntime"))?;
+        let input = child.stdin.take().ok_or_else(|| failure("audioRuntime"))?;
+        let output =
+            BufReader::new(child.stdout.take().ok_or_else(|| failure("audioRuntime"))?).lines();
+        let mut session = Self {
+            child,
+            input,
+            output,
+            device,
+            specs,
+            _directory: directory,
+        };
+        match session.receive().await? {
+            Progress::Loaded { device } if device != AudioDevice::Auto => session.device = device,
+            Progress::Error { reason } => return Err(worker_error(&reason)),
+            _ => return Err(failure("audioWorker")),
+        }
+        Ok(session)
+    }
+    async fn send(&mut self, value: serde_json::Value) -> Result<(), AppError> {
+        let mut bytes = serde_json::to_vec(&value).map_err(io_error)?;
+        bytes.push(b'\n');
+        self.input
+            .write_all(&bytes)
+            .await
+            .map_err(|_| failure("audioWorker"))
+    }
+    async fn receive(&mut self) -> Result<Progress, AppError> {
+        let line = self
+            .output
+            .next_line()
+            .await
+            .map_err(|_| failure("audioWorker"))?
+            .ok_or_else(|| failure("audioWorker"))?;
+        if line.len() > 8192 {
+            return Err(failure("audioWorker"));
+        }
+        serde_json::from_str(&line).map_err(|_| failure("audioWorker"))
+    }
+    fn compatible(&mut self, device: &AudioDevice) -> bool {
+        matches!(self.child.try_wait(), Ok(None))
+            && (*device == AudioDevice::Auto || self.device == *device)
+    }
+}
+
+pub(super) struct Engine {
+    root: PathBuf,
+    session: Arc<tokio::sync::Mutex<Option<Session>>>,
+    status: Mutex<AudioEngineView>,
+}
+impl Engine {
+    pub fn new(root: PathBuf) -> Self {
+        Self {
+            root,
+            session: Arc::new(tokio::sync::Mutex::new(None)),
+            status: Mutex::new(AudioEngineView {
+                state: AudioEngineState::Unloaded,
+                device: None,
+                error: None,
+            }),
+        }
+    }
+    fn set(&self, state: AudioEngineState, device: Option<AudioDevice>, error: Option<AppError>) {
+        *self.status.lock().unwrap() = AudioEngineView {
+            state,
+            device,
+            error,
+        };
+    }
+    pub fn view(&self) -> AudioEngineView {
+        if let Ok(mut slot) = self.session.try_lock() {
+            if slot
+                .as_mut()
+                .is_some_and(|session| !matches!(session.child.try_wait(), Ok(None)))
+            {
+                slot.take();
+                self.set(AudioEngineState::Failed, None, Some(failure("audioWorker")));
+            }
+        }
+        self.status.lock().unwrap().clone()
+    }
+    async fn discard(slot: &mut Option<Session>) {
+        if let Some(mut session) = slot.take() {
+            let _ = session.child.kill().await;
+        }
+    }
+    async fn ensure(
+        &self,
+        slot: &mut Option<Session>,
+        models: Arc<ModelManager>,
+        runtime: Runtime,
+        device: AudioDevice,
+    ) -> Result<(), AppError> {
+        if slot
+            .as_mut()
+            .is_some_and(|session| session.compatible(&device))
+        {
+            return Ok(());
+        }
+        Self::discard(slot).await;
+        self.set(AudioEngineState::Loading, Some(device.clone()), None);
+        match Session::spawn(&self.root, models, runtime, device).await {
+            Ok(session) => {
+                self.set(AudioEngineState::Ready, Some(session.device.clone()), None);
+                *slot = Some(session);
+                Ok(())
+            }
+            Err(error) => {
+                self.set(AudioEngineState::Failed, None, Some(error.clone()));
+                Err(error)
+            }
+        }
+    }
+    pub fn load(
+        self: &Arc<Self>,
+        models: Arc<ModelManager>,
+        runtime: Runtime,
+        device: AudioDevice,
+    ) -> Result<(), AppError> {
+        let mut slot = self
+            .session
+            .clone()
+            .try_lock_owned()
+            .map_err(|_| failure("audioBusy"))?;
+        if slot
+            .as_mut()
+            .is_some_and(|session| session.compatible(&device))
+        {
+            return Ok(());
+        }
+        self.set(AudioEngineState::Loading, Some(device.clone()), None);
+        let engine = self.clone();
+        tokio::spawn(async move {
+            let _ = engine.ensure(&mut slot, models, runtime, device).await;
+        });
+        Ok(())
+    }
+    pub async fn unload(&self) -> Result<(), AppError> {
+        let mut slot = self.session.try_lock().map_err(|_| failure("audioBusy"))?;
+        Self::discard(&mut slot).await;
+        self.set(AudioEngineState::Unloaded, None, None);
+        Ok(())
+    }
 }
 
 pub(super) async fn run(
+    engine: &Engine,
     lease: &ProjectLease,
     models: Arc<ModelManager>,
     runtime: Runtime,
@@ -125,44 +336,95 @@ pub(super) async fn run(
     if *cancel.borrow() || lease.cancelled() {
         return Ok(false);
     }
-    models
-        .materialize(&directory.join("model"))
-        .await
-        .map_err(|_| failure("audioModels"))?;
-    write_json(
-        &directory.join("model-files.json"),
-        &models
-            .list()
-            .await
-            .map_err(|_| failure("audioModels"))?
-            .into_iter()
-            .map(|v| v.model)
-            .collect::<Vec<_>>(),
-    )?;
-    if *cancel.borrow() || lease.cancelled() {
+    let mut interval = tokio::time::interval(std::time::Duration::from_millis(200));
+    let mut slot = loop {
+        tokio::select! {
+            slot = engine.session.lock() => break slot,
+            _ = cancel.changed() => return Ok(false),
+            _ = interval.tick() => { if lease.cancelled() { return Ok(false); } }
+        }
+    };
+    let loaded = {
+        let loading = engine.ensure(&mut slot, models, runtime, view.device.clone());
+        tokio::pin!(loading);
+        let mut pausing = false;
+        loop {
+            tokio::select! {
+                result = &mut loading => break Some(result),
+                _ = interval.tick() => { if lease.cancelled() { break None; } }
+                _ = cancel.changed(), if !pausing => {
+                    pausing = true;
+                    view.state = AudioState::Pausing;
+                    if let Err(error) = write_json(&directory.join("status.json"), view) { break Some(Err(error)); }
+                }
+            }
+        }
+    };
+    let Some(loaded) = loaded else {
+        Engine::discard(&mut slot).await;
+        engine.set(AudioEngineState::Unloaded, None, None);
+        return Ok(false);
+    };
+    if let Err(error) = loaded {
+        Engine::discard(&mut slot).await;
+        engine.set(AudioEngineState::Failed, None, Some(error.clone()));
+        return Err(error);
+    }
+    if lease.cancelled() {
+        Engine::discard(&mut slot).await;
+        engine.set(AudioEngineState::Unloaded, None, None);
         return Ok(false);
     }
-    let mut child = runtime
-        .command()
-        .arg("--parent-pipe")
-        .arg("--run")
-        .arg(directory)
-        .spawn()
-        .map_err(|_| failure("audioRuntime"))?;
-    let mut lines =
-        BufReader::new(child.stdout.take().ok_or_else(|| failure("audioRuntime"))?).lines();
-    let mut done = false;
+    if *cancel.borrow() {
+        return Ok(false);
+    }
+    let result = execute(
+        slot.as_mut().ok_or_else(|| failure("audioRuntime"))?,
+        lease,
+        directory,
+        view,
+        cancel,
+    )
+    .await;
+    if lease.cancelled() {
+        Engine::discard(&mut slot).await;
+        engine.set(AudioEngineState::Unloaded, None, None);
+    } else if let Err(error) = &result {
+        Engine::discard(&mut slot).await;
+        engine.set(AudioEngineState::Failed, None, Some(error.clone()));
+    }
+    if result.is_ok() {
+        // Remove model links left by jobs from the former per-job runtime.
+        let _ = std::fs::remove_dir_all(directory.join("model"));
+    }
+    result
+}
+
+async fn execute(
+    session: &mut Session,
+    lease: &ProjectLease,
+    directory: &Path,
+    view: &mut AudioJobView,
+    mut cancel: watch::Receiver<bool>,
+) -> Result<bool, AppError> {
+    write_json(&directory.join("model-files.json"), &session.specs)?;
+    session
+        .send(serde_json::json!({"command": "run", "id": view.id, "directory": directory}))
+        .await?;
+    let mut pausing = false;
     let mut interval = tokio::time::interval(std::time::Duration::from_millis(200));
     loop {
         tokio::select! {
             biased;
-            _ = cancel.changed() => { let _ = child.kill().await; return Ok(false); }
-            _ = interval.tick() => { if lease.cancelled() { let _ = child.kill().await; return Ok(false); } }
-            line = lines.next_line() => {
-                let Some(line) = line.map_err(io_error)? else { break; };
-                if line.len() > 8192 { return Err(failure("audioWorker")); }
-                let progress: Progress = serde_json::from_str(&line).map_err(|_| failure("audioWorker"))?;
-                match progress {
+            _ = cancel.changed(), if !pausing => {
+                pausing = true;
+                view.state = AudioState::Pausing;
+                write_json(&directory.join("status.json"), view)?;
+                session.send(serde_json::json!({"command": "pause", "id": view.id})).await?;
+            }
+            _ = interval.tick() => { if lease.cancelled() { return Ok(false); } }
+            progress = session.receive() => {
+                match progress? {
                     Progress::Chunk { completed, chapter } => {
                         if completed > view.total_chunks { return Err(failure("audioWorker")); }
                         view.completed_chunks = completed; view.current_chapter = chapter;
@@ -171,31 +433,16 @@ pub(super) async fn run(
                         if completed > view.total_chapters { return Err(failure("audioWorker")); }
                         view.completed_chapters = completed;
                     }
-                    Progress::Done => done = true,
-                    Progress::Error { reason } => {
-                        let allowed = ["audioCuda", "audioModels", "audioTooLong", "audioOutput", "audioMemory", "audioStorage", "audioVersion"];
-                        return Err(failure(if allowed.contains(&reason.as_str()) { &reason } else { "audioWorker" }));
+                    Progress::Done => {
+                        if view.completed_chapters != view.total_chapters || view.completed_chunks != view.total_chunks { return Err(failure("audioWorker")); }
+                        return Ok(true);
                     }
+                    Progress::Paused if pausing => return Ok(false),
+                    Progress::Error { reason } => return Err(worker_error(&reason)),
+                    _ => return Err(failure("audioWorker")),
                 }
                 write_json(&directory.join("status.json"), view)?;
             }
         }
     }
-    let status = tokio::select! {
-        _ = cancel.changed() => { let _ = child.kill().await; return Ok(false); }
-        status = child.wait() => status.map_err(io_error)?,
-    };
-    if *cancel.borrow() || lease.cancelled() {
-        return Ok(false);
-    }
-    if !status.success()
-        || !done
-        || view.completed_chapters != view.total_chapters
-        || view.completed_chunks != view.total_chunks
-    {
-        return Err(failure("audioWorker"));
-    }
-    // Model hard links are temporary. Finished jobs keep only MP3s and snapshots.
-    let _ = std::fs::remove_dir_all(directory.join("model"));
-    Ok(true)
 }

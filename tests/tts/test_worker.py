@@ -4,6 +4,8 @@ from pathlib import Path
 import tempfile
 import sys
 import subprocess
+import queue
+import threading
 import unittest
 from unittest.mock import patch
 import numpy as np
@@ -115,6 +117,73 @@ raise SystemExit(scope['main']())
                     patch.object(sys, "argv", ["book-tts", "--run", tmp]):
                 self.assertEqual(worker.main(), 1)
                 emit.assert_called_once_with("error", reason=reason)
+
+    def test_one_loaded_model_survives_pause_resume_and_new_voice_jobs(self):
+        with tempfile.TemporaryDirectory() as tmp, patch.object(worker, "emit") as emit:
+            root = Path(tmp)
+            first, second = root / "first", root / "second"
+            first.mkdir()
+            second.mkdir()
+            request = self.request()
+            (first / "input.json").write_text(json.dumps(request))
+            (second / "input.json").write_text(json.dumps({**request, "voice": "Aiden", "language": "English"}))
+            paused = threading.Event()
+            calls = []
+            samples = self.samples
+
+            class Model:
+                device = "cpu"
+                fingerprint = "model"
+
+                def synthesize(self, text, request):
+                    calls.append((text, request["voice"], request["language"]))
+                    if len(calls) == 1:
+                        paused.set()
+                    return samples(text)
+
+            pipe = worker.CommandPipe()
+            pipe.requests = queue.Queue()
+            for path, cancel in [(first, paused), (first, threading.Event()), (second, threading.Event())]:
+                pipe.requests.put(({"id": path.name, "directory": str(path)}, cancel))
+            pipe.requests.put((None, None))
+            with patch.object(worker, "SpeechModel", return_value=Model()) as factory:
+                worker.serve(root, "cpu", pipe=pipe, model_factory=factory)
+                factory.assert_called_once_with(root, "cpu")
+            self.assertEqual(calls, [
+                ("Первый фрагмент.", "Ryan", "Russian"),
+                ("Второй фрагмент.", "Ryan", "Russian"),
+                ("Первый фрагмент.", "Aiden", "English"),
+                ("Второй фрагмент.", "Aiden", "English"),
+            ])
+            events = [call.args[0] for call in emit.call_args_list]
+            self.assertEqual(events.count("loaded"), 1)
+            self.assertEqual(events.count("paused"), 1)
+            self.assertEqual(events.count("done"), 2)
+            for directory in (first, second):
+                audio, rate = sf.read(directory / "audio/00001.mp3")
+                self.assertEqual(rate, 24000)
+                self.assertGreater(len(audio), 24000)
+
+    def test_persistent_worker_stops_on_parent_exit_even_during_model_loading(self):
+        script = """
+import runpy, sys, time
+scope = runpy.run_path(sys.argv[1])
+class Model:
+    def __init__(self, *args):
+        time.sleep(30)
+scope['serve'](scope['Path'](sys.argv[2]), 'cpu', model_factory=Model)
+"""
+        with tempfile.TemporaryDirectory() as tmp, subprocess.Popen(
+            [sys.executable, "-I", "-c", script, str(Path(worker.__file__)), tmp],
+            stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+        ) as child:
+            try:
+                child.stdin.close()
+                self.assertEqual(child.wait(timeout=10), 2, child.stderr.read())
+            finally:
+                if child.poll() is None:
+                    child.kill()
+                    child.wait()
 
 
 if __name__ == "__main__":

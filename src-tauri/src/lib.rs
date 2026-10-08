@@ -69,6 +69,8 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             commands::audio_setup,
+            commands::audio_engine_load,
+            commands::audio_engine_unload,
             commands::audio_models_download,
             commands::audio_models_pause,
             commands::audio_start,

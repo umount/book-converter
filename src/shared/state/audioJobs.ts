@@ -12,6 +12,7 @@ type Watch = {
 const storageKey = "book-converter.hidden-audio-jobs";
 const key = (job: AudioJobView) => `${job.projectId}/${job.id}`;
 const signature = (job: AudioJobView) => JSON.stringify(job);
+const active = (job: AudioJobView) => job.state === "running" || job.state === "pausing";
 
 /** Audio jobs stay observable when the Narration tab is unmounted. */
 export class AudioJobStore {
@@ -39,10 +40,10 @@ export class AudioJobStore {
   snapshot = () => this.version;
   list(projectId: string, includeHidden = false): AudioJobView[] {
     return (this.watches.get(projectId)?.jobs ?? []).filter(job =>
-      includeHidden || job.state === "running" || this.hidden.get(key(job)) !== signature(job));
+      includeHidden || active(job) || this.hidden.get(key(job)) !== signature(job));
   }
   running(): boolean {
-    return [...this.watches.values()].some(watch => watch.jobs.some(job => job.state === "running"));
+    return [...this.watches.values()].some(watch => watch.jobs.some(active));
   }
   private notify() {
     this.version++;
@@ -54,7 +55,7 @@ export class AudioJobStore {
   }
   clearFinished(projectId: string) {
     for (const job of this.list(projectId, true)) {
-      if (job.state !== "running") this.hidden.set(key(job), signature(job));
+      if (!active(job)) this.hidden.set(key(job), signature(job));
     }
     this.persistHidden();
     this.notify();

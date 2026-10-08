@@ -511,7 +511,7 @@ function Shell({ runtime: { workspace, jobs, audio }, initialError, dismissIniti
         <button onClick={() => setSettings(true)}>{t("settings")}</button>
         <button className="bc-jobs-toggle" disabled={library || !project} onClick={() => setShowJobs(!showJobs)} aria-pressed={showJobs}>
           {t("jobs")}
-          {(jobList.some((j) => j.state === "running") || audioJobList.some(j => j.state === "running")) && (<span className="bc-activity-dot"/>)}
+          {(jobList.some((j) => j.state === "running") || audioJobList.some(j => ["running", "pausing"].includes(j.state))) && (<span className="bc-activity-dot"/>)}
         </button>
         {!library && (<button aria-pressed={showAssistant} onClick={() => setShowAssistant((v) => !v)}>
             {t("assistant")}
@@ -546,7 +546,7 @@ function Shell({ runtime: { workspace, jobs, audio }, initialError, dismissIniti
                     }}>
                       <span className={jobs
                         .list(item.id)
-                        .some((j) => ["running", "queued"].includes(j.state)) || audio.list(item.id).some(j => j.state === "running")
+                        .some((j) => ["running", "queued"].includes(j.state)) || audio.list(item.id).some(j => ["running", "pausing"].includes(j.state))
                         ? "bc-project-dot running"
                         : "bc-project-dot"}/>
                       <span>{item.name}</span>

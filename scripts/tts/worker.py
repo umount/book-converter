@@ -9,6 +9,7 @@ import hashlib
 import json
 import os
 from pathlib import Path
+import queue
 import sys
 import threading
 
@@ -70,7 +71,7 @@ def encode_chapter(parts, destination):
     os.replace(temporary, destination)
 
 
-def narrate(directory, request, synthesize, model_fingerprint):
+def narrate(directory, request, synthesize, model_fingerprint, cancelled=lambda: False):
     """synthesize is lazy: finished checkpoints do not need a loaded model."""
     import numpy as np
     if request["version"] != 1:
@@ -83,6 +84,9 @@ def narrate(directory, request, synthesize, model_fingerprint):
         raise ValueError("audioStorage")
     completed = 0
     for chapter_index, chapter in enumerate(request["chapters"]):
+        if cancelled():
+            emit("paused")
+            return
         identity = json.dumps([PIPELINE, model_fingerprint, request["language"], request["voice"], request["device"], chapter], ensure_ascii=False, sort_keys=True)
         fingerprint = hashlib.sha256(identity.encode("utf-8")).hexdigest()
         target = audio / f"{chapter_index + 1:05}.mp3"
@@ -94,6 +98,9 @@ def narrate(directory, request, synthesize, model_fingerprint):
             continue
         parts = []
         for chunk_index, text in enumerate(chapter["chunks"]):
+            if cancelled():
+                emit("paused")
+                return
             path = checkpoints / f"{chapter_index:05}-{chunk_index:05}.pcm"
             metadata = path.with_suffix(".json")
             chunk_fingerprint = hashlib.sha256(f"{fingerprint}:{chunk_index}".encode()).hexdigest()
@@ -121,6 +128,9 @@ def narrate(directory, request, synthesize, model_fingerprint):
             emit("chunk", completed=completed, chapter=chapter["title"][:300])
         if not parts:
             raise ValueError("audioOutput")
+        if cancelled():
+            emit("paused")
+            return
         encode_chapter(parts, target)
         atomic_json(receipt, {"fingerprint": fingerprint, "sha256": digest(target)})
         emit("chapter", completed=chapter_index + 1)
@@ -131,45 +141,138 @@ def narrate(directory, request, synthesize, model_fingerprint):
     emit("done")
 
 
-def run(directory):
+def model_specs(directory):
     for name in ["HF_HUB_OFFLINE", "TRANSFORMERS_OFFLINE", "HF_HUB_DISABLE_TELEMETRY"]:
         os.environ[name] = "1"
-    request = json.loads((directory / "input.json").read_text(encoding="utf-8"))
     specs = json.loads((directory / "model-files.json").read_text(encoding="utf-8"))
     for spec in specs:
         path = directory / "model" / spec["filename"]
         if path.is_symlink() or not path.is_file() or path.stat().st_size != spec["bytes"] or digest(path) != spec["sha256"]:
             raise ValueError("audioModels")
-    model_fingerprint = hashlib.sha256(json.dumps(specs, sort_keys=True).encode()).hexdigest()
+    return hashlib.sha256(json.dumps(specs, sort_keys=True).encode()).hexdigest()
+
+
+class SpeechModel:
+    def __init__(self, directory, device):
+        self.fingerprint = model_specs(directory)
+        import torch
+        from qwen_tts import Qwen3TTSModel
+        if device == "auto":
+            device = "cuda" if torch.cuda.is_available() else "cpu"
+        if device == "cuda" and not torch.cuda.is_available():
+            raise ValueError("audioCuda")
+        self.device = device
+        torch.set_num_threads(max(1, min(8, os.cpu_count() or 1)))
+        dtype = torch.float32 if device == "cpu" else (torch.bfloat16 if torch.cuda.is_bf16_supported() else torch.float16)
+        self.model = Qwen3TTSModel.from_pretrained(str(directory / "model"), device_map=device, dtype=dtype, attn_implementation="sdpa", local_files_only=True)
+
+    def synthesize(self, text, request):
+        import torch
+        with torch.inference_mode():
+            waves, rate = self.model.generate_custom_voice(text=text, language=request["language"], speaker=request["voice"], max_new_tokens=2048)
+        return waves[0], rate
+
+
+def run(directory):
+    request = json.loads((directory / "input.json").read_text(encoding="utf-8"))
+    fingerprint = model_specs(directory)
     model = None
 
     def synthesize(text):
         nonlocal model
-        import torch
-        from qwen_tts import Qwen3TTSModel
         if model is None:
-            device = request["device"]
-            if device == "auto":
-                device = "cuda" if torch.cuda.is_available() else "cpu"
-            if device == "cuda" and not torch.cuda.is_available():
-                raise ValueError("audioCuda")
-            torch.set_num_threads(max(1, min(8, os.cpu_count() or 1)))
-            dtype = torch.float32 if device == "cpu" else (torch.bfloat16 if torch.cuda.is_bf16_supported() else torch.float16)
-            model = Qwen3TTSModel.from_pretrained(str(directory / "model"), device_map=device, dtype=dtype, attn_implementation="sdpa", local_files_only=True)
-        with torch.inference_mode():
-            waves, rate = model.generate_custom_voice(text=text, language=request["language"], speaker=request["voice"], max_new_tokens=2048)
-        return waves[0], rate
+            model = SpeechModel(directory, request["device"])
+        return model.synthesize(text, request)
 
-    narrate(directory, request, synthesize, model_fingerprint)
+    narrate(directory, request, synthesize, fingerprint)
+
+
+class CommandPipe:
+    """Read control messages during synthesis without holding Python's stdin lock."""
+    def __init__(self):
+        self.requests = queue.Queue(maxsize=2)
+        self.active = {}
+        self.lock = threading.Lock()
+
+    def receive(self, command):
+        kind = command["command"]
+        if kind == "shutdown":
+            os._exit(0)
+        if kind == "run":
+            cancelled = threading.Event()
+            with self.lock:
+                self.active[command["id"]] = cancelled
+            self.requests.put_nowait((command, cancelled))
+        elif kind == "pause":
+            with self.lock:
+                cancelled = self.active.get(command["id"])
+                if cancelled:
+                    cancelled.set()
+        else:
+            raise ValueError("audioWorker")
+
+    def read(self):
+        pending = b""
+        try:
+            while True:
+                block = os.read(sys.stdin.fileno(), 4096)
+                if not block:
+                    os._exit(2)
+                pending += block
+                if len(pending) > 65536:
+                    os._exit(2)
+                while b"\n" in pending:
+                    line, pending = pending.split(b"\n", 1)
+                    self.receive(json.loads(line))
+        except Exception:
+            os._exit(2)
+
+
+def serve(directory, device, pipe=None, model_factory=SpeechModel):
+    if pipe is None:
+        pipe = CommandPipe()
+        threading.Thread(target=pipe.read, daemon=True).start()
+    model = model_factory(directory, device)
+    emit("loaded", device=model.device)
+    while True:
+        command, cancelled = pipe.requests.get()
+        if command is None:
+            return
+        try:
+            job_directory = Path(command["directory"])
+            request = json.loads((job_directory / "input.json").read_text(encoding="utf-8"))
+            if request["device"] not in ("auto", model.device):
+                raise ValueError("audioCuda")
+            narrate(job_directory, request, lambda text: model.synthesize(text, request), model.fingerprint, cancelled.is_set)
+        except Exception as error:
+            report_error(error)
+        finally:
+            with pipe.lock:
+                if pipe.active.get(command["id"]) is cancelled:
+                    pipe.active.pop(command["id"], None)
+
+
+def report_error(error):
+    # Keep source text, filesystem details and dependency traces out of IPC.
+    reason = str(error)
+    if isinstance(error, MemoryError) or "out of memory" in reason.lower():
+        reason = "audioMemory"
+    elif isinstance(error, OSError):
+        reason = "audioStorage"
+    if reason not in {"audioCuda", "audioModels", "audioTooLong", "audioOutput", "audioMemory", "audioStorage", "audioVersion"}:
+        reason = "audioWorker"
+    emit("error", reason=reason)
 
 
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--run", type=Path)
+    parser.add_argument("--serve", type=Path)
+    parser.add_argument("--device", choices=["auto", "cpu", "cuda"], default="auto")
     parser.add_argument("--check", action="store_true")
     parser.add_argument("--parent-pipe", action="store_true")
     args = parser.parse_args()
-    if args.parent_pipe:
+    if args.parent_pipe and not args.serve:
         # Parent owns the write end. Exit even if the desktop process crashes or is killed.
         def watch_parent():
             # A daemon blocked on BufferedReader holds its lock during interpreter
@@ -188,22 +291,17 @@ def main():
             encoder.silence()
             assert encoder.encode(b"\0\0" * 2400) + encoder.flush()
             emit("ready", version=1, cuda=torch.cuda.is_available())
-        elif args.run:
+        elif args.run or args.serve:
             try:
-                run(args.run.resolve())
+                if args.serve:
+                    serve(args.serve.resolve(), args.device)
+                else:
+                    run(args.run.resolve())
             except Exception as error:
-                # Keep source text, filesystem details and dependency traces out of IPC.
-                reason = str(error)
-                if isinstance(error, MemoryError) or "out of memory" in reason.lower():
-                    reason = "audioMemory"
-                elif isinstance(error, OSError):
-                    reason = "audioStorage"
-                if reason not in {"audioCuda", "audioModels", "audioTooLong", "audioOutput", "audioMemory", "audioStorage", "audioVersion"}:
-                    reason = "audioWorker"
-                emit("error", reason=reason)
+                report_error(error)
                 return 1
         else:
-            parser.error("choose --run or --check")
+            parser.error("choose --serve, --run or --check")
     return 0
 
 

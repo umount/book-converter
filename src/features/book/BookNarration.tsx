@@ -49,6 +49,9 @@ export function BookNarration({ project, chapters, session, t, audio, onAudioJob
   const total = setup?.files.reduce((sum, f) => sum + f.model.bytes, 0) ?? 1;
   const failed = setup?.files.find(f => f.failure);
   const running = audio.running();
+  const loadingModel = setup?.engine.state === "loading";
+  const loadedModel = setup?.engine.state === "ready";
+  const matchingModel = loadedModel && (device === "auto" || setup?.engine.device === device);
   const chapterId = session?.snapshot().view.chapter.id;
   const validRange = chapters.findIndex(c => c.id === first) >= 0 && chapters.findIndex(c => c.id === first) <= chapters.findIndex(c => c.id === last);
   async function start() {
@@ -78,9 +81,29 @@ export function BookNarration({ project, chapters, session, t, audio, onAudioJob
           {failed && <p role="alert" className="bc-error">{t("audioDownloadFailed")} ({failed.failure})</p>}
           {setup.files.some(f => f.status === "verifying") && <p role="status">{t("audioVerifying")}</p>}
         </>}
+        <div className="bc-audio-engine">
+          <div className="bc-audio-heading"><strong>{t("audioEngine")}</strong><span role="status" className={loadedModel ? "bc-success" : "bc-hint"}>
+            {t(({ unloaded: "audioEngineUnloaded", loading: "audioEngineLoading", ready: "audioEngineReady", failed: "audioFailed" } as const)[setup.engine.state])}
+            {setup.engine.device && setup.engine.device !== "auto" ? ` · ${setup.engine.device.toUpperCase()}` : ""}
+          </span></div>
+          <p className="bc-hint">{t("audioEngineHint")}</p>
+          <div className="bc-toolbar">
+            <button disabled={busy || running || loadingModel || matchingModel || !ready || !setup.runtimeReady} onClick={() => void act(async () => {
+              await api.audioLoad({ device });
+              const next = await api.audioSetup();
+              if (alive.current) setSetup(next);
+            })}>{t("audioLoad")}</button>
+            <button disabled={busy || running || loadingModel || !loadedModel} onClick={() => void act(async () => {
+              await api.audioUnload();
+              const next = await api.audioSetup();
+              if (alive.current) setSetup(next);
+            })}>{t("audioUnload")}</button>
+          </div>
+          {setup.engine.error && <p role="alert" className="bc-error">{errorText(setup.engine.error, t)}</p>}
+        </div>
       </>}
     </section>
-    <fieldset className="bc-audio-options" disabled={busy || running}>
+    <fieldset className="bc-audio-options" disabled={busy || running || loadingModel}>
       <legend>{t("audioOptions")}</legend>
       <div className="bc-audio-fields">
         <label>{t("audioText")}<select value={text} onChange={e => setText(e.target.value as AudioText)}><option value="translation">{t("audioTranslation")}</option><option value="original">{t("audioOriginal")}</option></select></label>
@@ -100,13 +123,14 @@ export function BookNarration({ project, chapters, session, t, audio, onAudioJob
       <h3>{t("audioJobs")}</h3>
       {!jobs.length && <p className="bc-hint">{t("audioEmptyJobs")}</p>}
       {jobs.map(job => <article key={job.id} className="bc-audio-job">
-        <div className="bc-audio-heading"><strong>{job.voice} · {t(job.text === "translation" ? "audioTranslation" : "audioOriginal")}</strong><span>{t(({ running: "audioRunning", paused: "audioPaused", interrupted: "audioInterrupted", failed: "audioFailed", succeeded: "audioFinished" } as const)[job.state])}</span></div>
+        <div className="bc-audio-heading"><strong>{job.voice} · {t(job.text === "translation" ? "audioTranslation" : "audioOriginal")}</strong><span>{t(({ running: "audioRunning", pausing: "audioPausing", paused: "audioPaused", interrupted: "audioInterrupted", failed: "audioFailed", succeeded: "audioFinished" } as const)[job.state])}</span></div>
         <p className="bc-hint">{t("chapters")}: {job.completedChapters} / {job.totalChapters} · {job.language} · {new Date(Number(job.createdAt)).toLocaleString()}</p>
         <progress value={job.completedChunks} max={Math.max(1, job.totalChunks)} aria-label={t("audioProgress")} />
         <p className="bc-audio-current" role="status">{job.currentChapter || t("audioPreparing")} <span className="bc-hint">{job.completedChunks} / {job.totalChunks}</span></p>
         {job.error && <p className="bc-error" role="alert">{errorText(job.error, t)}</p>}
         <div className="bc-toolbar">
           {job.state === "running" ? <button disabled={busy} onClick={() => void act(() => audio.pause({ projectId: project.id, jobId: job.id }))}>{t("audioPause")}</button>
+            : job.state === "pausing" ? <span className="bc-hint">{t("audioPauseHint")}</span>
             : job.state !== "succeeded" ? <button disabled={busy || running || !ready || !setup?.runtimeReady} onClick={() => void act(async () => { await audio.resume({ projectId: project.id, jobId: job.id }); onAudioJob(); })}>{t("audioResume")}</button>
             : <button disabled={busy || previewMode} onClick={() => void act(async () => {
               const destination = await open({ directory: true, multiple: false });

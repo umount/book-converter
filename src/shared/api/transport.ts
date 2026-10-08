@@ -12,6 +12,8 @@ export function createProjectApi(transport: Transport) {
     transport.invoke<T>(command, { args });
   return {
     audioSetup: () => transport.invoke<C.AudioSetupView>("audio_setup"),
+    audioLoad: (args: C.AudioLoadArgs) => call<void>("audio_engine_load", args),
+    audioUnload: () => transport.invoke<void>("audio_engine_unload"),
     audioDownload: () => transport.invoke<void>("audio_models_download"),
     audioPauseDownload: () => transport.invoke<void>("audio_models_pause"),
     audioStart: (args: C.AudioStartArgs) => call<C.AudioJobView>("audio_start", args),

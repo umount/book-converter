@@ -122,11 +122,13 @@ without either environment variable it falls back to a temporary directory.
 book-converter/
   settings.db              Application settings, profiles and credentials
   tts-models/              Shared speech model artifacts and partial downloads
+  audiobooks/.engine/<session-id>/
+    model/                 Temporary model hard links or copies for the loaded engine
+    model-files.json       Pinned model specifications for this session
   audiobooks/<project-id>/<job-id>/
     input.json             Frozen text, voice, language and device
     status.json            Audio job progress and failure state
     model-files.json       Pinned model file specifications
-    model/                 Temporary model hard links or copies
     chunks/                PCM checkpoints and integrity receipts
     audio/                 Chapter MP3s and integrity receipts
   logs/                    Rotating diagnostic logs
@@ -268,27 +270,38 @@ presentation overrides remain separate from generated metadata.
 
 ## Local narration execution
 
-Narration has its own file-based checkpoints and one active worker across all projects.
+Narration has its own file-based checkpoints and one persistent engine across all
+projects, with at most one active narration job.
 Starting a job acquires a project lease and snapshots the selected original or complete
 translated text inside a database transaction. The snapshot contains bounded fragments,
 language, voice and requested device. Later edits do not alter that input; resuming
 reuses the snapshot and verified audio rather than applying translation fingerprints.
 
 `ModelManager` downloads the pinned model bundle with resumable transfers and checks
-sizes and SHA-256 hashes. Each job materializes the expected model layout with hard
-links where possible and copies otherwise. The runtime validates the frozen executable
-at job admission; the Python worker rechecks model files and loads them in offline mode.
-Debug builds can fall back to the prepared development virtual environment.
+sizes and SHA-256 hashes. Loading the engine materializes the expected model layout
+with hard links where possible and copies otherwise. The runtime validates the frozen
+executable at admission; the Python worker rechecks model files and loads them in
+offline mode. Debug builds can fall back to the prepared development virtual environment.
+
+`audio_engine_load` explicitly prepares the model; starting a job can also load it on
+demand. `audio_setup` reports unloaded/loading/ready/failed state and the actual device.
+The engine serializes load, synthesis and unload operations. Jobs reuse the ready
+process on a compatible device, sending run commands over stdin instead of reloading
+weights. Voices and languages belong to each job; changing them does not reload the
+model. `audio_engine_unload` releases the idle process and its model directory.
 
 The worker emits JSON progress events on stdout; Rust persists them in `status.json`.
 Generated fragments are temporary PCM checkpoints, joined through one continuous LAME
 encoder per chapter. Verified chapter MP3s replace their fragment checkpoints. Export
-rechecks MP3 hashes and writes a chapter playlist. Finished jobs release their temporary
-model directory while keeping the input, status, model specification and chapter audio.
+rechecks MP3 hashes and writes a chapter playlist. Finished jobs keep the input, status,
+model specification and chapter audio; the shared engine stays loaded for the next job.
 
-Pause or project deletion stops the child process; parent-pipe monitoring also stops
-it when the application exits unexpectedly. On listing a saved running job with no
-active worker, the service marks it interrupted. Resume is always explicit. Project
+Pause sends a control message read by a dedicated thread during synthesis. The worker
+saves the current fragment and reports paused, retaining the model. Project deletion
+stops its active child process immediately; parent-pipe monitoring also stops the
+process when the application exits unexpectedly, even during loading. On listing a
+saved running or pausing job with no active worker, the service marks it interrupted.
+Resume is always explicit. Project
 deletion removes its narration directory after cancelling work and releasing leases;
 shared weights and exported MP3 folders remain. See [Narration](NARRATION.md) for
 user workflows, runtime preparation and manual verification.

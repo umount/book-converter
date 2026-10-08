@@ -6,6 +6,16 @@ chapter range or the whole book, a voice and a device. Select **Create MP3**.
 The model download can be paused and resumed. Every file is checked against a
 pinned size and SHA-256 hash before use.
 
+To prepare the model before starting a job, select a compute device and press
+**Load model**. Wait for **Model in memory → Ready**, then create MP3 jobs as needed.
+One loaded model serves all chapters and subsequent jobs, including different voices
+and books. **Create MP3** also loads it automatically if necessary.
+
+The model stays in RAM or GPU memory after a job finishes and while paused. Use
+**Unload model** when no narration is running to release that memory; downloaded
+weights and audio are retained. Closing the application also unloads it. A different
+explicit device, a worker failure or an application restart requires a new load.
+
 The packaged application includes its speech engine. End users do not need Python,
 FFmpeg, an API key or a paid speech service. Internet access is needed to download
 the model; synthesis runs locally with offline mode enabled. Book text is not sent
@@ -49,8 +59,9 @@ player; the Narration tab provides an **Open folder** button.
 ## Devices and recovery
 
 The default runtime uses CPU. CPU generation can take considerably longer than
-the resulting audio; begin with one chapter. **Automatic** uses CUDA when the
-installed runtime supports it and a compatible NVIDIA GPU is available. Selecting
+the resulting audio; begin with one chapter. **Automatic** reuses the loaded model;
+when loading a new model it uses CUDA if the installed runtime supports it and a
+compatible NVIDIA GPU is available. Selecting
 CUDA explicitly reports an error when it is unavailable. CUDA builds require the
 build option described below. GPU memory needs depend on the device and input;
 there is no fixed performance or memory guarantee.
@@ -59,7 +70,10 @@ Audio jobs and their progress appear in both **Narration** and the shared **Jobs
 panel, including when the Narration tab is closed. Both views provide pause and
 resume controls; the Jobs row also opens Narration for export. Clearing finished
 Jobs entries hides them in that panel while preserving audio and the Narration history.
-Only one narration job runs at a time across projects. **Pause** stops the worker.
+Only one narration job runs at a time across projects. **Pause** finishes and saves
+the current fragment, then pauses the job while keeping the model loaded. The UI
+shows **Pausing…** during that interval. If paused during initial model loading, the
+load finishes before the job settles as paused.
 Completed fragments and chapters are checked and reused on **Resume saved text**.
 An interrupted fragment is regenerated. After an application restart, interrupted
 jobs require an explicit resume; opening a book never starts narration.
@@ -72,7 +86,7 @@ changing an existing audio job's input.
 Model files live under the application's `tts-models/` directory. Audio jobs live
 under `audiobooks/<project-id>/<job-id>/`, outside the project database. These
 caches and audio files are not included in portable `.bcproj` archives. Deleting
-a project cancels its worker and removes its audio cache, but leaves explicitly
+a project stops its active audio worker and removes its audio cache, but leaves explicitly
 exported MP3 folders and the shared model download intact.
 
 ## Troubleshooting
@@ -89,6 +103,9 @@ exported MP3 folders and the shared model download intact.
   Changing the device selector does not change the settings of a saved job.
 - **Storage error:** check available disk space and write access, then resume. Select
   a different export directory if the destination folder already exists.
+- **Loading is slow:** preparation includes verifying weights and loading them into
+  memory. Leave the ready model loaded to avoid repeating that work between jobs.
+  This removes repeated startup time; CPU speech generation itself can still be slow.
 
 ## Development and packaging
 

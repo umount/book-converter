@@ -19,10 +19,31 @@ pub enum AudioDevice {
 #[serde(rename_all = "snake_case")]
 pub enum AudioState {
     Running,
+    Pausing,
     Paused,
     Interrupted,
     Failed,
     Succeeded,
+}
+#[derive(Clone, Debug, Serialize, Deserialize, TS, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum AudioEngineState {
+    Unloaded,
+    Loading,
+    Ready,
+    Failed,
+}
+#[derive(Clone, Debug, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+pub struct AudioEngineView {
+    pub state: AudioEngineState,
+    pub device: Option<AudioDevice>,
+    pub error: Option<AppError>,
+}
+#[derive(Clone, Debug, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct AudioLoadArgs {
+    pub device: AudioDevice,
 }
 #[derive(Clone, Debug, Serialize, Deserialize, TS)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -68,6 +89,7 @@ pub struct AudioJobView {
 #[serde(rename_all = "camelCase")]
 pub struct AudioSetupView {
     pub runtime_ready: bool,
+    pub engine: AudioEngineView,
     pub downloading: bool,
     pub files: Vec<crate::models::ModelView>,
 }
@@ -77,6 +99,9 @@ pub fn typescript() -> String {
         AudioText::decl(&c),
         AudioDevice::decl(&c),
         AudioState::decl(&c),
+        AudioEngineState::decl(&c),
+        AudioEngineView::decl(&c),
+        AudioLoadArgs::decl(&c),
         AudioStartArgs::decl(&c),
         AudioJobArgs::decl(&c),
         AudioExportArgs::decl(&c),

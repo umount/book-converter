@@ -41,6 +41,7 @@ struct Active {
 pub struct Narration {
     root: PathBuf,
     active: Mutex<Option<Active>>,
+    engine: Arc<worker::Engine>,
 }
 pub(super) fn failure(reason: &str) -> AppError {
     AppError {
@@ -107,9 +108,28 @@ impl Narration {
     }
     pub fn new(root: PathBuf) -> Self {
         Self {
+            engine: Arc::new(worker::Engine::new(root.join(".engine"))),
             root,
             active: Mutex::new(None),
         }
+    }
+    pub fn engine_view(&self) -> AudioEngineView {
+        self.engine.view()
+    }
+    pub fn load_engine(
+        &self,
+        models: Arc<ModelManager>,
+        runtime: Runtime,
+        device: AudioDevice,
+    ) -> Result<(), AppError> {
+        let active = self.active.lock().unwrap();
+        if active.is_some() {
+            return Err(failure("audioBusy"));
+        }
+        self.engine.load(models, runtime, device)
+    }
+    pub async fn unload_engine(&self) -> Result<(), AppError> {
+        self.engine.unload().await
     }
     fn project_dir(&self, project: &ProjectId) -> Result<PathBuf, AppError> {
         project.validate()?;
@@ -133,7 +153,7 @@ impl Narration {
             return Err(failure("audioStorage"));
         }
         let active = self.active.lock().unwrap();
-        if view.state == AudioState::Running
+        if matches!(view.state, AudioState::Running | AudioState::Pausing)
             && !active
                 .as_ref()
                 .is_some_and(|a| a.id == view.id && a.project == view.project_id)
@@ -284,7 +304,16 @@ impl Narration {
     ) {
         let service = self.clone();
         tokio::spawn(async move {
-            let result = worker::run(&lease, models, runtime, &dir, &mut view, cancel).await;
+            let result = worker::run(
+                &service.engine,
+                &lease,
+                models,
+                runtime,
+                &dir,
+                &mut view,
+                cancel,
+            )
+            .await;
             match result {
                 Ok(true) => view.state = AudioState::Succeeded,
                 Ok(false) => view.state = AudioState::Paused,

@@ -1672,6 +1672,7 @@ button + button {
   border-radius: 8px;
   background: var(--panel);
 }
+.bc-audio-engine { margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--line); }
 .bc-reader-lock .bc-chapter-spinner { flex-shrink: 0; }
 .bc-reader input[readonly], .bc-reader textarea[readonly] { cursor: default; }
 
