@@ -17,10 +17,13 @@ contains its own endpoint, model, temperature, output-token limit, timeout and n
 retry count. Profiles use an OpenAI-compatible chat-completions transport; endpoint
 configuration should name the API base, not a full `/chat/completions` request URL.
 
-Roles without a named profile use shared defaults.
+Roles without a named profile use shared defaults. These profiles configure
+translation and the book assistant. Local narration uses the bundled Qwen3-TTS
+engine and does not require a provider endpoint or API key.
 
-Jobs store provider configuration without the credential. Resume compares the captured
-profile and endpoint with the currently configured credential destination before using
+Translation and assistant jobs store provider configuration without the credential.
+Resume compares the captured profile and endpoint with the currently configured
+credential destination before using
 a local key. Changing the endpoint/profile can therefore require starting a new job.
 
 ## Credentials and environment
@@ -43,7 +46,15 @@ put keys into project instructions, documentation or committed configuration.
 
 The data root is `$XDG_DATA_HOME/book-converter`, falling back to
 `$HOME/.local/share/book-converter`. The [architecture](ARCHITECTURE.md) describes its
-contents. `.bcproj` is the portable project format.
+contents. If neither environment variable exists, the current implementation uses
+the system temporary directory as its base. This lookup also applies on Windows;
+it does not automatically choose `%APPDATA%`. Set `XDG_DATA_HOME` to a persistent
+directory before launching when neither variable is defined.
+
+Shared speech model files are in `tts-models/`; audio inputs, progress, checkpoints
+and generated MP3s are in `audiobooks/<project-id>/<job-id>/` under the data root.
+`.bcproj` is the portable project format and excludes these narration files. See
+[Narration](NARRATION.md) for model preparation and audio export.
 
 ## Batch sizes and glossary counts
 

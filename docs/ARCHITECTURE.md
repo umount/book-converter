@@ -25,6 +25,9 @@ flowchart TB
         Storage[Repositories and transactions]
         Assets[AssetStore and bookasset protocol]
         AI[ChatCompletions transport]
+        Narration[Narration service]
+        Models[ModelManager]
+        Speech[Isolated Qwen3-TTS worker]
         IPC --> Context
         IPC --> Services
         Services --> Manager
@@ -34,6 +37,11 @@ flowchart TB
         Manager --> Storage
         Services --> Assets
         Services --> AI
+        IPC --> Narration
+        IPC --> Models
+        Narration --> Manager
+        Narration --> Models
+        Narration --> Speech
     end
     API <-->|Typed IPC| IPC
     Jobs -->|project-event| State
@@ -41,10 +49,13 @@ flowchart TB
     Assets --> Files[Project image files]
     Assets -->|Image URLs| UI
     AI --> Provider[Configured external API]
+    Models --> Weights[Verified local model files]
+    Speech --> Audio[Audio checkpoints and chapter MP3s]
 ```
 
 `AppContext` is the composition root. It owns `ProjectManager`, job admission and
-cancellation registries, edit previews, `AssistantService`.
+cancellation registries, edit previews, `AssistantService`, `ModelManager` and
+`Narration`.
 Commands adapt IPC arguments and responses; domain behavior lives in application
 services.
 
@@ -64,13 +75,17 @@ Code entry points:
   [assets.rs](../src-tauri/src/assets.rs) serves images; [assets/store.rs](../src-tauri/src/assets/store.rs)
   publishes immutable content-addressed files.
 - [ai](../src-tauri/src/ai/) handles provider requests.
+- [models](../src-tauri/src/models/) downloads and verifies pinned speech model files.
+  [narration](../src-tauri/src/narration/) snapshots book text, runs audio jobs and
+  exports MP3s. [worker.py](../scripts/tts/worker.py) performs offline synthesis and encoding.
 - [book](../src-tauri/src/book/) parses book formats and [export](../src-tauri/src/export/)
   writes output formats.
 
 ## Contracts and frontend state
 
-Rust DTOs in [app/contracts.rs](../src-tauri/src/app/contracts.rs) and
-[app/requests.rs](../src-tauri/src/app/requests.rs) generate
+Rust DTOs in [app/contracts.rs](../src-tauri/src/app/contracts.rs),
+[app/requests.rs](../src-tauri/src/app/requests.rs) and
+[narration/contracts.rs](../src-tauri/src/narration/contracts.rs) generate
 [generated.ts](../src/shared/contracts/generated.ts). Revisions cross IPC as decimal
 strings, avoiding JavaScript integer precision loss. Requests identify projects and
 entities with stable IDs; mutations carry expected revisions.
@@ -85,6 +100,10 @@ initial job listing, reads updated jobs on events, and rejects older revisions.
 It does not continuously poll unchanged jobs. UI preferences and selected locations
 can live in local storage; persisted project content remains authoritative in SQLite.
 
+Narration uses separate `audio_*` commands and JSON-backed job views. While mounted,
+`BookNarration` polls setup and audio job status every 1.5 seconds after the previous
+request completes. These jobs do not pass through `JobStore` or `project-event`.
+
 Shared modal windows keep their header/footer outside the scrolling body. Jobs uses
 one fixed header/progress area and a scrolling list with active work first.
 
@@ -97,7 +116,15 @@ without either environment variable it falls back to a temporary directory.
 ```text
 book-converter/
   settings.db              Application settings, profiles and credentials
-  models/                  Downloaded model artifacts and download state
+  tts-models/              Shared speech model artifacts and partial downloads
+  audiobooks/<project-id>/<job-id>/
+    input.json             Frozen text, voice, language and device
+    status.json            Audio job progress and failure state
+    model-files.json       Pinned model file specifications
+    model/                 Temporary model hard links or copies
+    chunks/                PCM checkpoints and integrity receipts
+    audio/                 Chapter MP3s and integrity receipts
+  logs/                    Rotating diagnostic logs
   staging/                 Temporary imports and archive snapshots
   projects/<project-id>/
     project.json           Versioned manifest and project identity
@@ -144,12 +171,15 @@ asset directory. Changed images get new asset IDs, so cached URLs cannot silentl
 show different bytes.
 
 `.bcproj` export uses a SQLite snapshot plus its referenced assets and manifest.
-Import validates this portable representation before publication. Credentials and
-model weights belong to application settings/runtime storage and are not archived.
+Import validates this portable representation before publication. Credentials,
+model weights and narration jobs/audio live outside the project directory and are
+not archived. Audio must be exported separately from Narration.
 Book format export uses a consistent snapshot and an explicit incomplete-book policy.
-Output publication refuses to overwrite an existing destination.
+It replaces an existing destination only after explicit overwrite confirmation and
+successful output preparation. Narration export always creates a new directory and
+refuses an existing destination.
 
-## Background execution
+## Translation background execution
 
 A run freezes entity selection, processing settings, provider configuration and
 instructions. A step records its entity, stage, attempt, input fingerprint and output
@@ -165,7 +195,7 @@ sequenceDiagram
     participant Service as Stage executor
     participant DB as Project SQLite
     participant Engine as Provider or native worker
-    User->>UI: Start a chapter/page batch
+    User->>UI: Start a chapter batch
     UI->>Command: Typed request with project and selection
     Command->>DB: Save run and frozen settings
     Command-->>UI: JobRef
@@ -173,7 +203,7 @@ sequenceDiagram
     loop Selected entities and stages
         Runner->>DB: Read checkpoint and record attempt
         Runner->>Service: Compute using current inputs
-        Service->>Engine: Text/vision request or local operation
+        Service->>Engine: Text request or local operation
         Engine-->>Service: Stage output
         Service-->>Runner: Candidate result
         Runner->>DB: Recheck dependencies
@@ -205,12 +235,12 @@ resume checks the saved provider against the configured credential destination.
 ```mermaid
 flowchart LR
     Select[Select eligible chapters in source order] --> Next[Next chapter]
-    Next --> Glossary[Optional glossary extraction]
-    Glossary --> Translate[Translate title and stable text segments]
+    Next --> Translate[Translate title and stable text segments]
     Translate --> Repair[Repair affected foreign-language lines]
     Repair --> Save[Publish translation revision]
     Save --> Context[Update rolling story context]
-    Context --> More{More selected chapters?}
+    Context --> Glossary[Optional glossary extraction from completed translation]
+    Glossary --> More{More selected chapters?}
     More -->|Yes| Next
     More -->|No| Done[Complete job]
 ```
@@ -230,6 +260,33 @@ Metadata generation translates title/author/annotation into the project's target
 language. Supported-script checks trigger language repair and reject unresolved
 foreign-script output. These checks are not universal language detection. Manual
 presentation overrides remain separate from generated metadata.
+
+## Local narration execution
+
+Narration has its own file-based checkpoints and one active worker across all projects.
+Starting a job acquires a project lease and snapshots the selected original or complete
+translated text inside a database transaction. The snapshot contains bounded fragments,
+language, voice and requested device. Later edits do not alter that input; resuming
+reuses the snapshot and verified audio rather than applying translation fingerprints.
+
+`ModelManager` downloads the pinned model bundle with resumable transfers and checks
+sizes and SHA-256 hashes. Each job materializes the expected model layout with hard
+links where possible and copies otherwise. The runtime validates the frozen executable
+at job admission; the Python worker rechecks model files and loads them in offline mode.
+Debug builds can fall back to the prepared development virtual environment.
+
+The worker emits JSON progress events on stdout; Rust persists them in `status.json`.
+Generated fragments are temporary PCM checkpoints, joined through one continuous LAME
+encoder per chapter. Verified chapter MP3s replace their fragment checkpoints. Export
+rechecks MP3 hashes and writes a chapter playlist. Finished jobs release their temporary
+model directory while keeping the input, status, model specification and chapter audio.
+
+Pause or project deletion stops the child process; parent-pipe monitoring also stops
+it when the application exits unexpectedly. On listing a saved running job with no
+active worker, the service marks it interrupted. Resume is always explicit. Project
+deletion removes its narration directory after cancelling work and releasing leases;
+shared weights and exported MP3 folders remain. See [Narration](NARRATION.md) for
+user workflows, runtime preparation and manual verification.
 
 ## Assistant actions
 
@@ -260,7 +317,7 @@ revision checks or change a project's fixed languages. See [Assistant](ASSISTANT
 Keep source images immutable, distinguish status from result freshness and review,
 and validate captured revisions before publishing asynchronous results. Keep API keys
 out of project archives, job snapshots and frontend responses. Starting processing is
-an explicit action; viewing, capability inspection and selecting a page do not submit
+an explicit action; viewing, capability inspection and selecting a chapter do not submit
 paid work. Commands validate project identity before processing.
 
 [Development](DEVELOPMENT.md) describes checks for these boundaries. Automated fixtures

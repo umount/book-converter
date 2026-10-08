@@ -24,7 +24,7 @@ separately. Unknown authors are not inferred from chapter prose. Generating meta
 or an annotation is an explicit provider-backed job.
 
 Choose a positive chapter count and start translation. Selection follows source order
-and skips ineligible/alsaved translated chapters unless repeat processing is requested.
+and skips ineligible or already translated chapters unless repeat processing is requested.
 Each chapter is translated and its context saved before glossary extraction
 updates terms from that completed translation. The next chapter uses the updated glossary.
 Processing stops when the selected batch is finished.
@@ -111,6 +111,18 @@ glossary output are different conditions. Correct the relevant provider setting 
 input before retrying when necessary. Details absent from an older saved error cannot
 be reconstructed retrospectively.
 
+## Narration
+
+The **Narration** tab creates local MP3 audiobooks from the original or saved
+translation. Select a chapter, a range or the whole book, choose a preset voice,
+and start generation after downloading the model. Audio jobs have their own progress,
+pause and resume controls in this tab. Translation and narration can run independently.
+
+Narration uses a saved text snapshot; later edits apply only to new audio jobs.
+For translated audio, all text blocks and titles in the selected text chapters must
+be translated. See [Narration](NARRATION.md) for supported languages, runtime setup
+and recovery.
+
 ## Export
 
 **File → Export** supports TXT, FB2 packaged as `.fb2.zip`, EPUB and PDF. The default exports saved translated chapters and image-only chapters up to the last saved translation, skipping unfinished text chapters and untranslated empty headings. The cover is preserved. Export uses the latest saved translation in the target language even if glossary or settings changes have marked it for review. You can optionally include original text for unfinished chapters; translating the entire book is never required. Export reads a consistent snapshot, preserves
@@ -118,8 +130,13 @@ structural images in formats that support them. Confirmed overwrites replace the
 destination only after the new export is complete; failed exports preserve the old file.
 TXT is a text-only format.
 
+MP3 export is available through **Narration → Save MP3 chapters** after the audio job
+finishes. It writes one MP3 per narrated chapter and an M3U8 playlist to a new folder.
+
 Use `.bcproj` for continuing work on another installation. It contains the manifest,
-database snapshot and referenced assets, including edits and processing records.
-Configure API credentials separately on the destination installation.
+database snapshot and referenced assets, including edits and translation processing
+records. Narration jobs, audio checkpoints, MP3s and model weights are stored outside
+the project archive. Export audio separately and configure API credentials separately
+on the destination installation.
 
 See [Architecture](ARCHITECTURE.md), [Settings](SETTINGS.md) and [Assistant](ASSISTANT.md).

@@ -24,8 +24,11 @@ only Vite; it does not provide native IPC. To work on UI fixtures without Tauri,
 no real provider requests. They do not validate native file dialogs or model quality.
 
 Narration in development additionally requires Python 3.11/3.12 with pip and venv,
-then `npm run tts:prepare`. The installed application includes a frozen speech
-runtime. See [Narration](NARRATION.md) for model downloads, checks and CUDA builds.
+then `npm run tts:prepare`. `make deps-linux` does not install Python. Set
+`BOOK_TTS_PYTHON` to the supported executable if the system's default Python uses
+another version. Release and diagnostic builds also need this Python version on
+the build machine; the installed application includes a frozen speech runtime.
+See [Narration](NARRATION.md) for model downloads, runtime selection and CUDA builds.
 
 ## Source layout
 
@@ -37,8 +40,9 @@ runtime. See [Narration](NARRATION.md) for model downloads, checks and CUDA buil
 - `src-tauri/src/application/`: domain workflows and provider-backed processing.
 - `src-tauri/src/project/`, `storage/`, `assets/`: lifecycle and persistence.
 - `src-tauri/src/ai/`: external provider transport.
-- `src-tauri/src/models/`, `narration/`, `scripts/tts/`: model downloads and offline MP3 generation.
-- `tests/frontend/`, `tests/fixtures/`: frontend checks and deterministic input data.
+- `src-tauri/src/models/`, `src-tauri/src/narration/`: verified model downloads and audio jobs.
+- `scripts/tts/`, `scripts/prepare-tts-runtime.*`: offline MP3 worker and runtime packaging.
+- `tests/frontend/`, `tests/fixtures/`, `tests/tts/`: frontend checks, input data and speech worker tests.
 
 The [architecture](ARCHITECTURE.md) explains dependency direction and data ownership.
 
@@ -58,6 +62,19 @@ npm run contracts:check
 Rust tests cover persistence, import/export, provider payloads, stale-result guards,
 checkpoint recovery and domain workflows. Provider integration tests use local HTTP servers.
 These commands are verification instructions, not a stored claim about a particular run.
+
+For changes to narration or runtime packaging, also run:
+
+```bash
+npm run tts:prepare
+npm run test:tts
+```
+
+The worker tests use synthetic audio with the real MP3 encoder/decoder and exercise
+checkpoint recovery, resource errors and parent-process shutdown. They do not
+download model weights or evaluate generated speech. After packaging changes, run
+`npm run tts:bundle` to validate the frozen executable on the target OS. See
+[Narration](NARRATION.md) for an isolated end-to-end test with real weights.
 
 Use a temporary `XDG_DATA_HOME` when testing code that accesses application-wide settings:
 

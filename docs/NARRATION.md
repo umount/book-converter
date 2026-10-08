@@ -15,29 +15,36 @@ provider.
 ## Languages, voices and output
 
 The engine supports Russian, English, Chinese, Japanese, Korean, German, French,
-Spanish, Portuguese and Italian. The project language determines the narration
-language. An unsupported or unspecified source language must be corrected in
-project settings before narrating the original.
+Spanish, Portuguese and Italian. Narrating the original uses the project's source
+language; narrating the translation uses its target language. These languages are
+fixed when the project is created. If the source language was omitted or selected
+incorrectly, import the book as a new project with the correct language. Books in an
+unsupported source language can still be narrated after translation into a supported
+target language.
 
 Nine preset voices are available: Ryan, Aiden, Serena, Vivian, Uncle_Fu, Dylan, Eric,
 Ono_Anna and Sohee. Pronunciation and accent vary by voice and language. Start with
 one chapter to check the result. Voice cloning and voice design are not included.
 
-Each nonempty chapter produces one mono MP3 at **128 kbps**, with a sample rate of
-24 kHz. The chapter title and text/caption blocks are spoken in source order;
+Each chapter containing nonempty text or caption blocks produces one mono MP3 at
+**128 kbps**, with a sample rate of 24 kHz. Chapters containing only a title or images
+are skipped. The chapter title and text/caption blocks are spoken in source order;
 illustrations are skipped. Text is split at sentence or whitespace boundaries into
 fragments of at most 400 Unicode characters. There is a short pause between fragments.
 A continuous MP3 encoder joins their audio within each chapter.
 
-For a translation, all nonempty text blocks and the title in each selected chapter
+For a translation, all nonempty text blocks and the title in each narrated chapter
 must have a translation. Missing text is reported instead of mixing languages or
 silently omitting paragraphs. Source editing and translation quality should be
 reviewed before narration.
 
-After completion, **Save chapters as MP3** writes a new `audiobook-<job-id>` folder
-to the chosen directory, containing `00001.mp3`, `00002.mp3`, etc. and a `book.m3u8`
-playlist with chapter names. Existing folders are never overwritten. Incomplete
-jobs cannot be exported.
+After completion, **Save MP3 chapters** writes a new `audiobook-<first-8-job-id-characters>`
+folder to the chosen directory, containing `00001.mp3`, `00002.mp3`, etc. and a
+`book.m3u8` playlist with chapter names. Numbering starts at 1 within the audio job,
+including when only a range of book chapters was selected. Existing folders are
+never overwritten; choose another parent directory to export the same job again.
+Incomplete jobs cannot be exported. Open the exported MP3s or playlist in an audio
+player; the Narration tab provides an **Open folder** button.
 
 ## Devices and recovery
 
@@ -48,7 +55,8 @@ CUDA explicitly reports an error when it is unavailable. CUDA builds require the
 build option described below. GPU memory needs depend on the device and input;
 there is no fixed performance or memory guarantee.
 
-Only one narration job runs at a time across projects. **Pause** stops the worker.
+Audio jobs and their progress appear in **Narration**, separately from the translation
+Jobs panel. Only one narration job runs at a time across projects. **Pause** stops the worker.
 Completed fragments and chapters are checked and reused on **Resume saved text**.
 An interrupted fragment is regenerated. After an application restart, interrupted
 jobs require an explicit resume; opening a book never starts narration.
@@ -64,12 +72,30 @@ caches and audio files are not included in portable `.bcproj` archives. Deleting
 a project cancels its worker and removes its audio cache, but leaves explicitly
 exported MP3 folders and the shared model download intact.
 
+## Troubleshooting
+
+- **Speech engine missing:** in development, run `npm run tts:prepare` with a supported
+  Python version. For an installed application, reinstall a package that includes
+  the speech runtime; downloading model weights alone does not supply the engine.
+- **Download failed:** restore the connection and start the download again. Completed
+  files and valid partial downloads are reused; model verification must finish before
+  generation can start.
+- **Incomplete translation:** translate or fill in every missing title and text block
+  in the selected chapters, select a completed range, or choose the original.
+- **CUDA unavailable or insufficient memory:** free memory or create a new CPU job.
+  Changing the device selector does not change the settings of a saved job.
+- **Storage error:** check available disk space and write access, then resume. Select
+  a different export directory if the destination folder already exists.
+
 ## Development and packaging
 
 The build machine needs Python **3.11 or 3.12**, including `venv` and `pip`, plus
 the normal Rust/Node/Tauri prerequisites. Use `BOOK_TTS_PYTHON` to select a specific
 Python executable. The build script creates an isolated `.cache/tts-venv`; it does
-not install packages into the system Python.
+not install packages into the system Python. The Linux `make deps-linux` helper
+installs Tauri libraries only; install a supported Python and its `venv`/`pip` support
+separately. For example, select an installed Python 3.12 with
+`BOOK_TTS_PYTHON=python3.12 npm run tts:prepare`.
 
 ```bash
 npm run tts:prepare  # CPU development runtime; needed once to use Narration in dev
@@ -82,6 +108,10 @@ The normal Tauri build hook runs `tts:bundle` automatically and includes
 the application. Allow several GB of free space for dependencies and build copies
 in addition to the model and generated audio. The first build downloads large
 dependencies; subsequent builds reuse the matching runtime pack.
+
+Runtime discovery prefers a frozen `tts-runtime/` pack over the development virtual
+environment. After changing the Python worker, rebuild an existing pack with
+`npm run tts:bundle` so native development runs pick up the updated worker.
 
 For an NVIDIA runtime, preserve the CUDA option through the Tauri build hook:
 
@@ -103,14 +133,17 @@ speech quality. A real model smoke test must be run separately.
 For isolated manual testing, the examples use explicitly supplied directories:
 
 ```bash
+npm run tts:prepare
+mkdir -p /tmp/tts-export
 cargo run --manifest-path src-tauri/Cargo.toml --example prepare_narration -- \
-  /tmp/tts-models /tmp/tts-materialized
+  /tmp/tts-models
 cargo run --manifest-path src-tauri/Cargo.toml --example narrate_sample -- \
   /tmp/tts-app /tmp/tts-models /absolute/path/to/book-converter/src-tauri \
   /absolute/path/to/short-russian-sample.txt /tmp/tts-export
 ```
 
-Create the export directory first and prepare the runtime. `narrate_sample` imports
+`prepare_narration` downloads and verifies the model; an optional second path also
+materializes a model directory for inspection. `narrate_sample` imports
 the supplied text into a new isolated project, narrates the original with Ryan on
 CPU, checks completion and exports the MP3 and playlist using the application
 services. It runs real synthesis and is not part of the fast automated suite.

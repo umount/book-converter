@@ -1,7 +1,7 @@
 # Book Converter
 
-Desktop application for translating books with a glossary,
-editable results and resumable background jobs. Built with Rust, Tauri 2 and
+Desktop application for translating books and creating local MP3 audiobooks, with
+a glossary, editable results and resumable background jobs. Built with Rust, Tauri 2 and
 React/TypeScript. The interface supports English, Russian and Chinese.
 
 ## Books
@@ -38,9 +38,13 @@ make dev
 ```
 
 `make dev` downloads pdfium if needed and starts the desktop application with Vite.
-Configure
-provider access in Settings, create a project, choose its source and target languages,
-and start an explicit chapter batch. Opening a project does not start processing.
+For narration in development, install Python 3.11 or 3.12 with `venv` and `pip`,
+then run `npm run tts:prepare`. `make deps-linux` does not install Python.
+Release builds also require this Python version to bundle the speech engine.
+
+Create a project and choose its source and target languages. For translation,
+configure provider access in Settings and start an explicit chapter batch. Narrating
+the original requires no provider credentials. Opening a project does not start processing.
 
 ```bash
 make binary   # Release application without an installer
@@ -68,7 +72,8 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/prepare-windows.
 npm run tauri -- dev
 ```
 
-Preparation downloads PDFium. The Vite server alone does not provide native features.
+Preparation downloads PDFium. Run `npm run tts:prepare` to use narration in development.
+The Vite server alone does not provide native features.
 
 ### Release installer
 
@@ -90,8 +95,8 @@ npm run build:debug:windows
 
 The script runs `npm ci`, prepares pdfium and builds an installer with debug information and full diagnostic logging enabled by default.
 Output: `src-tauri/target/x86_64-pc-windows-msvc/debug/bundle/nsis/*-setup.exe`.
-Testers do not need Node.js, Rust or Python; they need the installer, configured API
-access.
+Testers do not need Node.js, Rust or Python. Translation requires configured provider
+access; narration requires the model download in the Narration tab.
 
 After reproducing an issue, select **Settings → Diagnostics → Save diagnostic logs**.
 The **Full diagnostic logging** checkbox takes effect immediately and persists across
